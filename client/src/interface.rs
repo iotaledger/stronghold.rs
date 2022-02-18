@@ -19,7 +19,7 @@ use crate::{
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
-    procedures::{CollectedOutput, Procedure, ProcedureError},
+    procedures::{PrimitiveProcedure, Procedure, ProcedureError, ProcedureIo},
     state::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
@@ -290,8 +290,20 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a [`Procedure`].
-    pub async fn runtime_exec<P>(&self, control_request: P) -> StrongholdResult<Result<CollectedOutput, ProcedureError>>
+    /// Executes a runtime command given a single [`PrimitiveProcedure`]
+    pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<ProcedureIo, ProcedureError>>
+    where
+        P: Into<PrimitiveProcedure>,
+    {
+        let res = self.runtime_exec_chained(procedure.into()).await;
+        res.map(|res| res.map(|mut vec| vec.pop().unwrap()))
+    }
+
+    /// Executes a runtime command given a [`Procedure`] that wraps one or multiple [`PrimitiveProcedure`]s.
+    pub async fn runtime_exec_chained<P>(
+        &self,
+        control_request: P,
+    ) -> StrongholdResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
         P: Into<Procedure>,
     {
@@ -790,7 +802,7 @@ impl Stronghold {
         &self,
         peer: PeerId,
         control_request: P,
-    ) -> P2pResult<Result<CollectedOutput, ProcedureError>>
+    ) -> P2pResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
         P: Into<Procedure>,
     {

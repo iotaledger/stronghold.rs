@@ -4,7 +4,6 @@
 use super::primitives::PrimitiveProcedure;
 use crate::{
     actors::{RecordError, VaultError},
-    state::secure::SecureClient,
     FatalEngineError, Location,
 };
 use actix::Message;
@@ -14,13 +13,12 @@ use engine::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
-    convert::{Infallible, TryFrom, TryInto},
+    convert::{TryFrom, TryInto},
     fmt::Debug,
     ops::Deref,
     string::FromUtf8Error,
 };
-use stronghold_utils::{random, GuardDebug};
+use stronghold_utils::GuardDebug;
 use thiserror::Error as DeriveError;
 
 // ==========================
@@ -30,7 +28,7 @@ use thiserror::Error as DeriveError;
 /// Complex Procedure that for executing one or multiple [`PrimitiveProcedure`]s.
 ///
 /// Example:
-/// ```
+/// // ```
 /// # use iota_stronghold::{
 /// #    procedures::*,
 /// #    Location, RecordHint, Stronghold
@@ -67,65 +65,40 @@ use thiserror::Error as DeriveError;
 /// #
 /// # Ok(())
 /// # }
-/// ```
+/// // ```
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct Procedure {
     inner: Vec<PrimitiveProcedure>,
 }
 
-impl Procedure {
-    /// Execute the procedure on a runner, e.g. the `SecureClient`
-    pub(crate) fn run<R: Runner>(self, runner: &mut R) -> Result<CollectedOutput, ProcedureError> {
-        // State that is passed to each procedure for writing their output into it.
-        let mut state = State {
-            aggregated: TempCollectedOutput {
-                temp_output: HashMap::default(),
-            },
-            change_log: Vec::default(),
-        };
-        // Execute procedures.
-        match self.execute(runner, &mut state) {
-            Ok(()) => {
-                // Delete temporary records.
-                Self::revoke_records(runner, state.change_log, true);
-                // Convert TempCollectedOutput into CollectedOutput by filtering temporary outputs.
-                Ok(state.aggregated.into())
-            }
-            Err(e) => {
-                // Rollback written data.
-                Self::revoke_records(runner, state.change_log, false);
-                Err(e)
-            }
-        }
-    }
-
-    // Revoke all / temporary records from vault, and garbage collect.
-    fn revoke_records<R: Runner>(runner: &mut R, logs: Vec<ChangeLog>, remove_only_temp: bool) {
-        let mut vaults = HashSet::new();
-        for entry in logs {
-            if entry.is_temp || !remove_only_temp {
-                let (v, _) = SecureClient::resolve_location(&entry.location);
-                let _ = runner.revoke_data(&entry.location);
-                if !vaults.contains(&v) {
-                    vaults.insert(v);
-                }
-            }
-        }
-        for vault_id in vaults {
-            let _ = runner.garbage_collect(vault_id);
-        }
-    }
-}
-
 impl ProcedureStep for Procedure {
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError> {
+    type Output = Vec<ProcedureIo>;
+
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let mut out = Vec::new();
+        let mut log = Vec::new();
         // Execute the primitive procedures sequentially.
-        self.inner.into_iter().try_for_each(|p| p.execute(runner, state))
+        for proc in self.inner {
+            if let Some(output) = proc.output() {
+                log.push(output);
+            }
+            let output = match proc.execute(runner) {
+                Ok(o) => o,
+                Err(e) => {
+                    for location in log {
+                        let _ = runner.revoke_data(&location);
+                    }
+                    return Err(e);
+                }
+            };
+            out.push(output);
+        }
+        Ok(out)
     }
 }
 
 impl Message for Procedure {
-    type Result = Result<CollectedOutput, ProcedureError>;
+    type Result = Result<Vec<ProcedureIo>, ProcedureError>;
 }
 
 impl<P> From<P> for Procedure
@@ -137,83 +110,8 @@ where
     }
 }
 
-/// Collected non-secret output of procedures.
-/// It only contains procedure output that was explicitly persisted via [`PersistOutput::store_output`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CollectedOutput {
-    output: HashMap<OutputKey, ProcedureIo>,
-}
-
-impl CollectedOutput {
-    /// Take the output associated with the key from the output, convert it to the required type and return it.
-    ///
-    /// If the output can not be converted into `T`, it is inserted back and `None` is returned.
-    /// Conversion into `T = Vec<u8>` will never fail.
-    pub fn take<T>(&mut self, key: &OutputKey) -> Option<T>
-    where
-        T: TryFrom<ProcedureIo>,
-    {
-        let value = self.output.remove(key)?;
-        match T::try_from(value.clone()) {
-            Ok(v) => Some(v),
-            Err(_) => {
-                self.output.insert(key.clone(), value);
-                None
-            }
-        }
-    }
-
-    /// Consume the `CollectedOutput`, take the next value found and convert it to `T`.
-    /// Return `None` if it is empty, or the value could not be converted to `T`.
-    /// Conversion into `T = Vec<u8>` will never fail.
-    pub fn single_output<T>(self) -> Option<T>
-    where
-        T: TryFrom<ProcedureIo>,
-    {
-        self.into_iter().next().and_then(|(_, v)| T::try_from(v).ok())
-    }
-}
-
-/// Returns an iterator over all (OutputKey, ProcedureIo) pairs in the collected output.
-impl IntoIterator for CollectedOutput {
-    type IntoIter = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::IntoIter;
-    type Item = <HashMap<OutputKey, ProcedureIo> as IntoIterator>::Item;
-    fn into_iter(self) -> Self::IntoIter {
-        self.output.into_iter()
-    }
-}
-
-/// Convert from `TempCollectedOutput` by removing all temporary records.
-impl From<TempCollectedOutput> for CollectedOutput {
-    fn from(temp: TempCollectedOutput) -> Self {
-        let output = temp
-            .temp_output
-            .into_iter()
-            .filter_map(|(key, (value, is_temp))| match is_temp {
-                true => None,
-                false => Some((key, value)),
-            })
-            .collect();
-        CollectedOutput { output }
-    }
-}
-
-/// Identifier for output in the `CollectedOutput`.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct OutputKey(String);
-
-impl OutputKey {
-    pub fn new<K: ToString>(key: K) -> Self {
-        OutputKey(key.to_string())
-    }
-
-    pub fn random() -> Self {
-        OutputKey(rand::random::<char>().into())
-    }
-}
-
 /// Output of a primitive procedure, that is stored in the [`CollectedOutput`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcedureIo(Vec<u8>);
 
 impl Deref for ProcedureIo {
@@ -282,53 +180,37 @@ impl From<String> for FatalProcedureError {
 #[derive(Debug, Clone)]
 pub struct State {
     /// Collected output from each primitive procedure in the chain.
-    aggregated: TempCollectedOutput,
+    aggregated: Vec<ProcedureIo>,
     /// Log of newly created records in the vault.
-    change_log: Vec<ChangeLog>,
+    change_log: Vec<Location>,
 }
 
 impl State {
     /// Add a procedure output to the collected output.
-    pub fn insert_output(&mut self, key: OutputKey, value: ProcedureIo, is_temp: bool) {
-        self.aggregated.temp_output.insert(key, (value, is_temp));
+    pub fn insert_output(&mut self, value: ProcedureIo) {
+        self.aggregated.push(value)
     }
 
     /// Get the output from a previously executed procedure.
-    pub fn get_output(&self, key: &OutputKey) -> Option<&ProcedureIo> {
-        self.aggregated.temp_output.get(key).map(|(data, _)| data)
+    pub fn get_output(&self, index: usize) -> Option<&ProcedureIo> {
+        self.aggregated.get(index)
     }
 
     /// Log a newly created record.
-    /// If `is_temp` is true, the record will be removed after the execution of all procedures in the chain finished.
-    pub fn add_log(&mut self, location: Location, is_temp: bool) {
-        let log = ChangeLog { location, is_temp };
-        self.change_log.push(log)
+    pub fn add_log(&mut self, location: Location) {
+        self.change_log.push(location)
     }
 }
-
-/// Log a newly created record.
-#[derive(Debug, Clone)]
-struct ChangeLog {
-    location: Location,
-    /// If `is_temp` is true, the record will be removed after the execution of all procedures in the chain finished.
-    is_temp: bool,
-}
-
-#[derive(Debug, Clone)]
-struct TempCollectedOutput {
-    // Collected ProcedureIo during execution, and whether it is temporary or not.
-    temp_output: HashMap<OutputKey, (ProcedureIo, bool)>,
-}
-
 // ==========================
 // Traits
 // ==========================
 
 /// Central trait that implements a procedure's logic.
 pub trait ProcedureStep {
+    type Output;
     /// Execute the procedure on a runner.
     /// The state collects the output from each procedure and writes a log of newly created records.
-    fn execute<R: Runner>(self, runner: &mut R, state: &mut State) -> Result<(), ProcedureError>;
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError>;
 
     /// Chain a next procedure to the current one.
     fn then<P>(self, next: P) -> Procedure
@@ -378,228 +260,77 @@ pub struct Products<T> {
 // ==========================
 
 /// No secret is used, no new secret is created.
-pub trait ProcessData {
-    // Non-secret input type.
-    type Input: TryFrom<ProcedureIo>;
+pub trait ProcessData: Sized {
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn process(self, input: Self::Input) -> Result<Self::Output, FatalProcedureError>;
+
+    fn process(self) -> Result<Self::Output, FatalProcedureError>;
+
+    fn execute<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let output = self.process()?;
+        Ok(output)
+    }
 }
 
 /// No secret is used, a new secret is created.
-pub trait GenerateSecret {
-    // Non-secret input type.
-    type Input: TryFrom<ProcedureIo>;
+pub trait GenerateSecret: Sized {
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn generate(self, input: Self::Input) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn target(&self) -> (&Location, RecordHint);
+
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let (target, hint) = self.target();
+        let target = target.clone();
+        let Products { output, secret } = self.generate()?;
+        runner.write_to_vault(&target, hint, secret)?;
+        Ok(output)
+    }
 }
 
 /// Existing secret is used, a new secret is created.
-pub trait DeriveSecret {
-    // Non-secret input type.
-    type Input: TryFrom<ProcedureIo>;
+pub trait DeriveSecret: Sized {
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn derive(self, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn source(&self) -> &Location;
+
+    fn target(&self) -> (&Location, RecordHint);
+
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let source = self.source().clone();
+        let (target, hint) = self.target();
+        let target = target.clone();
+        let f = |guard| self.derive(guard);
+        let output = runner.exec_proc(&source, &target, hint, f)?;
+        Ok(output)
+    }
 }
 
 /// Existing secret is used, no new secret is created.
-pub trait UseSecret {
-    // Non-secret input type.
-    type Input: TryFrom<ProcedureIo>;
+pub trait UseSecret: Sized {
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
+
+    fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
+
+    fn source(&self) -> &Location;
+
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let source = self.source().clone();
+        let f = |guard| self.use_secret(guard);
+        let output = runner.get_guard(&source, f)?;
+        Ok(output)
+    }
 }
 
 // ==========================
 //  Input /  Output Info
 // ==========================
-
-/// Non-secret input for a procedure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum InputData<T = Vec<u8>> {
-    /// Take input dynamically from the `CollectedOutput`,
-    /// i.g. use the output of a previously executed procedure as input.
-    Key(OutputKey),
-    /// Fixed input.
-    Value(T),
-}
-
-impl<T> From<OutputKey> for InputData<T> {
-    fn from(k: OutputKey) -> Self {
-        InputData::Key(k)
-    }
-}
-
-impl From<Vec<u8>> for InputData {
-    fn from(v: Vec<u8>) -> Self {
-        InputData::Value(v)
-    }
-}
-
-impl From<String> for InputData<String> {
-    fn from(v: String) -> Self {
-        InputData::Value(v)
-    }
-}
-
-impl<const N: usize> From<[u8; N]> for InputData<[u8; N]> {
-    fn from(v: [u8; N]) -> Self {
-        InputData::Value(v)
-    }
-}
-
-/// Location of a Secret / Non-secret Product of a primitive procedure.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TempProduct<T> {
-    /// Location / Key into which the output is written.
-    ///
-    /// In case of a secret, this is a `Target {Location, RecordHing`,
-    /// in case of a non-secret output, this is a `OutputKey`.
-    pub write_to: T,
-    /// Whether the product is revoked/ dropped after the execution finished.
-    pub is_temp: bool,
-}
-
-/// New Secret.
-pub type TempTarget = TempProduct<Target>;
-
-impl Default for TempTarget {
-    fn default() -> Self {
-        TempTarget {
-            write_to: Target::random(),
-            is_temp: true,
-        }
-    }
-}
-
-/// Non-Secret Output.
-pub type TempOutput = TempProduct<OutputKey>;
-
-impl Default for TempOutput {
-    fn default() -> Self {
-        TempOutput {
-            write_to: OutputKey::random(),
-            is_temp: true,
-        }
-    }
-}
-
-/// Location of an existing secret.
-pub trait SourceInfo {
-    fn source_location(&self) -> &Location;
-    fn source_location_mut(&mut self) -> &mut Location;
-}
-
-/// Location into which a new secret should be written.
-pub trait TargetInfo {
-    fn target_info(&self) -> &TempTarget;
-    fn target_info_mut(&mut self) -> &mut TempTarget;
-}
-
-/// Trait that is auto-implemented for all procedures that write a new secret to the vault.
-/// Per default, a secret is only temporary and will be revoked after the whole execution of
-/// one/ many chained procedure has finished.
-/// The revocation happens **after** every primitive procedure in the chain was executed.
-/// Hence even if the secret is not persisted, it can still be used by subsequent procedures in the execution chain.
-///
-/// If the secret should be persisted after the execution, a permanent target location has to be set via
-/// [`PersistSecret::write_secret`].
-pub trait PersistSecret {
-    /// The location in the vault to which the secret will be written.
-    /// If [`PersistSecret::write_secret`] was not explicitly set, this is a random location
-    /// and the new record will be revoked after the procedure's execution.
-    ///
-    /// This location can be used as input location for other procedure.
-    fn target(&self) -> Location;
-
-    /// Permanently store the new secret in the vault and the set location.
-    fn write_secret(self, location: Location, hint: RecordHint) -> Self;
-}
-
-impl<T: TargetInfo> PersistSecret for T {
-    fn target(&self) -> Location {
-        self.target_info().write_to.location.clone()
-    }
-
-    fn write_secret(mut self, location: Location, hint: RecordHint) -> Self
-    where
-        Self: Sized,
-    {
-        let target = self.target_info_mut();
-        target.write_to = Target { location, hint };
-        target.is_temp = false;
-        self
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Target {
-    pub location: Location,
-    pub hint: RecordHint,
-}
-
-impl Target {
-    pub fn random() -> Self {
-        let location = Location::generic("TEMP".as_bytes(), random::bytestring(32));
-        let hint = RecordHint::new("".to_string()).unwrap();
-        Target { location, hint }
-    }
-}
-
-/// Non-secret input for a procedure.
-pub trait InputInfo {
-    type In;
-
-    fn input_info(&self) -> &InputData<Self::In>;
-    fn input_info_mut(&mut self) -> &mut InputData<Self::In>;
-}
-
-/// Specify where non-secret output should be written to.
-pub trait OutputInfo {
-    fn output_info(&self) -> &TempOutput;
-    fn output_info_mut(&mut self) -> &mut TempOutput;
-}
-
-/// Trait that is auto-implemented for all procedures that have non-secret data output.
-/// Per default, this output is only temporary and will not be in the [`CollectedOutput`]
-/// that is returned to the user.
-/// Temporary output is still cached during the procedure's execution and may be used as input for
-/// subsequent procedures in a chain.
-///
-/// If the output should be returned to the user, an [`OutputKey`] can be set via
-/// [`PersistOutput::store_output`], the same key can then be used to take the output from the
-/// [`CollectedOutput`].
-pub trait PersistOutput {
-    /// [`OutputKey`] with which the procedure's output is associated.
-    /// This key can be used to specify the input of subsequent procedures in a procedure chain.
-    ///
-    /// If [`PersistOutput::store_output`] was not set, this key is random, and the output will not be
-    /// persisted in the [`CollectedOutput`] that is returned to the user.
-    fn output_key(&self) -> OutputKey;
-
-    /// Write the procedure's non-secret output into the [`CollectedOutput`] that is returned to the user.
-    fn store_output(self, key: OutputKey) -> Self;
-}
-
-impl<T: OutputInfo + Sized> PersistOutput for T {
-    fn output_key(&self) -> OutputKey {
-        let o = self.output_info();
-        o.write_to.clone()
-    }
-
-    fn store_output(mut self, key: OutputKey) -> Self
-    where
-        Self: Sized,
-    {
-        let info = self.output_info_mut();
-        info.write_to = key;
-        info.is_temp = false;
-        self
-    }
-}
 
 impl From<()> for ProcedureIo {
     fn from(_: ()) -> Self {
@@ -625,17 +356,13 @@ impl<const N: usize> From<[u8; N]> for ProcedureIo {
     }
 }
 
-impl TryFrom<ProcedureIo> for () {
-    type Error = Infallible;
-    fn try_from(_: ProcedureIo) -> Result<Self, Self::Error> {
-        Ok(())
-    }
+impl From<ProcedureIo> for () {
+    fn from(_: ProcedureIo) -> Self {}
 }
 
-impl TryFrom<ProcedureIo> for Vec<u8> {
-    type Error = Infallible;
-    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
-        Ok(value.0)
+impl From<ProcedureIo> for Vec<u8> {
+    fn from(value: ProcedureIo) -> Self {
+        value.0
     }
 }
 

@@ -4,7 +4,7 @@
 use crate::{
     actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
     enum_from_inner,
-    procedures::{CollectedOutput, Procedure},
+    procedures::Procedure,
 };
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
@@ -337,7 +337,10 @@ impl NetworkConfig {
 pub mod messages {
 
     use super::*;
-    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
+    use crate::{
+        procedures::{ProcedureError, ProcedureIo},
+        Location, RecordHint, RecordId,
+    };
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
     use serde::{Deserialize, Serialize};
 
@@ -554,14 +557,14 @@ pub mod messages {
         Bool(bool),
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
-        Proc(Result<CollectedOutput, ProcedureError>),
+        Proc(Result<Vec<ProcedureIo>, ProcedureError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
     sh_result_mapping!(ShResult::Bool => bool);
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
-    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+    sh_result_mapping!(ShResult::Proc => Result<Vec<ProcedureIo>, ProcedureError>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {

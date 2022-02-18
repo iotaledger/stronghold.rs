@@ -5,9 +5,10 @@
 use crate::{
     actors::NetworkConfig,
     p2p::{identity::Keypair, PeerId, SwarmInfo},
-    procedures::{PersistSecret, Slip10Derive, Slip10Generate},
+    procedures::{Slip10Derive, Slip10Generate, Slip10ParentType},
+    tests::fresh,
 };
-use crate::{tests::fresh, ActorError, Location, RecordHint, Stronghold};
+use crate::{ActorError, Location, RecordHint, Stronghold};
 use stronghold_utils::random::bytestring;
 #[cfg(feature = "p2p")]
 use tokio::sync::{mpsc, oneshot};
@@ -478,7 +479,16 @@ async fn test_stronghold_p2p() {
         let (_path, chain) = fresh::hd_path();
 
         match local_stronghold
-            .remote_runtime_exec(peer_id, Slip10Derive::new_from_seed(seed1, chain))
+            .remote_runtime_exec(
+                peer_id,
+                Slip10Derive {
+                    input: seed1,
+                    output: fresh::location(),
+                    chain,
+                    hint: fresh::record_hint(),
+                    parent_ty: Slip10ParentType::Seed,
+                },
+            )
             .await
             .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
@@ -512,7 +522,6 @@ async fn test_stronghold_p2p() {
 
         assert!(swarm_info.listeners.into_iter().any(|l| l.addrs.contains(&addr)));
         addr_tx.send((swarm_info.local_peer_id, addr)).unwrap();
-
         // test writing at remote and reading it from local stronghold
         remote_stronghold
             .write_to_store(key1_clone, data1_clone, None)
@@ -531,11 +540,15 @@ async fn test_stronghold_p2p() {
 
         // test procedure execution
         match remote_stronghold
-            .runtime_exec(Slip10Generate::default().write_secret(seed1_clone, fresh::record_hint()))
+            .runtime_exec(Slip10Generate {
+                size_bytes: None,
+                output: seed1_clone,
+                hint: fresh::record_hint(),
+            })
             .await
             .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Ok(out) => assert_eq!(out, Vec::new().into()),
             Err(e) => panic!("unexpected error: {:?}", e),
         };
 
