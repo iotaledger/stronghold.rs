@@ -243,7 +243,7 @@ pub trait ProcessData: Sized {
 
     fn process(self) -> Result<Self::Output, FatalProcedureError>;
 
-    fn execute<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError> {
         let output = self.process()?;
         Ok(output)
     }
@@ -258,7 +258,7 @@ pub trait GenerateSecret: Sized {
 
     fn target(&self) -> (&Location, RecordHint);
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         let (target, hint) = self.target();
         let target = target.clone();
         let Products { output, secret } = self.generate()?;
@@ -278,7 +278,7 @@ pub trait DeriveSecret: Sized {
 
     fn target(&self) -> (&Location, RecordHint);
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
         let (target, hint) = self.target();
         let target = target.clone();
@@ -297,7 +297,7 @@ pub trait UseSecret: Sized {
 
     fn source(&self) -> &Location;
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
         let f = |guard| self.use_secret(guard);
         let output = runner.get_guard(&source, f)?;
@@ -309,6 +309,15 @@ pub trait Procedure {
     type Output: Into<ProcedureIo> + TryFrom<ProcedureIo>;
 
     fn into_stronghold_proc(self) -> StrongholdProcedure;
+}
+
+impl<T: Procedure> ProcedureStep for T {
+    type Output = T::Output;
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        self.into_stronghold_proc()
+            .execute(runner)
+            .map(|ok| ok.try_into().ok().unwrap())
+    }
 }
 
 // ==========================

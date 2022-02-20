@@ -492,7 +492,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not execute remote procedure: {}", e))
         {
-            Ok(out) => assert!(out.into_iter().next().is_none()),
+            Ok(_) => {}
             Err(e) => panic!("unexpected error: {:?}", e),
         };
         res_tx.send(()).await.unwrap();

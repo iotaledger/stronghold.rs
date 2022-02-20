@@ -295,20 +295,21 @@ impl Stronghold {
     where
         P: Procedure,
     {
-        let res = self.runtime_exec_chained(procedure).await;
-        res.map(|res| res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap()))
+        let res = self.runtime_exec_chained(procedure).await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
     }
 
     /// Executes a runtime command given a [`Procedure`] that wraps one or multiple [`StrongholdProcedure`]s.
     pub async fn runtime_exec_chained<P>(
         &self,
-        control_request: P,
+        chained_proc: P,
     ) -> StrongholdResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
         P: Into<ChainedProcedures>,
     {
         let target = self.target().await?;
-        let result = target.send::<ChainedProcedures>(control_request.into()).await?;
+        let result = target.send::<ChainedProcedures>(chained_proc.into()).await?;
         Ok(result)
     }
 
@@ -801,7 +802,22 @@ impl Stronghold {
     pub async fn remote_runtime_exec<P>(
         &self,
         peer: PeerId,
-        control_request: P,
+        procedure: P,
+    ) -> P2pResult<Result<P::Output, ProcedureError>>
+    where
+        P: Procedure,
+    {
+        let res = self.remote_runtime_exec_chained(peer, procedure).await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
+    }
+
+    /// Executes one or multiple runtime command at a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
+    pub async fn remote_runtime_exec_chained<P>(
+        &self,
+        peer: PeerId,
+        chained_proc: P,
     ) -> P2pResult<Result<Vec<ProcedureIo>, ProcedureError>>
     where
         P: Into<ChainedProcedures>,
@@ -809,7 +825,7 @@ impl Stronghold {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest::<ChainedProcedures> {
             peer,
-            request: control_request.into(),
+            request: chained_proc.into(),
         };
         let result = actor.send(send_request).await??;
         Ok(result)

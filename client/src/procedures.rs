@@ -9,5 +9,8 @@ pub use primitives::{
     GenerateKey, Hash, HashType, Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PublicKey, Sha2Hash, Slip10Derive,
     Slip10Generate, Slip10ParentType, StrongholdProcedure, X25519DiffieHellman,
 };
-pub use types::{ChainedProcedures, FatalProcedureError, Procedure, ProcedureError, ProcedureIo, ProcedureStep};
+pub use types::{
+    ChainedProcedures, DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureIo,
+    ProcedureStep, ProcessData, UseSecret,
+};
 pub(crate) use types::{Products, Runner};

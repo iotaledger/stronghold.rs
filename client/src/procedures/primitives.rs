@@ -63,21 +63,21 @@ impl ProcedureStep for StrongholdProcedure {
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         use StrongholdProcedure::*;
         match self {
-            CopyRecord(proc) => proc.execute(runner).map(|o| o.into()),
-            Slip10Generate(proc) => proc.execute(runner).map(|o| o.into()),
-            Slip10Derive(proc) => proc.execute(runner).map(|o| o.into()),
-            BIP39Generate(proc) => proc.execute(runner).map(|o| o.into()),
-            BIP39Recover(proc) => proc.execute(runner).map(|o| o.into()),
-            GenerateKey(proc) => proc.execute(runner).map(|o| o.into()),
-            PublicKey(proc) => proc.execute(runner).map(|o| o.into()),
-            Ed25519Sign(proc) => proc.execute(runner).map(|o| o.into()),
-            X25519DiffieHellman(proc) => proc.execute(runner).map(|o| o.into()),
-            Hash(proc) => proc.execute(runner).map(|o| o.into()),
-            Hmac(proc) => proc.execute(runner).map(|o| o.into()),
-            Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
-            Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
-            AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
-            AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
+            CopyRecord(proc) => proc.exec(runner).map(|o| o.into()),
+            Slip10Generate(proc) => proc.exec(runner).map(|o| o.into()),
+            Slip10Derive(proc) => proc.exec(runner).map(|o| o.into()),
+            BIP39Generate(proc) => proc.exec(runner).map(|o| o.into()),
+            BIP39Recover(proc) => proc.exec(runner).map(|o| o.into()),
+            GenerateKey(proc) => proc.exec(runner).map(|o| o.into()),
+            PublicKey(proc) => proc.exec(runner).map(|o| o.into()),
+            Ed25519Sign(proc) => proc.exec(runner).map(|o| o.into()),
+            X25519DiffieHellman(proc) => proc.exec(runner).map(|o| o.into()),
+            Hash(proc) => proc.exec(runner).map(|o| o.into()),
+            Hmac(proc) => proc.exec(runner).map(|o| o.into()),
+            Hkdf(proc) => proc.exec(runner).map(|o| o.into()),
+            Pbkdf2Hmac(proc) => proc.exec(runner).map(|o| o.into()),
+            AeadEncrypt(proc) => proc.exec(runner).map(|o| o.into()),
+            AeadDecrypt(proc) => proc.exec(runner).map(|o| o.into()),
         }
     }
 }
@@ -85,7 +85,7 @@ impl ProcedureStep for StrongholdProcedure {
 impl StrongholdProcedure {
     pub fn output(&self) -> Option<Location> {
         match self {
-            StrongholdProcedure::CopyRecord(CopyRecord { output, .. })
+            StrongholdProcedure::CopyRecord(CopyRecord { target: output, .. })
             | StrongholdProcedure::Slip10Generate(Slip10Generate { output, .. })
             | StrongholdProcedure::Slip10Derive(Slip10Derive { output, .. })
             | StrongholdProcedure::BIP39Generate(BIP39Generate { output, .. })
@@ -134,9 +134,9 @@ procedures! {
 /// procedure was executed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CopyRecord {
-    pub input: Location,
+    pub source: Location,
 
-    pub output: Location,
+    pub target: Location,
 
     pub hint: RecordHint,
 }
@@ -153,11 +153,11 @@ impl DeriveSecret for CopyRecord {
     }
 
     fn source(&self) -> &Location {
-        &self.input
+        &self.source
     }
 
     fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+        (&self.target, self.hint)
     }
 }
 
