@@ -2,19 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::types::*;
-use crate::Location;
+use crate::{state::secure::SecureClient, Location};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
         aes::Aes256Gcm,
         chacha::XChaCha20Poly1305,
-        traits::{consts::Unsigned, Aead, Tag},
+        traits::{Aead, Tag},
     },
-    hashes::{
-        blake2b::Blake2b256,
-        sha::{Sha256, Sha384, Sha512, SHA256, SHA256_LEN, SHA384, SHA384_LEN, SHA512, SHA512_LEN},
-        Digest,
-    },
+    hashes::sha::{Sha256, Sha384, Sha512, SHA256_LEN, SHA384_LEN, SHA512_LEN},
     keys::{
         bip39,
         pbkdf::{PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512},
@@ -33,14 +29,11 @@ use stronghold_utils::GuardDebug;
 ///  
 /// A procedure performs a (cryptographic) operation on a secret in the vault and/
 /// or generates a new secret.
-///
-/// **Note**: For all procedures that write output to the vault, the [`PersistSecret`]
-/// trait is implement. **A secret is only permanently stored in the vault, if
-/// explicitly specified via [`PersistSecret::write_secret`]. Analogous for procedures with
-/// non-secret output, the [`PersistOutput`] is implemented and [`PersistOutput::store_output`]
-/// has to be called if the procedure's output should be returned to the user.
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub enum StrongholdProcedure {
+    WriteVault(WriteVault),
+    RevokeData(RevokeData),
+    GarbageCollect(GarbageCollect),
     CopyRecord(CopyRecord),
     Slip10Generate(Slip10Generate),
     Slip10Derive(Slip10Derive),
@@ -50,7 +43,6 @@ pub enum StrongholdProcedure {
     GenerateKey(GenerateKey),
     Ed25519Sign(Ed25519Sign),
     X25519DiffieHellman(X25519DiffieHellman),
-    Hash(Hash),
     Hmac(Hmac),
     Hkdf(Hkdf),
     Pbkdf2Hmac(Pbkdf2Hmac),
@@ -58,34 +50,38 @@ pub enum StrongholdProcedure {
     AeadDecrypt(AeadDecrypt),
 }
 
-impl ProcedureStep for StrongholdProcedure {
-    type Output = ProcedureIo;
+impl Procedure for StrongholdProcedure {
+    type Output = ProcedureOutput;
+
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         use StrongholdProcedure::*;
         match self {
-            CopyRecord(proc) => proc.exec(runner).map(|o| o.into()),
-            Slip10Generate(proc) => proc.exec(runner).map(|o| o.into()),
-            Slip10Derive(proc) => proc.exec(runner).map(|o| o.into()),
-            BIP39Generate(proc) => proc.exec(runner).map(|o| o.into()),
-            BIP39Recover(proc) => proc.exec(runner).map(|o| o.into()),
-            GenerateKey(proc) => proc.exec(runner).map(|o| o.into()),
-            PublicKey(proc) => proc.exec(runner).map(|o| o.into()),
-            Ed25519Sign(proc) => proc.exec(runner).map(|o| o.into()),
-            X25519DiffieHellman(proc) => proc.exec(runner).map(|o| o.into()),
-            Hash(proc) => proc.exec(runner).map(|o| o.into()),
-            Hmac(proc) => proc.exec(runner).map(|o| o.into()),
-            Hkdf(proc) => proc.exec(runner).map(|o| o.into()),
-            Pbkdf2Hmac(proc) => proc.exec(runner).map(|o| o.into()),
-            AeadEncrypt(proc) => proc.exec(runner).map(|o| o.into()),
-            AeadDecrypt(proc) => proc.exec(runner).map(|o| o.into()),
+            WriteVault(proc) => proc.execute(runner).map(|o| o.into()),
+            RevokeData(proc) => proc.execute(runner).map(|o| o.into()),
+            GarbageCollect(proc) => proc.execute(runner).map(|o| o.into()),
+            CopyRecord(proc) => proc.execute(runner).map(|o| o.into()),
+            Slip10Generate(proc) => proc.execute(runner).map(|o| o.into()),
+            Slip10Derive(proc) => proc.execute(runner).map(|o| o.into()),
+            BIP39Generate(proc) => proc.execute(runner).map(|o| o.into()),
+            BIP39Recover(proc) => proc.execute(runner).map(|o| o.into()),
+            GenerateKey(proc) => proc.execute(runner).map(|o| o.into()),
+            PublicKey(proc) => proc.execute(runner).map(|o| o.into()),
+            Ed25519Sign(proc) => proc.execute(runner).map(|o| o.into()),
+            X25519DiffieHellman(proc) => proc.execute(runner).map(|o| o.into()),
+            Hmac(proc) => proc.execute(runner).map(|o| o.into()),
+            Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
+            Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
+            AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
+            AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
         }
     }
 }
 
 impl StrongholdProcedure {
-    pub fn output(&self) -> Option<Location> {
+    pub(crate) fn output(&self) -> Option<Location> {
         match self {
-            StrongholdProcedure::CopyRecord(CopyRecord { target: output, .. })
+            StrongholdProcedure::WriteVault(WriteVault { location: output, .. })
+            | StrongholdProcedure::CopyRecord(CopyRecord { target: output, .. })
             | StrongholdProcedure::Slip10Generate(Slip10Generate { output, .. })
             | StrongholdProcedure::Slip10Derive(Slip10Derive { output, .. })
             | StrongholdProcedure::BIP39Generate(BIP39Generate { output, .. })
@@ -101,37 +97,111 @@ impl StrongholdProcedure {
 
 #[macro_export]
 macro_rules! procedures {
-    { $($Trait:ident => { $($Proc:ident),+ }),+ } => {
+    { _ => { $($Proc:ident),+ }} => {
         $(
-            $(
-                impl Procedure for $Proc {
-                    type Output = <$Proc as $Trait>::Output;
+            impl From<$Proc> for StrongholdProcedure {
+                fn from(proc: $Proc) -> Self {
+                    StrongholdProcedure::$Proc(proc)
 
-                    fn into_stronghold_proc(self) -> StrongholdProcedure {
-                        StrongholdProcedure::$Proc(self)
-                    }
                 }
-            )+
+            }
+        )+
+    };
+    { $Trait:ident => { $($Proc:ident),+ }} => {
+        $(
+            impl Procedure for $Proc {
+                type Output = <$Proc as $Trait>::Output;
+
+                fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+                    self.exec(runner)
+                }
+            }
+        )+
+        procedures!(_ => { $($Proc),+ });
+    };
+    { $($Trait:tt => { $($Proc:ident),+ }),+} => {
+        $(
+            procedures!($Trait => { $($Proc),+ } );
         )+
     };
 }
 
 procedures! {
-    GenerateSecret => { BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey },
+    // Stronghold procedures that implement the `GenerateSecret` trait.
+    GenerateSecret => { WriteVault, BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey, Pbkdf2Hmac },
+    // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf },
+    // Stronghold procedures that implement the `UseSecret` trait.
     UseSecret => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
-    ProcessData => { Hash }
+    // Stronghold procedures that directly implement the `Procedure` trait.
+    _ => { RevokeData, GarbageCollect }
 }
 
-// ==========================
-// Helper Procedure
-// ==========================
+/// Write data to the specified [`Location`].
+#[derive(Clone, GuardDebug, Serialize, Deserialize)]
+pub struct WriteVault {
+    pub value: Vec<u8>,
+
+    pub location: Location,
+
+    pub hint: RecordHint,
+}
+
+impl GenerateSecret for WriteVault {
+    type Output = ();
+
+    fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
+        Ok(Products {
+            secret: self.value,
+            output: (),
+        })
+    }
+
+    fn target(&self) -> (&Location, RecordHint) {
+        (&self.location, self.hint)
+    }
+}
+
+/// Revoke the data from the specified [`Location`]. Revoked data is not readable and can be
+/// removed from a vault with the [`GarbageCollect`] Procedure. If the `should_gc` flag is set to `true`,
+/// it with automatically cleanup the revoke. Otherwise, the data is just marked as revoked.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevokeData {
+    pub location: Location,
+    pub should_gc: bool,
+}
+
+impl Procedure for RevokeData {
+    type Output = ();
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        runner.revoke_data(&self.location)?;
+        if self.should_gc {
+            runner.garbage_collect(SecureClient::resolve_location(self.location).0);
+        }
+        Ok(())
+    }
+}
+
+/// Garbage collects any revokes in a Vault based on the given `vault_path`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GarbageCollect {
+    pub vault_path: Vec<u8>,
+}
+
+impl Procedure for GarbageCollect {
+    type Output = ();
+
+    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let vault_id = SecureClient::derive_vault_id(self.vault_path);
+        runner.garbage_collect(vault_id);
+        Ok(())
+    }
+}
 
 /// Copy the content of a record from one location to another.
 ///
 /// Note: This does not remove the old record. Users that would like to move the record instead
-/// of just copying it, should run `Stronghold::delete_data` on the old location **after** this
-/// procedure was executed.
+/// of just copying it, should run the `RevokeData` procedure on the old location.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CopyRecord {
     pub source: Location,
@@ -161,10 +231,6 @@ impl DeriveSecret for CopyRecord {
     }
 }
 
-// ==========================
-// Procedures for Cryptographic Primitives
-// ==========================
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum MnemonicLanguage {
@@ -173,7 +239,7 @@ pub enum MnemonicLanguage {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum AeadAlg {
+pub enum AeadCipher {
     Aes256Gcm,
     XChaCha20Poly1305,
 }
@@ -182,12 +248,6 @@ pub enum AeadAlg {
 pub enum KeyType {
     Ed25519,
     X25519,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HashType {
-    Blake2b,
-    Sha2(Sha2Hash),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -303,16 +363,10 @@ impl GenerateSecret for Slip10Generate {
 }
 
 #[derive(GuardDebug, Clone, Serialize, Deserialize)]
-pub enum SLIP10DeriveInput {
+pub enum Slip10DeriveInput {
     /// Note that BIP39 seeds are allowed to be used as SLIP10 seeds
     Seed(Location),
     Key(Location),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Slip10ParentType {
-    Seed,
-    Key,
 }
 
 /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
@@ -321,9 +375,7 @@ pub enum Slip10ParentType {
 pub struct Slip10Derive {
     pub chain: Chain,
 
-    pub parent_ty: Slip10ParentType,
-
-    pub input: Location,
+    pub input: Slip10DeriveInput,
 
     pub output: Location,
 
@@ -334,11 +386,11 @@ impl DeriveSecret for Slip10Derive {
     type Output = ChainCode;
 
     fn derive(self, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, FatalProcedureError> {
-        let dk = match self.parent_ty {
-            Slip10ParentType::Key => {
+        let dk = match self.input {
+            Slip10DeriveInput::Key(_) => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
             }
-            Slip10ParentType::Seed => {
+            Slip10DeriveInput::Seed(_) => {
                 slip10::Seed::from_bytes(&guard.borrow()).derive(slip10::Curve::Ed25519, &self.chain)
             }
         }?;
@@ -349,7 +401,10 @@ impl DeriveSecret for Slip10Derive {
     }
 
     fn source(&self) -> &Location {
-        &self.input
+        match &self.input {
+            Slip10DeriveInput::Key(loc) => loc,
+            Slip10DeriveInput::Seed(loc) => loc,
+        }
     }
 
     fn target(&self) -> (&Location, RecordHint) {
@@ -424,17 +479,17 @@ pub struct PublicKey {
 }
 
 impl UseSecret for PublicKey {
-    type Output = Vec<u8>;
+    type Output = [u8; 32];
 
     fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             KeyType::Ed25519 => {
                 let sk = ed25519_secret_key(guard)?;
-                Ok(sk.public_key().to_bytes().to_vec())
+                Ok(sk.public_key().to_bytes())
             }
             KeyType::X25519 => {
                 let sk = x25519_secret_key(guard)?;
-                Ok(sk.public_key().to_bytes().to_vec())
+                Ok(sk.public_key().to_bytes())
             }
         }
     }
@@ -504,44 +559,8 @@ impl DeriveSecret for X25519DiffieHellman {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Hash {
-    pub ty: HashType,
-
-    pub msg: Vec<u8>,
-}
-
-impl ProcessData for Hash {
-    type Output = Vec<u8>;
-
-    fn process(self) -> Result<Self::Output, FatalProcedureError> {
-        match self.ty {
-            HashType::Blake2b => {
-                let mut digest = [0; <Blake2b256 as Digest>::OutputSize::USIZE];
-                digest.copy_from_slice(&Blake2b256::digest(&self.msg));
-                Ok(digest.to_vec())
-            }
-            HashType::Sha2(Sha2Hash::Sha256) => {
-                let mut digest = [0; SHA256_LEN];
-                SHA256(&self.msg, &mut digest);
-                Ok(digest.to_vec())
-            }
-            HashType::Sha2(Sha2Hash::Sha384) => {
-                let mut digest = [0; SHA384_LEN];
-                SHA384(&self.msg, &mut digest);
-                Ok(digest.to_vec())
-            }
-            HashType::Sha2(Sha2Hash::Sha512) => {
-                let mut digest = [0; SHA512_LEN];
-                SHA512(&self.msg, &mut digest);
-                Ok(digest.to_vec())
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hmac {
-    pub ty: Sha2Hash,
+    pub hash_type: Sha2Hash,
 
     pub msg: Vec<u8>,
 
@@ -552,7 +571,7 @@ impl UseSecret for Hmac {
     type Output = Vec<u8>;
 
     fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
-        match self.ty {
+        match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut mac = [0; SHA256_LEN];
                 HMAC_SHA256(&self.msg, &*guard.borrow(), &mut mac);
@@ -578,7 +597,7 @@ impl UseSecret for Hmac {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hkdf {
-    pub ty: Sha2Hash,
+    pub hash_type: Sha2Hash,
 
     pub salt: Vec<u8>,
 
@@ -595,7 +614,7 @@ impl DeriveSecret for Hkdf {
     type Output = ();
 
     fn derive(self, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
-        let secret = match self.ty {
+        let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut okm = [0; SHA256_LEN];
                 hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &*guard.borrow())
@@ -632,7 +651,7 @@ impl DeriveSecret for Hkdf {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pbkdf2Hmac {
-    pub ty: Sha2Hash,
+    pub hash_type: Sha2Hash,
 
     pub password: Vec<u8>,
 
@@ -650,7 +669,7 @@ impl GenerateSecret for Pbkdf2Hmac {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let secret;
-        match self.ty {
+        match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut buffer = [0; SHA256_LEN];
                 PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count as usize, &mut buffer)?;
@@ -677,14 +696,14 @@ impl GenerateSecret for Pbkdf2Hmac {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AeadEncrypt {
-    pub alg: AeadAlg,
+    pub cipher: AeadCipher,
 
     pub associated_data: Vec<u8>,
 
     pub plaintext: Vec<u8>,
 
-    // **Note**: The nonce is required to have length [`Aes256Gcm::NONCE_LENGTH`] /
-    /// [`XChaCha20Poly1305::NONCE_LENGTH`], (depending on the [`AeadAlg`])
+    /// **Note**: The nonce is required to have length [`Aes256Gcm::NONCE_LENGTH`] /
+    /// [`XChaCha20Poly1305::NONCE_LENGTH`], (depending on the [`AeadCipher`])
     pub nonce: Vec<u8>,
 
     pub key: Location,
@@ -696,13 +715,13 @@ impl UseSecret for AeadEncrypt {
     fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         let mut ctx = vec![0; self.plaintext.len()];
 
-        let f = match self.alg {
-            AeadAlg::Aes256Gcm => Aes256Gcm::try_encrypt,
-            AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_encrypt,
+        let f = match self.cipher {
+            AeadCipher::Aes256Gcm => Aes256Gcm::try_encrypt,
+            AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::try_encrypt,
         };
-        let mut t = match self.alg {
-            AeadAlg::Aes256Gcm => Tag::<Aes256Gcm>::default(),
-            AeadAlg::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
+        let mut t = match self.cipher {
+            AeadCipher::Aes256Gcm => Tag::<Aes256Gcm>::default(),
+            AeadCipher::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
         };
         f(
             &*guard.borrow(),
@@ -725,7 +744,7 @@ impl UseSecret for AeadEncrypt {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AeadDecrypt {
-    pub alg: AeadAlg,
+    pub cipher: AeadCipher,
 
     pub associated_data: Vec<u8>,
 
@@ -744,9 +763,9 @@ impl UseSecret for AeadDecrypt {
     fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
         let mut ptx = vec![0; self.ciphertext.len()];
 
-        let f = match self.alg {
-            AeadAlg::Aes256Gcm => Aes256Gcm::try_decrypt,
-            AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
+        let f = match self.cipher {
+            AeadCipher::Aes256Gcm => Aes256Gcm::try_decrypt,
+            AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
         };
         f(
             &*guard.borrow(),

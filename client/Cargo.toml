@@ -38,7 +38,6 @@ features = [
 "ed25519",
 "sha",
 "hmac",
-"blake2b",
 "bip39-en",
 "bip39-jp",
 "slip10",

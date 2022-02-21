@@ -1,12 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use super::primitives::StrongholdProcedure;
 use crate::{
     actors::{RecordError, VaultError},
     FatalEngineError, Location,
 };
-use actix::Message;
 use engine::{
     runtime::GuardedVec,
     vault::{RecordHint, VaultId},
@@ -15,125 +13,162 @@ use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::Debug,
-    ops::Deref,
     string::FromUtf8Error,
 };
-use stronghold_utils::GuardDebug;
 use thiserror::Error as DeriveError;
 
-// ==========================
-// Types
-// ==========================
+/// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
+pub trait Runner {
+    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>;
 
-/// Complex Procedure that for executing one or multiple [`StrongholdProcedure`]s.
-///
-/// Example:
-/// // ```
-/// # use iota_stronghold::{
-/// #    procedures::*,
-/// #    Location, RecordHint, Stronghold
-/// # };
-/// # use std::error::Error;
-/// #
-/// # async fn test() -> Result<(), Box<dyn Error>> {
-/// #
-/// let sh = Stronghold::init_stronghold_system("my-client".into(), vec![]).await?;
-///
-/// // Create a new seed, that only temporary exists during execution time
-/// let generate = Slip10Generate::default();
-///
-/// let chain = Chain::from_u32(vec![0]);
-/// // Use the newly created seed as input
-/// let derive = Slip10Derive::new_from_seed(generate.target(), chain);
-///
-/// // Identifier / Key for a procedure's output
-/// let k = OutputKey::new("chain-code");
-///
-/// // Target vault + record, in which the derived key will be written
-/// let private_key = Location::generic("my-vault", "child-key");
-///
-/// let hint = RecordHint::new("private-key").unwrap();
-/// let derive = derive
-///     .store_output(k) // Configure that the output should be returned after execution
-///     .write_secret(private_key, hint); // Set the record to be permanent in the vault
-///
-/// // Execute the procedures
-/// let output = sh.runtime_exec(generate.then(derive)).await??;
-///
-/// // Get the desired output
-/// let chain_code: ChainCode = output.single_output().unwrap();
-/// #
-/// # Ok(())
-/// # }
-/// // ```
-#[derive(Clone, GuardDebug, Serialize, Deserialize)]
-pub struct ChainedProcedures {
-    inner: Vec<StrongholdProcedure>,
+    // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
+    // written into `location1` and the output is returned.
+    fn exec_proc<F, T>(
+        &mut self,
+        location0: &Location,
+        location1: &Location,
+        hint: RecordHint,
+        f: F,
+    ) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
+
+    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
+
+    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError>;
+
+    fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
 }
 
-impl ProcedureStep for ChainedProcedures {
-    type Output = Vec<ProcedureIo>;
+/// Products of a procedure.
+pub struct Products<T> {
+    /// New secret.
+    pub secret: Vec<u8>,
+    /// Non-secret Output.
+    pub output: T,
+}
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let mut out = Vec::new();
-        let mut log = Vec::new();
-        // Execute the primitive procedures sequentially.
-        for proc in self.inner {
-            if let Some(output) = proc.output() {
-                log.push(output);
-            }
-            let output = match proc.execute(runner) {
-                Ok(o) => o,
-                Err(e) => {
-                    for location in log {
-                        let _ = runner.revoke_data(&location);
-                    }
-                    return Err(e);
-                }
-            };
-            out.push(output);
-        }
-        Ok(out)
+/// Procedure to create, use or remove secrets from a stronghold vault.
+// The `primitives::procedure` macro may be used to auto-implement this
+// trait for procedures that implement `GenerateSecret`, `DeriveSecret` or `UseSecret`.
+pub trait Procedure: Sized {
+    // Non-secret output type.
+    type Output: TryFrom<ProcedureOutput>;
+
+    fn execute<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError>;
+}
+
+/// Trait for procedures that generate a new secret.
+pub trait GenerateSecret: Sized {
+    type Output;
+
+    fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn target(&self) -> (&Location, RecordHint);
+
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let (target, hint) = self.target();
+        let target = target.clone();
+        let Products { output, secret } = self.generate()?;
+        runner.write_to_vault(&target, hint, secret)?;
+        Ok(output)
     }
 }
 
-impl Message for ChainedProcedures {
-    type Result = Result<Vec<ProcedureIo>, ProcedureError>;
-}
+/// Trait for procedures that use an existing secret to derive a new one.
+pub trait DeriveSecret: Sized {
+    type Output;
 
-impl<P> From<P> for ChainedProcedures
-where
-    P: Procedure,
-{
-    fn from(p: P) -> Self {
-        Self {
-            inner: vec![p.into_stronghold_proc()],
-        }
+    fn derive(self, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+
+    fn source(&self) -> &Location;
+
+    fn target(&self) -> (&Location, RecordHint);
+
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let source = self.source().clone();
+        let (target, hint) = self.target();
+        let target = target.clone();
+        let f = |guard| self.derive(guard);
+        let output = runner.exec_proc(&source, &target, hint, f)?;
+        Ok(output)
     }
 }
 
-/// Output of a primitive procedure, that is stored in the [`CollectedOutput`].
+/// Trait for procedures that use an existing secret.
+pub trait UseSecret: Sized {
+    type Output;
+
+    fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
+
+    fn source(&self) -> &Location;
+
+    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+        let source = self.source().clone();
+        let f = |guard| self.use_secret(guard);
+        let output = runner.get_guard(&source, f)?;
+        Ok(output)
+    }
+}
+
+/// Output of a [`StrongholdProcedure`][super::StrongholdProcedure].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProcedureIo(Vec<u8>);
+pub struct ProcedureOutput(Vec<u8>);
 
-impl Deref for ProcedureIo {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl From<()> for ProcedureOutput {
+    fn from(_: ()) -> Self {
+        ProcedureOutput(Vec::new())
+    }
+}
+
+impl From<Vec<u8>> for ProcedureOutput {
+    fn from(v: Vec<u8>) -> Self {
+        ProcedureOutput(v)
+    }
+}
+
+impl From<String> for ProcedureOutput {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for ProcedureOutput {
+    fn from(a: [u8; N]) -> Self {
+        a.to_vec().into()
+    }
+}
+
+impl From<ProcedureOutput> for () {
+    fn from(_: ProcedureOutput) -> Self {}
+}
+
+impl From<ProcedureOutput> for Vec<u8> {
+    fn from(value: ProcedureOutput) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<ProcedureOutput> for String {
+    type Error = FromUtf8Error;
+    fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
+        String::from_utf8(value.0)
+    }
+}
+
+impl<const N: usize> TryFrom<ProcedureOutput> for [u8; N] {
+    type Error = <[u8; N] as TryFrom<Vec<u8>>>::Error;
+
+    fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
+        value.0.try_into()
     }
 }
 
 /// Error on procedure execution.
 #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
 pub enum ProcedureError {
-    /// The input fetched from the collected output can not be converted to the required type.
-    #[error("Invalid Input Type")]
-    InvalidInput,
-
-    /// No input for the specified key in the collected output.
-    #[error("Missing Input")]
-    MissingInput,
-
     /// Operation on the vault failed.
     #[error("engine: {0}")]
     Engine(#[from] FatalEngineError),
@@ -178,211 +213,16 @@ impl From<String> for FatalProcedureError {
     }
 }
 
-// ==========================
-// Traits
-// ==========================
-
-/// Central trait that implements a procedure's logic.
-pub trait ProcedureStep {
-    type Output;
-    /// Execute the procedure on a runner.
-    /// The state collects the output from each procedure and writes a log of newly created records.
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError>;
-
-    /// Chain a next procedure to the current one.
-    fn then<P>(self, next: P) -> ChainedProcedures
-    where
-        Self: Into<ChainedProcedures>,
-        P: Into<ChainedProcedures>,
-    {
-        let mut procedure = self.into();
-        procedure.inner.extend(next.into().inner);
-        procedure
-    }
-}
-
-/// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
-pub trait Runner {
-    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
-    where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>;
-
-    fn exec_proc<F, T>(
-        &mut self,
-        location0: &Location,
-        location1: &Location,
-        hint: RecordHint,
-        f: F,
-    ) -> Result<T, VaultError<FatalProcedureError>>
-    where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
-
-    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
-
-    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError>;
-
-    fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
-}
-
-/// Products of a procedure.
-pub struct Products<T> {
-    /// New secret.
-    pub secret: Vec<u8>,
-    /// Non-secret Output.
-    pub output: T,
-}
-
-// ==========================
-//  Traits for the `Procedure` derive-macro
-// ==========================
-
-/// No secret is used, no new secret is created.
-pub trait ProcessData: Sized {
-    // Non-secret output type.
-    type Output: Into<ProcedureIo>;
-
-    fn process(self) -> Result<Self::Output, FatalProcedureError>;
-
-    fn exec<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let output = self.process()?;
-        Ok(output)
-    }
-}
-
-/// No secret is used, a new secret is created.
-pub trait GenerateSecret: Sized {
-    // Non-secret output type.
-    type Output: Into<ProcedureIo>;
-
-    fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError>;
-
-    fn target(&self) -> (&Location, RecordHint);
-
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let (target, hint) = self.target();
-        let target = target.clone();
-        let Products { output, secret } = self.generate()?;
-        runner.write_to_vault(&target, hint, secret)?;
-        Ok(output)
-    }
-}
-
-/// Existing secret is used, a new secret is created.
-pub trait DeriveSecret: Sized {
-    // Non-secret output type.
-    type Output: Into<ProcedureIo>;
-
-    fn derive(self, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
-
-    fn source(&self) -> &Location;
-
-    fn target(&self) -> (&Location, RecordHint);
-
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
-        let (target, hint) = self.target();
-        let target = target.clone();
-        let f = |guard| self.derive(guard);
-        let output = runner.exec_proc(&source, &target, hint, f)?;
-        Ok(output)
-    }
-}
-
-/// Existing secret is used, no new secret is created.
-pub trait UseSecret: Sized {
-    // Non-secret output type.
-    type Output: Into<ProcedureIo>;
-
-    fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
-
-    fn source(&self) -> &Location;
-
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
-        let f = |guard| self.use_secret(guard);
-        let output = runner.get_guard(&source, f)?;
-        Ok(output)
-    }
-}
-
-pub trait Procedure {
-    type Output: Into<ProcedureIo> + TryFrom<ProcedureIo>;
-
-    fn into_stronghold_proc(self) -> StrongholdProcedure;
-}
-
-impl<T: Procedure> ProcedureStep for T {
-    type Output = T::Output;
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        self.into_stronghold_proc()
-            .execute(runner)
-            .map(|ok| ok.try_into().ok().unwrap())
-    }
-}
-
-// ==========================
-//  Input /  Output Info
-// ==========================
-
-impl From<()> for ProcedureIo {
-    fn from(_: ()) -> Self {
-        ProcedureIo(Vec::new())
-    }
-}
-
-impl From<Vec<u8>> for ProcedureIo {
-    fn from(v: Vec<u8>) -> Self {
-        ProcedureIo(v)
-    }
-}
-
-impl From<String> for ProcedureIo {
-    fn from(s: String) -> Self {
-        s.into_bytes().into()
-    }
-}
-
-impl<const N: usize> From<[u8; N]> for ProcedureIo {
-    fn from(a: [u8; N]) -> Self {
-        a.to_vec().into()
-    }
-}
-
-impl From<ProcedureIo> for () {
-    fn from(_: ProcedureIo) -> Self {}
-}
-
-impl From<ProcedureIo> for Vec<u8> {
-    fn from(value: ProcedureIo) -> Self {
-        value.0
-    }
-}
-
-impl TryFrom<ProcedureIo> for String {
-    type Error = FromUtf8Error;
-    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
-        String::from_utf8(value.0)
-    }
-}
-
-impl<const N: usize> TryFrom<ProcedureIo> for [u8; N] {
-    type Error = <[u8; N] as TryFrom<Vec<u8>>>::Error;
-
-    fn try_from(value: ProcedureIo) -> Result<Self, Self::Error> {
-        value.0.try_into()
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use super::ProcedureIo;
+    use super::ProcedureOutput;
     use std::convert::{TryFrom, TryInto};
     use stronghold_utils::random;
 
     #[test]
     fn proc_io_vec() {
         let vec = random::bytestring(2048);
-        let proc_io: ProcedureIo = vec.clone().into();
+        let proc_io: ProcedureOutput = vec.clone().into();
         let converted = Vec::try_from(proc_io).unwrap();
         assert_eq!(vec.len(), converted.len());
         assert_eq!(vec, converted);
@@ -391,7 +231,7 @@ mod test {
     #[test]
     fn proc_io_string() {
         let string = random::string(2048);
-        let proc_io: ProcedureIo = string.clone().into();
+        let proc_io: ProcedureOutput = string.clone().into();
         let converted = String::try_from(proc_io).unwrap();
         assert_eq!(string.len(), converted.len());
         assert_eq!(string, converted);
@@ -404,7 +244,7 @@ mod test {
             test_vec.push(random::random())
         }
         let array: [u8; 337] = test_vec.try_into().unwrap();
-        let proc_io: ProcedureIo = array.into();
+        let proc_io: ProcedureOutput = array.into();
         let converted = <[u8; 337]>::try_from(proc_io).unwrap();
         assert_eq!(array, converted);
     }

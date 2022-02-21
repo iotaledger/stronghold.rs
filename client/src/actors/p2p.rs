@@ -4,7 +4,6 @@
 use crate::{
     actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
     enum_from_inner,
-    procedures::ChainedProcedures,
 };
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
@@ -50,7 +49,7 @@ macro_rules! sh_request_dispatch {
             ShRequest::GarbageCollect($inner) => $body
             ShRequest::ListIds($inner) => $body
             ShRequest::ClearCache($inner) => $body
-            ShRequest::Procedure($inner) => $body
+            ShRequest::Procedures($inner) => $body
         }
     }
 }
@@ -338,7 +337,8 @@ pub mod messages {
 
     use super::*;
     use crate::{
-        procedures::{ProcedureError, ProcedureIo},
+        actors::secure_messages::Procedures,
+        procedures::{ProcedureError, ProcedureOutput},
         Location, RecordHint, RecordId,
     };
     use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
@@ -535,7 +535,7 @@ pub mod messages {
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        Procedure(ChainedProcedures),
+        Procedures(Procedures),
     }
 
     enum_from_inner!(ShRequest from CheckVault);
@@ -548,7 +548,7 @@ pub mod messages {
     enum_from_inner!(ShRequest from DeleteFromStore);
     enum_from_inner!(ShRequest from GarbageCollect);
     enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest::Procedure from ChainedProcedures);
+    enum_from_inner!(ShRequest::Procedures from Procedures);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
@@ -557,14 +557,14 @@ pub mod messages {
         Bool(bool),
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
-        Proc(Result<Vec<ProcedureIo>, ProcedureError>),
+        Proc(Result<Vec<ProcedureOutput>, ProcedureError>),
     }
 
     sh_result_mapping!(ShResult::Empty => ());
     sh_result_mapping!(ShResult::Bool => bool);
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
-    sh_result_mapping!(ShResult::Proc => Result<Vec<ProcedureIo>, ProcedureError>);
+    sh_result_mapping!(ShResult::Proc => Result<Vec<ProcedureOutput>, ProcedureError>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {

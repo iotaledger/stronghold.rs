@@ -5,7 +5,7 @@
 use crate::{
     actors::NetworkConfig,
     p2p::{identity::Keypair, PeerId, SwarmInfo},
-    procedures::{Slip10Derive, Slip10Generate, Slip10ParentType},
+    procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
     tests::fresh,
 };
 use crate::{ActorError, Location, RecordHint, Stronghold};
@@ -482,11 +482,10 @@ async fn test_stronghold_p2p() {
             .remote_runtime_exec(
                 peer_id,
                 Slip10Derive {
-                    input: seed1,
                     output: fresh::location(),
                     chain,
                     hint: fresh::record_hint(),
-                    parent_ty: Slip10ParentType::Seed,
+                    input: Slip10DeriveInput::Seed(seed1),
                 },
             )
             .await

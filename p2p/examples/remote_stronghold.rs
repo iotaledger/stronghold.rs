@@ -83,7 +83,7 @@ mod local_client {
             hint: key_hint,
         };
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(generate_key.into()))
+            .send_request(stronghold_id, ShRequest::Procedures(generate_key.into()))
             .await?;
         match res {
             ShResult::Proc(res) => {
@@ -112,7 +112,7 @@ mod local_client {
             private_key: location,
         };
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(sign_message.into()))
+            .send_request(stronghold_id, ShRequest::Procedures(sign_message.into()))
             .await?;
         match res {
             ShResult::Proc(res) => {
