@@ -290,7 +290,7 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a single [`StrongholdProcedure`]
+    /// Executes a runtime command given a single [`StrongholdProcedure`]s
     pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<P::Output, ProcedureError>>
     where
         P: Procedure + Into<StrongholdProcedure>,
@@ -300,7 +300,7 @@ impl Stronghold {
         Ok(mapped)
     }
 
-    /// Executes a runtime command given a [`Procedure`] that wraps one or multiple [`StrongholdProcedure`]s.
+    /// Sequentially execute multiple [`StrongholdProcedure`]s.
     pub async fn runtime_exec_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
@@ -810,7 +810,7 @@ impl Stronghold {
         Ok(mapped)
     }
 
-    /// Executes one or multiple runtime command at a remote Stronghold.
+    /// Executes multiple runtime commands at a remote Stronghold.
     /// It is required that the peer has successfully been added with the `add_peer` method.
     pub async fn remote_runtime_exec_chained(
         &self,

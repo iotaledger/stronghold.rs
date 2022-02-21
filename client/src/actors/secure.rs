@@ -383,7 +383,7 @@ impl Handler<messages::Procedures> for SecureClient {
     fn handle(&mut self, msg: messages::Procedures, _: &mut Self::Context) -> Self::Result {
         let mut out = Vec::new();
         let mut log = Vec::new();
-        // Execute the primitive procedures sequentially.
+        // Execute the procedures sequentially.
         for proc in msg.procedures {
             if let Some(output) = proc.output() {
                 log.push(output);

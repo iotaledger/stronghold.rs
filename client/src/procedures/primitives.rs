@@ -95,6 +95,8 @@ impl StrongholdProcedure {
     }
 }
 
+/// Implement StrongholdProcedure: From<T> for all.
+/// Implement [`Procedure`] if `$Trait:ident` != `_`.
 #[macro_export]
 macro_rules! procedures {
     { _ => { $($Proc:ident),+ }} => {
@@ -140,7 +142,7 @@ procedures! {
 /// Write data to the specified [`Location`].
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct WriteVault {
-    pub value: Vec<u8>,
+    pub data: Vec<u8>,
 
     pub location: Location,
 
@@ -152,7 +154,7 @@ impl GenerateSecret for WriteVault {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         Ok(Products {
-            secret: self.value,
+            secret: self.data,
             output: (),
         })
     }
@@ -232,7 +234,6 @@ impl DeriveSecret for CopyRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum MnemonicLanguage {
     English,
     Japanese,

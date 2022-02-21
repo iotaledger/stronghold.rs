@@ -548,7 +548,7 @@ pub mod messages {
     enum_from_inner!(ShRequest from DeleteFromStore);
     enum_from_inner!(ShRequest from GarbageCollect);
     enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest::Procedures from Procedures);
+    enum_from_inner!(ShRequest from Procedures);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum ShResult {
