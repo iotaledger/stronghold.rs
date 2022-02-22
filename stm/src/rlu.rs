@@ -25,6 +25,10 @@
 //! The writing thread waits until all readers have concluded their reads, then commits the changes to memory
 //! and update the global clock.
 //!
+//! ## Features
+//! ---
+//! [ ]
+//!
 //! ## Examples
 //! ---
 //! ```no_run
@@ -45,12 +49,14 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
         Arc, Mutex,
     },
 };
 
+// FIXME: this belongs to the former implementation
 thread_local! {
+    #[deprecated]
     static GUARD : Cell<bool> = Cell::new(false);
 }
 
@@ -61,6 +67,7 @@ pub trait ReturnType: Clone + Send + Sync + Sized {}
 pub type Result<T> = core::result::Result<T, TransactionError>;
 
 /// Simplified atomic mutex
+#[deprecated]
 pub type ClonableMutex<T> = Arc<Mutex<T>>;
 
 /// auto impl for return type
@@ -85,18 +92,111 @@ pub enum TransactionError {
     Retry,
 }
 
+/// Conversion trait for all types to be heap allocated
+/// and returned as raw mutable pointer
+pub trait IntoRaw: Sized {
+    /// Takes `self`, allocates heap space and retuns it as a raw mutable pointer
+    fn into_raw(self) -> *mut Self {
+        Box::into_raw(Box::new(self))
+    }
+}
+
+impl<T> IntoRaw for T {}
+
+/// Wrapper type for [`AtomicPtr`], but with extra heap allocation for the inner type.
+///
+/// # Example
+/// ```
+/// use stronghold_stm::rlu::Atomic;
+/// let expected = 1024usize;
+/// let atomic_usize = Atomic::from(expected);
+/// assert_eq!(expected, *atomic_usize);
+/// ```
+pub struct Atomic<T>
+where
+    T: Clone,
+{
+    inner: AtomicPtr<T>,
+}
+
+impl<T> Atomic<T>
+where
+    T: Clone,
+{
+    /// Swaps the inner value and returns the old value.
+    ///
+    /// # Safety
+    /// This function is unsafe as it tries to dereference a raw pointer which must be allocated
+    /// in accordance to the memory layout of a Box type.
+    pub unsafe fn swap(&self, value: &mut T) -> T {
+        let old = Box::from_raw(self.inner.swap(value, Ordering::Release));
+        *old
+    }
+
+    // /// Returns a mutable reference to the underlying data
+    // ///
+    // /// # Safety
+    // /// This effectively overrides the borrow checker.
+    // pub unsafe fn get_mut(&self) -> &mut T {
+    //     &mut *self.inner.load(Ordering::Acquire)
+    // }
+}
+
+impl<T> Deref for Atomic<T>
+where
+    T: Clone,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.inner.load(Ordering::Acquire) }
+    }
+}
+
+impl<T> DerefMut for Atomic<T>
+where
+    T: Clone,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.inner.load(Ordering::Acquire) }
+    }
+}
+
+impl<T> From<T> for Atomic<T>
+where
+    T: Clone + IntoRaw,
+{
+    fn from(value: T) -> Self {
+        Self {
+            inner: AtomicPtr::new(value.into_raw()),
+        }
+    }
+}
+
+impl<T> Clone for Atomic<T>
+where
+    T: Clone,
+{
+    /// This creates and returns a copy of the pointer to the inner value, not a copy of the value itself
+    fn clone(&self) -> Self {
+        Self {
+            inner: AtomicPtr::new(self.inner.load(Ordering::Acquire)),
+        }
+    }
+}
+
 pub struct ReadGuard<'a, T>
 where
     T: Clone,
 {
-    inner: Result<&'a T>,
+    inner: Result<&'a Atomic<T>>,
     thread: &'a RluContext<T>,
 }
 impl<'a, T> ReadGuard<'a, T>
 where
     T: Clone,
 {
-    pub fn new(inner: Result<&'a T>, thread: &'a RluContext<T>) -> Self {
+    pub fn new(inner: Result<&'a Atomic<T>>, thread: &'a RluContext<T>) -> Self {
         Self { inner, thread }
     }
 }
@@ -106,7 +206,9 @@ where
     T: Clone,
 {
     fn drop(&mut self) {
-        self.thread.read_unlock();
+        if let Ok(inner) = self.inner {
+            self.thread.read_unlock(inner)
+        }
     }
 }
 
@@ -114,7 +216,7 @@ impl<'a, T> Deref for ReadGuard<'a, T>
 where
     T: Clone,
 {
-    type Target = Result<&'a T>;
+    type Target = Result<&'a Atomic<T>>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -125,6 +227,7 @@ where
     T: Clone,
 {
     /// a mutable reference
+    /// FIXME: is this legal?
     Ref(&'a mut T),
 
     /// a copy, that needs to be written back into the log
@@ -136,7 +239,7 @@ where
     T: Clone,
 {
     inner: WriteGuardInner<'a, T>,
-    thread: &'a mut RluContext<T>,
+    context: &'a mut RluContext<T>,
 }
 
 impl<'a, T> Deref for WriteGuard<'a, T>
@@ -144,6 +247,7 @@ where
     T: Clone,
 {
     type Target = T;
+
     fn deref(&self) -> &Self::Target {
         match &self.inner {
             WriteGuardInner::Copy(copy) => match copy {
@@ -172,8 +276,8 @@ impl<'a, T> WriteGuard<'a, T>
 where
     T: Clone,
 {
-    pub fn new(inner: WriteGuardInner<'a, T>, thread: &'a mut RluContext<T>) -> Self {
-        Self { inner, thread }
+    pub fn new(inner: WriteGuardInner<'a, T>, context: &'a mut RluContext<T>) -> Self {
+        Self { inner, context }
     }
 }
 
@@ -183,10 +287,10 @@ where
 {
     fn drop(&mut self) {
         if let WriteGuardInner::Copy(inner) = &self.inner {
-            self.thread.log.push(inner.clone())
+            self.context.log.push(inner.clone())
         }
 
-        self.thread.write_unlock();
+        self.context.write_unlock();
     }
 }
 
@@ -200,12 +304,12 @@ where
 
 impl<T> RLUVar<T>
 where
-    T: Clone,
+    T: Clone + std::fmt::Debug,
 {
     /// This function consumes the [`RLUVar<T>`] and returns the inner value. Any copy
     /// allocated with the inner types will be deallocated as well
     pub fn take(&self) -> &T {
-        match unsafe { &*self.inner.swap(std::ptr::null_mut(), Ordering::SeqCst) } {
+        match unsafe { &*self.inner.load(Ordering::Acquire) } {
             InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
         }
     }
@@ -217,7 +321,7 @@ where
 {
     type Target = InnerVar<T>;
     fn deref(&self) -> &Self::Target {
-        unsafe { &*self.inner.load(Ordering::Acquire) }
+        unsafe { &*self.inner.load(Ordering::SeqCst) }
     }
 }
 
@@ -226,7 +330,7 @@ where
     T: Clone,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.inner.load(Ordering::Acquire) }
+        unsafe { &mut *self.inner.load(Ordering::SeqCst) }
     }
 }
 
@@ -236,7 +340,7 @@ where
 {
     fn from(value: T) -> Self {
         RLUVar {
-            inner: Arc::new(AtomicPtr::new(&mut value.into())),
+            inner: Arc::new(AtomicPtr::new(InnerVar::from(value).into_raw())),
         }
     }
 }
@@ -258,16 +362,16 @@ where
 {
     Original {
         locked_thread_id: Option<AtomicUsize>,
-        copy: Option<*mut InnerVar<T>>,
-        data: T,
+        copy: Option<AtomicPtr<Self>>,
+        data: Atomic<T>,
 
         ctrl: Option<RLU<T>>,
     },
 
     Copy {
         locked_thread_id: Option<AtomicUsize>,
-        original: *mut Self,
-        data: T,
+        original: AtomicPtr<Self>,
+        data: Atomic<T>,
 
         ctrl: Option<RLU<T>>,
     },
@@ -279,7 +383,7 @@ where
 {
     fn from(value: T) -> Self {
         Self::Original {
-            data: value,
+            data: value.into(),
             locked_thread_id: None,
             copy: None,
             ctrl: None,
@@ -305,7 +409,7 @@ where
                     Some(inner) => inner.load(Ordering::Acquire),
                     None => 0,
                 })),
-                original: *original,
+                original: AtomicPtr::new(unsafe { &mut *original.load(Ordering::Acquire) }),
             },
             Self::Original {
                 copy,
@@ -313,7 +417,9 @@ where
                 data,
                 locked_thread_id,
             } => Self::Original {
-                copy: *copy,
+                copy: copy
+                    .as_ref()
+                    .map(|inner| AtomicPtr::new(unsafe { &mut *inner.load(Ordering::Acquire) })),
                 ctrl: ctrl.clone(),
                 data: data.clone(),
                 locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
@@ -325,14 +431,15 @@ where
     }
 }
 
-/// that's the global object
+/// [`RLU`] is the global context, where memory gets synchronized in concurrent
+/// setups. Since [`RLU`] can have multiple instances, it can be used for multiple types at
+/// once.
 pub struct RLU<T>
 where
     T: Clone,
 {
     global_count: Arc<AtomicUsize>,
     next_thread_id: Arc<AtomicUsize>,
-
     contexts: Arc<AtomicPtr<HashMap<usize, RluContext<T>>>>,
 }
 
@@ -350,21 +457,29 @@ where
     T: Clone,
 {
     pub fn new() -> Self {
+        // store the context resolver on the heap
+        let contexts_ptr = Box::into_raw(Box::new(HashMap::new()));
+
         Self {
             global_count: Arc::new(AtomicUsize::new(0)),
             next_thread_id: Arc::new(AtomicUsize::new(0)),
-            contexts: Arc::new(AtomicPtr::new(&mut HashMap::new())),
+            contexts: Arc::new(AtomicPtr::new(contexts_ptr)),
         }
     }
 
     pub fn create(&self, data: T) -> RLUVar<T> {
+        // the moved data variable will live on the heap
+
         RLUVar {
-            inner: Arc::new(AtomicPtr::new(&mut InnerVar::Original {
-                data,
-                ctrl: Some(self.clone()),
-                locked_thread_id: None,
-                copy: None,
-            })),
+            inner: Arc::new(AtomicPtr::new(
+                InnerVar::Original {
+                    data: data.into(),
+                    ctrl: Some(self.clone()),
+                    locked_thread_id: None,
+                    copy: None,
+                }
+                .into_raw(),
+            )),
         }
     }
 
@@ -393,9 +508,11 @@ where
 
         RluContext {
             id: AtomicUsize::new(self.next_thread_id.load(Ordering::Acquire)),
+
             // TODO: provide `current_log`?
             log: Vec::new(),
             log_quiescence: Vec::new(),
+
             local_clock: AtomicUsize::new(0),
             write_clock: AtomicUsize::new(0),
             run_count: AtomicUsize::new(0),
@@ -440,23 +557,36 @@ where
     T: Clone,
 {
     /// read
-    /// TODO: RAII patter for reads
     pub fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T> {
         // prepare read lock
         self.read_lock();
 
-        // if this is a copy, return the copy
-        if let InnerVar::Copy { data, .. } = var.deref() {
-            return ReadGuard::new(Ok(data), self);
+        // FIXME:
+        // this match is irritating.
+        // the rlu paper states, that if the original has a reference to a copy
+        // the copy shall be returned, otherwise the copy is zero
+        // and the original is the most valid state and shall be returned
+        match var.deref() {
+            InnerVar::Copy { data, .. } => {
+                return ReadGuard::new(Ok(data), self);
+            }
+            InnerVar::Original { data, copy, .. } => {
+                if copy.is_none() {
+                    return ReadGuard::new(Ok(data), self);
+                }
+            }
         }
 
         // return the managing thread
         let (contexts, locked_thread_id) = match var.deref() {
-            InnerVar::Original {
-                ctrl, locked_thread_id, ..
+            InnerVar::Original { data, .. } => {
+                return ReadGuard::new(Ok(data), self);
             }
-            | InnerVar::Copy {
-                ctrl, locked_thread_id, ..
+            InnerVar::Copy {
+                ctrl,
+                locked_thread_id,
+                data,
+                ..
             } => (ctrl, locked_thread_id),
         };
 
@@ -466,15 +596,9 @@ where
                 (contexts.get(&id.load(Ordering::Acquire)), id)
             }
             (Some(ctx), None) => {
-                println!("no locked thread");
-                return ReadGuard::new(Err(TransactionError::Failed), self);
-            }
-            (None, Some(id)) => {
-                println!("no context given");
                 return ReadGuard::new(Err(TransactionError::Failed), self);
             }
             _ => {
-                println!("neither context nor locking thread given");
                 return ReadGuard::new(Err(TransactionError::Failed), self);
             }
         };
@@ -491,7 +615,7 @@ where
                             original,
                             data,
                             ctrl,
-                        } = unsafe { &**copy_data }
+                        } = unsafe { &*copy_data.load(Ordering::Acquire) }
                         {
                             return ReadGuard::new(Ok(data), self);
                         }
@@ -511,9 +635,6 @@ where
                     }
                 }
             }
-
-            // FIXME
-            // unreachable!()
         }
 
         match var.deref() {
@@ -524,6 +645,7 @@ where
     /// write
     pub fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
         self.write_lock();
+
         let self_id = self.id.load(Ordering::Acquire);
 
         let inner = unsafe { &mut *var.inner.load(Ordering::Acquire) };
@@ -538,41 +660,22 @@ where
                 }
                 Some(id) => {
                     self.abort();
-
-                    info!("Abort. Locking thread is same");
-
-                    // yield?
-                    std::thread::yield_now();
-
                     return Err(TransactionError::Retry);
                 }
                 None => {
                     self.abort();
-
-                    info!("No locking thread is present");
-
-                    // yield?
-                    std::thread::yield_now();
-
                     return Err(TransactionError::Retry);
                 }
             },
             InnerVar::Original { data, ctrl, .. } => (data, ctrl),
         };
 
-        // TODO:
-        // we want to have a mutable reference either to the copy, or
-        // or to the mutable thread which keeps the copy to a log
-        // - fixed for now.
-        // - self fn will return a write guard with the same lifetime, on drop, the writeguard will write the remaining
-        //   copy back, for later synchronization
-
         Ok(WriteGuard::new(
             WriteGuardInner::Copy(InnerVar::Copy {
                 data: original.clone(),
                 ctrl: ctrl.clone(),
                 locked_thread_id: Some(AtomicUsize::new(self_id)),
-                original: var.inner.load(Ordering::Acquire),
+                original: AtomicPtr::new(var.inner.load(Ordering::Acquire)),
             }),
             self,
         ))
@@ -584,10 +687,11 @@ where
         self.run_count.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn read_unlock(&self) {
+    fn read_unlock(&self, var: &Atomic<T>) {
         self.run_count.fetch_add(1, Ordering::SeqCst);
+
         if self.is_writer.load(Ordering::SeqCst) {
-            self.commit_log()
+            self.commit_log(var)
         }
     }
 
@@ -596,13 +700,14 @@ where
     }
 
     fn write_unlock(&self) {
+        // self.commit_log(var);
         self.is_writer.store(false, Ordering::Release);
-        // TODO more
     }
 
     fn synchronize(&self) {
         let contexts = unsafe { &*self.ctrl.contexts.load(Ordering::Acquire) };
         let sync_count = unsafe { &mut *self.sync_count.load(Ordering::Acquire) };
+
         // sychronize with other contexts, collect their run stats
         for (id, ctx) in contexts {
             let id = ctx.id.load(Ordering::Acquire);
@@ -634,11 +739,22 @@ where
         }
     }
 
-    fn commit_log(&self) {
+    fn commit_log(&self, var: &Atomic<T>) {
         self.write_clock
             .store(self.ctrl.global_count.load(Ordering::Acquire) + 1, Ordering::Release);
         self.ctrl.global_count.fetch_add(1, Ordering::SeqCst);
         self.synchronize();
+
+        unsafe {
+            for inner in &self.log {
+                if let InnerVar::Copy { data, .. } = inner {
+                    let update = (**data).clone();
+                    var.swap(&mut Box::from(update));
+                }
+            }
+        };
+
+        // TODO when clear logs?
 
         self.write_clock.store(usize::MAX, Ordering::Release);
         self.swap_logs();
@@ -649,370 +765,17 @@ where
     }
 
     fn swap_logs(&self) {
-        todo!()
-    }
-}
-
-// old -----------------------
-mod old {
-
-    use super::*;
-    /// This is the global object for reading and writing
-    pub struct TVar<T>
-    where
-        T: ReturnType + 'static,
-    {
-        /// the actual data
-        data: Arc<AtomicPtr<T>>,
-
-        /// a ptr to the write log copy inside an RLU thread
-        copy_ptr: Arc<AtomicPtr<TVar<T>>>,
-
-        /// indicating, if this is a copy
-        is_copy: Arc<AtomicBool>,
-
-        /// the current thread locking this object
-        rlu_thread_id: Arc<AtomicIsize>,
-
-        /// if this is a copy, this is the reference to the 'original'
-        obj_reference: Arc<AtomicPtr<TVar<T>>>,
-
-        /// all global related rlu objects reside here, since they are interested in synchronizing
-        /// one object at a time
-        global_clock: Arc<AtomicUsize>,
-
-        /// a list of all threads monitoring this variable
-        threads: Arc<AtomicPtr<HashMap<isize, &'static RLUContext<T>>>>,
-    }
-
-    impl<T> Clone for TVar<T>
-    where
-        T: ReturnType,
-    {
-        fn clone(&self) -> Self {
-            Self {
-                data: Arc::new(AtomicPtr::new(self.data.load(Ordering::Acquire))), // ?
-
-                /// TODO: self needs to be update to this
-                copy_ptr: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-
-                is_copy: Arc::new(AtomicBool::new(true)),
-
-                rlu_thread_id: self.rlu_thread_id.clone(),
-
-                obj_reference: Arc::new(AtomicPtr::new(&self as *const _ as *mut TVar<T>)),
-
-                global_clock: Arc::new(AtomicUsize::new(self.global_clock.load(Ordering::Acquire))),
-
-                // the pointer to active threads can be safely cloned
-                threads: self.threads.clone(),
-            }
-        }
-    }
-
-    impl<T> TVar<T>
-    where
-        T: ReturnType,
-    {
-        fn new(mut value: T) -> Self {
-            Self {
-                data: Arc::new(AtomicPtr::new(&mut value)),
-                copy_ptr: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-                is_copy: Arc::new(AtomicBool::new(false)),
-                rlu_thread_id: Arc::new(AtomicIsize::new(-1)),
-                obj_reference: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-                global_clock: Arc::new(AtomicUsize::new(0)),
-                threads: Arc::new(AtomicPtr::new(&mut HashMap::new())),
-            }
-        }
-
-        fn get_rlu_context<'a>(&self, id: &isize) -> &'a RLUContext<T> {
-            let threads = unsafe { &*self.threads.load(Ordering::Acquire) };
-            threads.get(id).unwrap()
-        }
-    }
-
-    /// The [`RLUContext`] is a concurrent read / write instance bound to a `TVar`.
-    /// It maintains two logs for writers, a local clock and a write clock. The local
-    /// clock is being used to determine to read from the original object, or from another
-    /// context's writer log.
-    pub struct RLUContext<T>
-    where
-        T: ReturnType + 'static,
-    {
-        // the thread id
-        thread_id: Arc<AtomicIsize>,
-
-        /// first write log
-        w_log: Arc<AtomicPtr<TVar<T>>>,
-
-        /// second write log
-        w_log_quiescence: Arc<AtomicPtr<TVar<T>>>,
-
-        /// the run_count indicates the state of the thread.
-        /// an even number signals a running thread, while an
-        /// odd number a thread at rest
-        run_count: Arc<AtomicUsize>,
-
-        /// The local clock to decide wether to read from log, or object
-        local_clock: Arc<AtomicUsize>,
-
-        /// the write clock to signal reading from
-        write_clock: Arc<AtomicUsize>,
-
-        /// sets if writer, or not. may be obsolete
-        is_writer: Arc<AtomicBool>,
-
-        /// sync counts
-        sync_counts: Arc<AtomicPtr<HashMap<isize, isize>>>,
-    }
-
-    impl<T> RLUContext<T>
-    where
-        T: ReturnType,
-    {
-        // pub fn with_func<F>(f: F) -> Result<()>
-        // where
-        //     F: Fn(Self) -> Result<()>,
-        // {
-        //     if GUARD.with(|inner| match inner.get() {
-        //         true => true,
-        //         false => {
-        //             inner.set(true);
-        //             false
-        //         }
-        //     }) {
-        //         return Err(TransactionError::InProgress);
-        //     }
-
-        //     let tx = RLUContext {
-        //         thread_id: Arc::new(AtomicIsize::new(-1)),
-        //         w_log: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-        //         w_log_quiescence: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-        //         run_count: Arc::new(AtomicUsize::new(0)),
-        //         local_clock: Arc::new(AtomicUsize::new(0)),
-        //         write_clock: Arc::new(AtomicUsize::new(0)),
-        //         is_writer: Arc::new(AtomicBool::new(false)),
-        //         sync_counts: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-        //     };
-
-        //     f(tx)
-        // }
-
-        pub fn new() -> Self {
-            Self {
-                thread_id: Arc::new(AtomicIsize::new(-1)),
-                w_log: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-                w_log_quiescence: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-                run_count: Arc::new(AtomicUsize::new(0)),
-                local_clock: Arc::new(AtomicUsize::new(0)),
-                write_clock: Arc::new(AtomicUsize::new(0)),
-                is_writer: Arc::new(AtomicBool::new(false)),
-                sync_counts: Arc::new(AtomicPtr::new(std::ptr::null_mut())),
-            }
-        }
-
-        // /// reads a snapshot of `T` and returns it
-        // pub fn read<'a>(&self, var: &'a T) -> &'a T {
-        //     // self.reader_lock(var);
-        //     // let _inner = unsafe { &*self.deref(var).data.load(Ordering::Acquire).clone() };
-        //     // self.reader_unlock(var);
-
-        //     // _inner
-        //     todo!()
-        // }
-
-        // pub fn write<'a>(&self, value: T, var: &'a TVar<T>) {
-        //     self.try_lock(var);
-        // }
-
-        /// --- inner API
-
-        fn reader_lock(&self, var: &TVar<T>) {
-            // set as reader
-            self.is_writer.store(false, Ordering::Release);
-
-            // increment number of runners. odd = running, evening = rest
-            // important, when synchronizing the threads
-            self.run_count
-                .store(self.run_count.load(Ordering::Acquire) + 1, Ordering::Release);
-
-            // update local clock
-            self.local_clock
-                .store(var.global_clock.load(Ordering::Acquire), Ordering::Release)
-        }
-
-        fn reader_unlock(&self, var: &TVar<T>) {
-            // increment number of runners
-            self.run_count
-                .store(self.run_count.load(Ordering::Acquire) + 1, Ordering::Release);
-
-            if self.is_writer.load(Ordering::Acquire) {
-                self.commit_write_log(var)
-            }
-        }
-
-        /// function marker to abort at specific point
-        /// may be replace with a function return
-        fn abort(&self) {
-            self.run_count.fetch_add(1, Ordering::SeqCst);
-            if self.is_writer.load(Ordering::Acquire) {}
-        }
-
-        /// This is `read`
-        fn deref<'a>(&self, var: &'a TVar<T>) -> &'a TVar<T> {
-            // if this is a copy, return it
-            if var.is_copy.load(Ordering::Acquire) {
-                return unsafe { &*var.copy_ptr.load(Ordering::Acquire) };
-            }
-
-            // get the copy ptr
-            let copy_ptr = var.copy_ptr.load(Ordering::Acquire);
-
-            // is unlocked
-            if copy_ptr.is_null() {
-                return var;
-            }
-
-            let copy_ptr = unsafe { &*copy_ptr };
-
-            if self.thread_id.load(Ordering::Acquire) == copy_ptr.rlu_thread_id.load(Ordering::Acquire) {
-                return copy_ptr;
-            }
-
-            let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
-
-            let thread: &RLUContext<T> = var.get_rlu_context(&(thread_id));
-
-            if self.local_clock.load(Ordering::Acquire) >= thread.write_clock.load(Ordering::Acquire) {
-                return copy_ptr;
-            }
-
-            var
-        }
-
-        /// This is `write`
-        fn try_lock(&self, var: &TVar<T>) -> Option<*const TVar<T>> {
-            // write operation
-            self.is_writer.store(true, Ordering::Release);
-
-            // get actual object
-            let original_data = var.data.load(Ordering::Acquire);
-
-            // get pointer to copy, most probably null
-            let copy_ptr = var.copy_ptr.load(Ordering::Acquire);
-
-            // is locked
-            if !copy_ptr.is_null() {
-                let copy_ptr = unsafe { &mut *copy_ptr };
-                let thread_id = copy_ptr.rlu_thread_id.load(Ordering::Acquire);
-
-                if self.thread_id.load(Ordering::Acquire) == thread_id {
-                    return Some(copy_ptr as *mut _);
-                }
-
-                // retry / abort
-                self.abort();
-
-                // indicate retry
-                return None;
-            }
-
-            let mut copy = var.clone();
-
-            copy.obj_reference
-                .store(var as *const _ as *mut TVar<T>, Ordering::Release);
-
-            let self_thread_id = self.thread_id.load(Ordering::Acquire);
-            var.rlu_thread_id.store(self_thread_id as isize, Ordering::Release);
-
-            //
-            self.w_log.store(&mut copy, Ordering::Release);
-
-            if var
-                .copy_ptr
-                .compare_exchange(std::ptr::null_mut(), &mut copy, Ordering::SeqCst, Ordering::SeqCst)
-                .is_err()
-            {
-                self.abort()
-            }
-
-            Some(&copy as *const _)
-        }
-
-        fn commit_write_log(&self, var: &TVar<T>) {
-            self.write_clock
-                .store(var.global_clock.load(Ordering::Acquire) + 1, Ordering::Release);
-
-            var.global_clock.fetch_add(1, Ordering::SeqCst);
-
-            self.synchronize(var);
-
-            // - write back write log
-            self.write_back_log(var);
-
-            // - unlock write lock
-            self.write_clock.store(usize::MAX, Ordering::Release);
-
-            // - swap write logs
-            self.swap_write_logs();
-        }
-
-        /// block this thread, until all other reading threads have finished
-        fn synchronize(&self, var: &TVar<T>) {
-            let threads = unsafe { var.threads.load(Ordering::Acquire).as_ref().unwrap() };
-            let syncs = unsafe { &mut *self.sync_counts.load(Ordering::Acquire) };
-            let self_thread_id = self.thread_id.load(Ordering::Acquire);
-
-            for (id, thread) in threads.iter().filter(|(a, b)| **a != self_thread_id) {
-                let thread_run_count = thread.run_count.load(Ordering::Acquire);
-                syncs.insert(*id, thread_run_count as isize);
-            }
-
-            // this inner loop is per thread and shall wait until the reader threads are
-            // finished
-            for (id, thread) in threads.iter().filter(|(a, b)| **a != self_thread_id) {
-                loop {
-                    if let Some(sync_counts) = syncs.get(id) {
-                        if (sync_counts & 0x1) != 1 {
-                            break;
-                        }
-
-                        if sync_counts != &(thread.run_count.load(Ordering::Acquire) as isize) {
-                            break;
-                        }
-
-                        if self.write_clock.load(Ordering::Acquire) <= thread.local_clock.load(Ordering::Acquire) {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// writes the logs back into memory
-        fn write_back_log(&self, var: &TVar<T>) {}
-
-        fn swap_write_logs(&self) {
-            let log = self.w_log.load(Ordering::Acquire);
-
-            self.w_log
-                .store(self.w_log_quiescence.load(Ordering::Acquire), Ordering::Release);
-
-            self.w_log_quiescence.store(log, Ordering::Release);
-        }
+        // todo!()
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use std::ops::DerefMut;
-
-    use rand_utils::random::{string, usize};
-    use threadpool::ThreadPool;
-
     use crate::rlu::{RLUVar, TransactionError, RLU};
+    use rand_utils::random::{string, usize};
+
+    use super::Atomic;
 
     fn rand_string() -> String {
         string(255)
@@ -1023,75 +786,78 @@ mod tests {
         usize(usize::MAX)
     }
 
-    /// This function will be run before any of the tests
-    #[ctor::ctor]
-    fn init_logger() {
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Info)
-            .try_init();
-    }
+    // This function will be run before any of the tests
+    // #[ctor::ctor]
+    // fn init_logger() {
+    //     let _ = env_logger::builder()
+    //         .is_test(true)
+    //         .filter_level(log::LevelFilter::Info)
+    //         .try_init();
+    // }
 
     #[test]
     fn test_read_write() {
-        const NUM_THREADS: usize = 2;
-        const EXPECTED: usize = 9usize;
+        const EXPECTED: usize = 15usize;
 
         let ctrl = RLU::new();
-        let rlu_var: RLUVar<usize> = ctrl.create(5usize);
+        let rlu_var: RLUVar<usize> = ctrl.create(6usize);
 
-        let pool = ThreadPool::new(NUM_THREADS);
-        {
-            let r1 = rlu_var.clone();
-            let c1 = ctrl.clone();
+        let r1 = rlu_var.clone();
+        let c1 = ctrl.clone();
 
-            pool.execute(move || {
-                match c1.execute(|mut context| {
-                    let mut data = context.get_mut(&r1)?;
-                    let inner = data.deref_mut();
+        let j0 = std::thread::spawn(move || {
+            match c1.execute(|mut context| {
+                let mut data = context.get_mut(&r1)?;
+                let inner = &mut *data;
+                *inner += 9usize;
 
-                    *inner += 9usize;
+                Ok(())
+            }) {
+                Err(err) => Err(err),
+                Ok(()) => Ok(()),
+            }
+            .expect("Failed");
+        });
 
-                    Ok(())
-                }) {
-                    Err(err) => {
-                        println!("error {}", err);
-                        Err(err)
-                    }
-                    Ok(()) => Ok(()),
+        let r1 = rlu_var.clone();
+        let c1 = ctrl;
+
+        let j1 = std::thread::spawn(move || {
+            if let Err(e) = c1.execute(|context| {
+                let data = context.get(&r1);
+                match *data {
+                    Ok(inner) if **inner == EXPECTED => Ok(()),
+                    Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
+                        "Value is not expected: actual {}, expected {}",
+                        **inner, EXPECTED
+                    ))),
+                    Ok(inner) => unreachable!("You shouldn't see this"),
+                    Err(ref e) => Err(TransactionError::Abort),
                 }
-                .expect("Failed");
-            });
-        }
+            }) {}
+        });
 
-        for id in 0..(NUM_THREADS - 1) {
-            let r1 = rlu_var.clone();
-            let c1 = ctrl.clone();
-
-            pool.execute(move || {
-                if let Err(e) = c1.execute(|context| {
-                    let data = context.get(&r1);
-                    match *data {
-                        Ok(inner) if *inner == EXPECTED => Ok(()),
-                        Ok(inner) => Err(TransactionError::Inner(format!(
-                            "Value is not expected: actual {}, expected {}",
-                            *inner, EXPECTED
-                        ))),
-                        Err(ref e) => {
-                            println!("error : {}", e);
-                            Err(TransactionError::Abort)
-                        }
-                    }
-                }) {
-                    println!("Error occured: {}", e);
-                }
-            });
-        }
-
-        pool.join();
+        j0.join().expect("Failed to join writer thread");
+        j1.join().expect("Failed to join reader thread");
 
         let value = rlu_var.take();
-        assert!(pool.panic_count().eq(&0));
-        assert_eq!(value, &9)
+        assert_eq!(value, &15)
+    }
+
+    #[test]
+    fn test_atomic_type() {
+        let num_runs = 1000;
+
+        for _ in 0..num_runs {
+            let expected = rand_string();
+            let mut expected_mod = expected.clone();
+            expected_mod.push_str("_modified");
+
+            let atomic_string = Atomic::from(expected.clone());
+            assert_eq!(expected, *atomic_string);
+
+            unsafe { atomic_string.swap(&mut expected_mod) };
+            assert_eq!(expected_mod, *atomic_string);
+        }
     }
 }
