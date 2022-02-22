@@ -23,6 +23,7 @@ mod simple {
 
     use super::*;
 
+    #[ignore]
     #[tokio::test]
     async fn test_single_transaction() {
         let var: TVar<usize> = TVar::new(21);
@@ -39,6 +40,7 @@ mod simple {
         assert_eq!(*var.read().unwrap(), 63);
     }
 
+    #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_multiple_transactions() {
         let var: TVar<usize> = TVar::new(21);
@@ -66,6 +68,7 @@ mod simple {
         assert_eq!(*var.read().unwrap(), 84);
     }
 
+    #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_multiple_access() {
         let var: TVar<usize> = TVar::new(33);
@@ -75,6 +78,7 @@ mod simple {
         assert_eq!(*result.expect("Failed to unwrap result"), 33);
     }
 
+    #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn test_multiple_types() {
         // local type for testing
