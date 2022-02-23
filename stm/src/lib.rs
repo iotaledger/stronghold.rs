@@ -8,7 +8,7 @@
 
 /// TODO: This mod should be replaced by the upcoming memory features in the runtime!
 pub mod boxedalloc;
-pub mod nonblock;
+pub mod nb;
 pub mod rlu;
 
 pub use rlu::{RLUVar, RluContext, TransactionError, RLU};
