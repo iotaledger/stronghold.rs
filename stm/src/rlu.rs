@@ -103,9 +103,74 @@ pub trait IntoRaw: Sized {
 
 impl<T> IntoRaw for T {}
 
+struct RLULog<T>
+where
+    T: Clone,
+{
+    clear: AtomicUsize,
+    current_log_index: AtomicUsize,
+    logs: [Vec<T>; 2],
+}
+
+impl<T> Default for RLULog<T>
+where
+    T: Clone,
+{
+    fn default() -> Self {
+        Self {
+            clear: AtomicUsize::new(usize::MAX),
+            current_log_index: AtomicUsize::new(0),
+            logs: [Vec::new(), Vec::new()],
+        }
+    }
+}
+
+impl<T> RLULog<T>
+where
+    T: Clone,
+{
+    /// Selects the next internal log by incrementing the internal index mod the  number of logs
+    pub fn next(&self) {
+        let next = (self.current() + 1) % self.logs.len();
+        self.clear.store(self.current(), Ordering::Release);
+        self.current_log_index.store(next, Ordering::Release);
+    }
+
+    /// Returns the current index  of the log
+    pub fn current(&self) -> usize {
+        self.current_log_index.load(Ordering::Acquire)
+    }
+}
+
+impl<T> Deref for RLULog<T>
+where
+    T: Clone,
+{
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.logs[self.current()]
+    }
+}
+
+impl<T> DerefMut for RLULog<T>
+where
+    T: Clone,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        if let a @ 0..=1 = self.clear.swap(usize::MAX, Ordering::Acquire) {
+            self.logs[0].clear()
+        }
+
+        &mut self.logs[self.current()]
+    }
+}
+
+/// # Atomic &lt;T&gt;
+///
 /// Wrapper type for [`AtomicPtr`], but with extra heap allocation for the inner type.
 ///
-/// # Example
+/// ## Example
 /// ```
 /// use stronghold_stm::rlu::Atomic;
 /// let expected = 1024usize;
@@ -125,21 +190,13 @@ where
 {
     /// Swaps the inner value and returns the old value.
     ///
-    /// # Safety
+    /// ## Safety
     /// This function is unsafe as it tries to dereference a raw pointer which must be allocated
     /// in accordance to the memory layout of a Box type.
     pub unsafe fn swap(&self, value: &mut T) -> T {
         let old = Box::from_raw(self.inner.swap(value, Ordering::Release));
         *old
     }
-
-    // /// Returns a mutable reference to the underlying data
-    // ///
-    // /// # Safety
-    // /// This effectively overrides the borrow checker.
-    // pub unsafe fn get_mut(&self) -> &mut T {
-    //     &mut *self.inner.load(Ordering::Acquire)
-    // }
 }
 
 impl<T> Deref for Atomic<T>
@@ -192,6 +249,7 @@ where
     inner: Result<&'a Atomic<T>>,
     thread: &'a RluContext<T>,
 }
+
 impl<'a, T> ReadGuard<'a, T>
 where
     T: Clone,
@@ -222,12 +280,12 @@ where
     }
 }
 
+/// This inner enum of [`WriteGuard`]
 pub enum WriteGuardInner<'a, T>
 where
     T: Clone,
 {
     /// a mutable reference
-    /// FIXME: is this legal?
     Ref(&'a mut T),
 
     /// a copy, that needs to be written back into the log
@@ -306,9 +364,8 @@ impl<T> RLUVar<T>
 where
     T: Clone + std::fmt::Debug,
 {
-    /// This function consumes the [`RLUVar<T>`] and returns the inner value. Any copy
-    /// allocated with the inner types will be deallocated as well
-    pub fn take(&self) -> &T {
+    /// This function returns the inner value.
+    pub fn get(&self) -> &T {
         match unsafe { &*self.inner.load(Ordering::Acquire) } {
             InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
         }
@@ -431,9 +488,8 @@ where
     }
 }
 
-/// [`RLU`] is the global context, where memory gets synchronized in concurrent
-/// setups. Since [`RLU`] can have multiple instances, it can be used for multiple types at
-/// once.
+/// [`RLU`] is the global context, where memory gets synchronized in concurrent setups. Since [`RLU`]
+/// can have multiple instances, it can be used for multiple types at once.
 pub struct RLU<T>
 where
     T: Clone,
@@ -454,7 +510,7 @@ where
 
 impl<T> RLU<T>
 where
-    T: Clone,
+    T: Clone + IntoRaw,
 {
     pub fn new() -> Self {
         // store the context resolver on the heap
@@ -508,11 +564,7 @@ where
 
         RluContext {
             id: AtomicUsize::new(self.next_thread_id.load(Ordering::Acquire)),
-
-            // TODO: provide `current_log`?
-            log: Vec::new(),
-            log_quiescence: Vec::new(),
-
+            log: RLULog::default(),
             local_clock: AtomicUsize::new(0),
             write_clock: AtomicUsize::new(0),
             run_count: AtomicUsize::new(0),
@@ -536,13 +588,14 @@ where
     }
 }
 
+/// The [`RluContext`] stores per thread specific information of [`InnerVar`] and is
+/// being used to get im/mutable references to memory.
 pub struct RluContext<T>
 where
     T: Clone,
 {
     id: AtomicUsize,
-    log: Vec<InnerVar<T>>,
-    log_quiescence: Vec<InnerVar<T>>,
+    log: RLULog<InnerVar<T>>,
     local_clock: AtomicUsize,
     write_clock: AtomicUsize,
     is_writer: AtomicBool,
@@ -556,7 +609,42 @@ impl<T> RluContext<T>
 where
     T: Clone,
 {
-    /// read
+    /// Returns an immutable [`ReadGuard`] on the value of [`RLUVar`]
+    ///
+    /// This function effectively returns either the original value, if it
+    /// has not been modified, or an immutable reference to the underlying
+    /// write log, if the log has not been commited to memory yet. The [`ReadGuard`]
+    /// ensures that after dereferencing and reading the value, all outstanding
+    /// commits to the internal value will be conducted.
+    ///
+    /// # Example
+    /// ```
+    /// use stronghold_stm::rlu::*;
+    ///
+    /// // create simple value, that should be managed by RLU
+    /// let value = 6usize;
+    ///
+    /// // first we need to create a controller
+    /// let ctrl = RLU::new();
+    ///
+    /// // via the controller  we create a RLUVar reference
+    /// let rlu_var: RLUVar<usize> = ctrl.create(value);
+    ///
+    /// // we clone the reference to it to use it inside a thread
+    /// let var_1 = rlu_var.clone();
+    ///
+    /// // via the controller we can spawn a thread safe context
+    /// ctrl.execute(move |context| {
+    ///     let inner = context.get(&var_1);
+    ///     match *inner {
+    ///         Ok(inner) => {
+    ///             assert_eq!(**inner, 6);
+    ///         }
+    ///         _ => return Err(TransactionError::Failed),
+    ///     }
+    ///     Ok(())
+    /// });
+    /// ```
     pub fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T> {
         // prepare read lock
         self.read_lock();
@@ -642,7 +730,38 @@ where
         }
     }
 
-    /// write
+    /// Returns an mutable [`WriteGuard`] on the value of [`RLUVar`]
+    ///
+    /// This function returns a mutable copy if the original value. The [`WriteGuard`]
+    /// ensures that after dereferencing and writing to the value, the internal log
+    /// will be updated to the most recent change
+    ///
+    /// # Example
+    /// ```
+    /// use stronghold_stm::rlu::*;
+    ///
+    /// // create simple value, that should be managed by RLU
+    /// let value = 6usize;
+    ///
+    /// // first we need to create a controller
+    /// let ctrl = RLU::new();
+    ///
+    /// // via the controller  we create a RLUVar reference
+    /// let rlu_var: RLUVar<usize> = ctrl.create(value);
+    ///
+    /// // we clone the reference to it to use it inside a thread
+    /// let var_1 = rlu_var.clone();
+    ///
+    /// // via the controller we can spawn a thread safe context
+    /// ctrl.execute(move |mut context| {
+    ///     let mut inner = context.get_mut(&var_1)?;
+    ///     let data = &mut *inner;
+    ///     *data += 10;
+    ///     Ok(())
+    /// });
+    ///
+    /// assert_eq!(*rlu_var.get(), 16);
+    /// ```
     pub fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
         self.write_lock();
 
@@ -700,7 +819,6 @@ where
     }
 
     fn write_unlock(&self) {
-        // self.commit_log(var);
         self.is_writer.store(false, Ordering::Release);
     }
 
@@ -746,15 +864,13 @@ where
         self.synchronize();
 
         unsafe {
-            for inner in &self.log {
+            for inner in &*self.log {
                 if let InnerVar::Copy { data, .. } = inner {
                     let update = (**data).clone();
                     var.swap(&mut Box::from(update));
                 }
             }
         };
-
-        // TODO when clear logs?
 
         self.write_clock.store(usize::MAX, Ordering::Release);
         self.swap_logs();
@@ -764,18 +880,18 @@ where
         self.run_count.fetch_add(1, Ordering::SeqCst);
     }
 
+    /// Swaps the logs internally
     fn swap_logs(&self) {
-        // todo!()
+        self.log.next();
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::rlu::{RLUVar, TransactionError, RLU};
-    use rand_utils::random::{string, usize};
-
     use super::Atomic;
+    use crate::rlu::RLULog;
+    use rand_utils::random::{string, usize};
 
     fn rand_string() -> String {
         string(255)
@@ -786,62 +902,22 @@ mod tests {
         usize(usize::MAX)
     }
 
-    // This function will be run before any of the tests
-    // #[ctor::ctor]
-    // fn init_logger() {
-    //     let _ = env_logger::builder()
-    //         .is_test(true)
-    //         .filter_level(log::LevelFilter::Info)
-    //         .try_init();
-    // }
-
     #[test]
-    fn test_read_write() {
-        const EXPECTED: usize = 15usize;
+    fn test_rlu_log() {
+        let mut log = RLULog::<usize>::default();
+        assert_eq!(log.current(), 0);
 
-        let ctrl = RLU::new();
-        let rlu_var: RLUVar<usize> = ctrl.create(6usize);
+        log.push(1);
+        log.push(1);
 
-        let r1 = rlu_var.clone();
-        let c1 = ctrl.clone();
-
-        let j0 = std::thread::spawn(move || {
-            match c1.execute(|mut context| {
-                let mut data = context.get_mut(&r1)?;
-                let inner = &mut *data;
-                *inner += 9usize;
-
-                Ok(())
-            }) {
-                Err(err) => Err(err),
-                Ok(()) => Ok(()),
-            }
-            .expect("Failed");
-        });
-
-        let r1 = rlu_var.clone();
-        let c1 = ctrl;
-
-        let j1 = std::thread::spawn(move || {
-            if let Err(e) = c1.execute(|context| {
-                let data = context.get(&r1);
-                match *data {
-                    Ok(inner) if **inner == EXPECTED => Ok(()),
-                    Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
-                        "Value is not expected: actual {}, expected {}",
-                        **inner, EXPECTED
-                    ))),
-                    Ok(inner) => unreachable!("You shouldn't see this"),
-                    Err(ref e) => Err(TransactionError::Abort),
-                }
-            }) {}
-        });
-
-        j0.join().expect("Failed to join writer thread");
-        j1.join().expect("Failed to join reader thread");
-
-        let value = rlu_var.take();
-        assert_eq!(value, &15)
+        log.next();
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.current(), 1);
+        log.next();
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.current(), 0);
     }
 
     #[test]

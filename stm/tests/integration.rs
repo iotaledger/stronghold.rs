@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use stronghold_stm::{transactional, TVar};
+use stronghold_stm::{RLUVar, RluContext, TransactionError, RLU};
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -16,197 +16,66 @@ fn init_logger() {
 #[cfg(test)]
 mod simple {
 
-    use std::collections::HashMap;
-
-    use stronghold_stm::LockedMemory;
-    use zeroize::Zeroize;
-
     use super::*;
 
-    #[ignore]
-    #[tokio::test]
-    async fn test_single_transaction() {
-        let var: TVar<usize> = TVar::new(21);
-        let v2 = var.clone();
+    #[test]
+    fn test_mutliple_readers_single_write() {
+        const EXPECTED: usize = 15usize;
 
-        assert!(transactional(move |tx| {
-            let a = tx.read(&v2)?;
-            tx.write(a + 42, &v2)?;
-            Ok(())
-        })
-        .await
-        .is_ok());
+        let ctrl = RLU::new();
+        let rlu_var: RLUVar<usize> = ctrl.create(6usize);
 
-        assert_eq!(*var.read().unwrap(), 63);
-    }
+        let r1 = rlu_var.clone();
+        let c1 = ctrl.clone();
 
-    #[ignore]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn test_multiple_transactions() {
-        let var: TVar<usize> = TVar::new(21);
-        let v2 = var.clone();
-        let v3 = var.clone();
+        let j0 = std::thread::spawn(move || {
+            match c1.execute(|mut context| {
+                let mut data = context.get_mut(&r1)?;
+                let inner = &mut *data;
+                *inner += 9usize;
 
-        let r2 = tokio::spawn(transactional(move |tx| {
-            tx.write(42, &v3).unwrap();
-            Ok(())
-        }));
+                Ok(())
+            }) {
+                Err(err) => Err(err),
+                Ok(()) => Ok(()),
+            }
+            .expect("Failed");
+        });
+        let mut threads = Vec::new();
 
-        let r1 = tokio::spawn(transactional(move |tx| {
-            let a = tx.read(&v2).unwrap();
-            tx.write(a + 42, &v2).unwrap();
-            Ok(())
-        }));
+        for _ in 0..1000 {
+            let r1 = rlu_var.clone();
+            let c1 = ctrl.clone();
 
-        r1.await
-            .expect("Could not join task")
-            .expect("Transaction error occured");
-        r2.await
-            .expect("Could not join task")
-            .expect("Transaction error occured");
+            let j1 = std::thread::spawn(move || {
+                let context_fn = |context: RluContext<usize>| {
+                    let data = context.get(&r1);
+                    match *data {
+                        Ok(inner) if **inner == EXPECTED => Ok(()),
+                        Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
+                            "Value is not expected: actual {}, expected {}",
+                            **inner, EXPECTED
+                        ))),
+                        Ok(_) => unreachable!("You shouldn't see this"),
+                        Err(_) => Err(TransactionError::Abort),
+                    }
+                };
 
-        assert_eq!(*var.read().unwrap(), 84);
-    }
+                if c1.execute(context_fn).is_err() {
+                    // handle error
+                }
+            });
 
-    #[ignore]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn test_multiple_access() {
-        let var: TVar<usize> = TVar::new(33);
-
-        let result = var.read();
-        assert!(result.is_ok());
-        assert_eq!(*result.expect("Failed to unwrap result"), 33);
-    }
-
-    #[ignore]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-    async fn test_multiple_types() {
-        // local type for testing
-        #[derive(Debug, Default, Clone, PartialEq)]
-        struct Vault {
-            data: HashMap<String, String>,
+            threads.push(j1);
         }
 
-        impl Zeroize for Vault {
-            fn zeroize(&mut self) {
-                todo!()
-            }
+        j0.join().expect("Failed to join writer thread");
+
+        for j in threads {
+            j.join().expect("Failed to join reader thread");
         }
 
-        impl LockedMemory for Vault {
-            fn alloc<T>(
-                _payload: T,
-                _config: stronghold_stm::boxedalloc::MemoryConfiguration,
-                _key: Option<Vec<u8>>,
-            ) -> Result<Self, stronghold_stm::boxedalloc::MemoryError>
-            where
-                T: Zeroize + AsRef<Vec<u8>>,
-            {
-                todo!()
-            }
-
-            fn lock<T>(
-                self,
-                _payload: stronghold_stm::boxedalloc::GuardedMemory<T>,
-                _key: Option<Vec<u8>>,
-            ) -> Result<Self, stronghold_stm::boxedalloc::MemoryError>
-            where
-                T: Zeroize + AsRef<Vec<u8>>,
-            {
-                todo!()
-            }
-
-            fn unlock<T>(
-                &self,
-                _key: Option<Vec<u8>>,
-            ) -> Result<stronghold_stm::boxedalloc::GuardedMemory<T>, stronghold_stm::boxedalloc::MemoryError>
-            where
-                T: Zeroize + AsRef<Vec<u8>>,
-            {
-                todo!()
-            }
-        }
-
-        let var_usize = TVar::new(67usize);
-        let var_vault = TVar::new(Vault::default());
-
-        let (_u1, _u2) = (var_usize.clone(), var_usize.clone());
-        let vv1 = var_vault.clone();
-        let vv2 = var_vault.clone();
-
-        // let r2 = tokio::spawn(transactional(move |tx| {
-        //     tx.write(42, &u1).unwrap();
-        //     Ok(())
-        // }));
-
-        // let r1 = tokio::spawn(transactional(move |tx| {
-        //     let a = tx.read(&u2)?;
-        //     tx.write(a + 42, &u2)?;
-
-        //     // added a read: does this hang the transaction?
-        //     // let _ = tx.read(&u2)?;
-        //     Ok(())
-        // }));
-
-        let r3 = tokio::spawn(transactional(move |tx| {
-            // FIXME:
-            // this creates another copy in mem, but we actually want thread-safe writable access
-            // to the inner (log) data. options are either to provide an option, that moves the inner type out
-            // or store the inner log value into a mutex
-            let mut v = tx.read(&vv1)?;
-
-            // modify data
-            v.data.insert("abcd".to_string(), "def".to_string());
-
-            // write it back
-            tx.write(v, &vv1)?;
-
-            Ok(())
-        }));
-
-        let r4 = tokio::spawn(transactional(move |tx| {
-            // FIXME:
-            // this creates another copy in mem, but we actually want thread-safe writable access
-            // to the inner (log) data. options are either to provide an option, that moves the inner type out
-            // or store the inner log value into a mutex
-            let mut v = tx.read(&vv2)?;
-            v.data.insert("def".to_string(), "dddsa".to_string());
-            tx.write(v, &vv2)?;
-
-            // FIXME: this additional read would cause the transaction to
-            // stay in the loop
-            let _ = tx.read(&vv2)?;
-
-            // v.data.get(&b"".to_vec());
-
-            Ok(())
-        }));
-
-        // r1.await.expect("Could not join task").expect("Transaction failed");
-        // r2.await.expect("Could not join task").expect("Transaction failed");
-        r4.await.expect("Could not join task").expect("Transaction failed");
-        r3.await.expect("Could not join task").expect("Transaction failed");
-
-        // assert_eq!(*var_usize.read().unwrap(), 84);
-        assert!(var_vault.read().unwrap().data.contains_key(&"def".to_string()));
-
-        match var_vault.read() {
-            Ok(inner) => {
-                assert!(inner.data.contains_key(&"abcd".to_string()))
-            }
-            Err(e) => {
-                println!("TEST MULTIPLE TYPES FAILED!!!!!!!");
-                panic!("{}", e.to_string());
-            }
-        }
-
-        // assert!(var_vault
-        //     .read()
-        //     .expect("Transaction failed")
-        //     .data
-        //     .contains_key(&"abcd".to_string()));
+        let value = rlu_var.get();
+        assert_eq!(value, &15)
     }
 }
-
-#[cfg(test)]
-mod complex {}
