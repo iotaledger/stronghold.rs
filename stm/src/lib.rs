@@ -11,6 +11,7 @@ pub mod boxedalloc;
 pub mod nb;
 pub mod rlu;
 
+pub use nb::{NonBlockingQueue, NonBlockingStack, Queue, Stack};
 pub use rlu::{RLUVar, RluContext, TransactionError, RLU};
 
 /// TODO: this should be replaced by the upcoming memory features in the runtime!
