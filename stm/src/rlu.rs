@@ -27,7 +27,8 @@
 //!
 //! ## Features
 //! ---
-//! [ ]
+//! [x] - multiple readers / writers
+//! [x] - lock free
 //!
 //! ## Examples
 //! ---
@@ -421,7 +422,6 @@ where
         locked_thread_id: Option<AtomicUsize>,
         copy: Option<AtomicPtr<Self>>,
         data: Atomic<T>,
-
         ctrl: Option<RLU<T>>,
     },
 
@@ -429,7 +429,6 @@ where
         locked_thread_id: Option<AtomicUsize>,
         original: AtomicPtr<Self>,
         data: Atomic<T>,
-
         ctrl: Option<RLU<T>>,
     },
 }
