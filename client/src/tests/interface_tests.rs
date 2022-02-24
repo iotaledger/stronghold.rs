@@ -1,15 +1,15 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::{ActorError, Location, RecordHint, Stronghold};
+use stronghold_utils::random::bytestring;
+
 #[cfg(feature = "p2p")]
 use crate::{
-    actors::NetworkConfig,
-    p2p::{identity::Keypair, PeerId, SwarmInfo},
+    p2p::{identity::Keypair, NetworkConfig, PeerId, SwarmInfo},
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
     tests::fresh,
 };
-use crate::{ActorError, Location, RecordHint, Stronghold};
-use stronghold_utils::random::bytestring;
 #[cfg(feature = "p2p")]
 use tokio::sync::{mpsc, oneshot};
 

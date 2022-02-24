@@ -53,11 +53,9 @@ pub use engine::{
 #[cfg(feature = "p2p")]
 pub mod p2p {
     pub use crate::{
-        actors::{
-            network_messages::{ShRequest, ShResult, SwarmInfo},
-            NetworkConfig,
-        },
+        actors::network_messages::SwarmInfo,
         interface::{P2pError, P2pResult, SpawnNetworkError},
+        state::p2p::{NetworkConfig, ShRequest, ShResult},
     };
     pub use p2p::{
         firewall::Rule, identity, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId,

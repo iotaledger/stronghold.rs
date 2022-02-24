@@ -7,8 +7,6 @@
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
 
-#[cfg(feature = "p2p")]
-use crate::procedures::FatalProcedureError;
 use crate::{
     actors::{
         secure_messages::{
@@ -28,8 +26,6 @@ use crate::{
     Location,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
-#[cfg(feature = "p2p")]
-use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -41,16 +37,21 @@ use zeroize::Zeroize;
 use crate::actors::secure_testing::ReadFromVault;
 
 #[cfg(feature = "p2p")]
-use crate::actors::{
-    client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
-    network_messages,
-    network_messages::{ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
+use crate::{
+    actors::{
+        client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
+        network_messages,
+        network_messages::SwarmInfo,
+        GetNetwork, InsertNetwork, RemoveNetwork,
+    },
+    procedures::FatalProcedureError,
+    state::p2p::{Network, NetworkConfig, ShRequest, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
     firewall::{Rule, RuleDirection},
-    Multiaddr, PeerId,
+    identity::Keypair,
+    DialErr, InitKeypair, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
 };
 #[cfg(feature = "p2p")]
 use std::io;
@@ -497,7 +498,7 @@ impl Stronghold {
             }
             None => None,
         };
-        let addr = NetworkActor::new(self.registry.clone(), network_config, keypair)
+        let addr = Network::new(self.registry.clone(), network_config, keypair)
             .await?
             .start();
         self.registry.send(InsertNetwork { addr }).await?;
@@ -733,7 +734,7 @@ impl Stronghold {
         // write data
         let send_request = network_messages::SendRequest {
             peer,
-            request: network_messages::WriteToRemoteVault {
+            request: WriteToRemoteVault {
                 location: location.clone(),
                 payload: payload.clone(),
                 hint,
@@ -820,7 +821,7 @@ impl Stronghold {
         Ok(result)
     }
 
-    async fn network_actor(&self) -> StrongholdResult<Addr<NetworkActor>> {
+    async fn network_actor(&self) -> StrongholdResult<Addr<Network>> {
         self.registry.send(GetNetwork).await?.ok_or(ActorError::TargetNotFound)
     }
 }
