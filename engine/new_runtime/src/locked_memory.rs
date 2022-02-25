@@ -31,7 +31,7 @@ pub enum ProtectedConfiguration {
 #[derive(Debug)]
 pub enum LockedConfiguration<P: BoxProvider> {
     // Default configuration when zeroed out
-    ZeroedConfig(),
+    ZeroedConfig,
 
     // Non-encrypted file memory
     FileConfig(Option<usize>),
@@ -56,7 +56,7 @@ impl<P: BoxProvider> LockedConfiguration<P> {
     pub fn is_eq_config_type(&self, other: &Self) -> bool {
         use LockedConfiguration::*;
         match (self, other) {
-            (ZeroedConfig(), ZeroedConfig()) => true,
+            (ZeroedConfig, ZeroedConfig) => true,
             (FileConfig(_), FileConfig(_)) => true,
             (EncryptedRam(_, _), EncryptedRam(_, _)) => true,
             (EncryptedFile(_, _), EncryptedFile(_, _)) => true,
@@ -69,7 +69,7 @@ impl<P: BoxProvider> LockedConfiguration<P> {
 
 impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
     fn zeroize(&mut self) {
-        *self = LockedConfiguration::ZeroedConfig()
+        *self = LockedConfiguration::ZeroedConfig
     }
 }
 
@@ -81,7 +81,7 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
     fn eq(&self, other: &Self) -> bool {
         use LockedConfiguration::*;
         match (self, other) {
-            (ZeroedConfig(), ZeroedConfig()) => true,
+            (ZeroedConfig, ZeroedConfig) => true,
             (FileConfig(s1), FileConfig(s2)) => s1 == s2,
             (EncryptedRam(_, s1), EncryptedRam(_, s2)) => s1 == s2,
             (EncryptedFile(_, s1), EncryptedFile(_, s2)) => s1 == s2,

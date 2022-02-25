@@ -163,7 +163,7 @@ impl<P: BoxProvider> Zeroize for FileMemory<P> {
     fn zeroize(&mut self) {
         self.clear_and_delete_file().expect("Clear and delete file failed");
         self.fname = String::new();
-        self.config = ZeroedConfig();
+        self.config = ZeroedConfig;
     }
 }
 

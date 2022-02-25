@@ -5,5 +5,5 @@ use criterion::Criterion;
 
 /// Primitve benchmark
 pub fn bnc_memory_usize(c: &mut Criterion) {
-    c.bench_function("bench_memory", |_b| {});
+    c.bench_function("bench_memory", |b| b.iter(|| 1 + 1));
 }
