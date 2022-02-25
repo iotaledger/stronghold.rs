@@ -544,7 +544,7 @@ pub struct Target {
 impl Target {
     pub fn random() -> Self {
         let location = Location::generic("TEMP".as_bytes(), random::bytestring(32));
-        let hint = RecordHint::new("".to_string()).unwrap();
+        let hint = RecordHint::new("").unwrap();
         Target { location, hint }
     }
 }

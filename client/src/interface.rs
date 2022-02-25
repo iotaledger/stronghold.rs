@@ -336,12 +336,11 @@ impl Stronghold {
         // this feature resembles the functionality given by the former riker
         // system dependence. if there is a former client id path present,
         // the new actor is being changed into the former one ( see old ReloadData impl.)
-        let target;
-        if let Some(id) = former_client_id {
-            target = self.switch_client(id).await?;
+        let target = if let Some(id) = former_client_id {
+            self.switch_client(id).await?
         } else {
-            target = self.target().await?;
-        }
+            self.target().await?
+        };
 
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
@@ -417,20 +416,17 @@ impl Stronghold {
     /// set via [`Stronghold::switch_actor_target`], before any following operations can be performed.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StrongholdResult<()> {
         let client_id = ClientId::load_from_path(&client_path.clone(), &client_path);
-        let client;
-        if kill_actor {
-            client = self
-                .registry
+        let client = if kill_actor {
+            self.registry
                 .send(RemoveClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
+                .ok_or(ActorError::TargetNotFound)?
         } else {
-            client = self
-                .registry
+            self.registry
                 .send(GetClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
-        }
+                .ok_or(ActorError::TargetNotFound)?
+        };
         client.send(ClearCache).await?;
         Ok(())
     }
