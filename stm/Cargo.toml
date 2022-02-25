@@ -1,5 +1,5 @@
 [package]
-name        = "stronghold-stm"
+name        = "stronghold-rlu"
 version     = "0.1.0"
 edition     = "2021"
 authors     = ["Matthias Kandora <matthias.kandora@iota.org>"]
@@ -8,8 +8,7 @@ authors     = ["Matthias Kandora <matthias.kandora@iota.org>"]
 path        = "src/lib.rs"
 
 [features]
-# add "guard_mem" to enable memory protection by default, but is dependent
-# of the runtime crate
+# add "guard_mem" to enable memory protection by default, but has a dependency to the runtime crate
 default     = []
 guarded     = ["guardmem"]
 

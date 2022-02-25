@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use stronghold_stm::{NonBlockingQueue, NonBlockingStack, Queue, RLUVar, RluContext, Stack, TransactionError, RLU};
+use stronghold_rlu::{NonBlockingQueue, NonBlockingStack, Queue, RLUVar, RluContext, Stack, TransactionError, RLU};
 
 #[cfg(test)]
 #[ctor::ctor]
