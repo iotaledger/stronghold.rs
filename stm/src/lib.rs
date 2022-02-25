@@ -1,21 +1,16 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! # Stronghold Asynchronous Software Transactional Memory
+//! # Stronghold Read-Log-Update
 //!
 //! prose ...
 #![allow(unused_variables, dead_code, clippy::type_complexity)]
 
-/// TODO: This mod should be replaced by the upcoming memory features in the runtime!
-pub mod boxedalloc;
 pub mod nb;
 pub mod rlu;
 
 pub use nb::{NonBlockingQueue, NonBlockingStack, Queue, Stack};
 pub use rlu::{RLUVar, RluContext, TransactionError, RLU};
-
-/// TODO: this should be replaced by the upcoming memory features in the runtime!
-pub use boxedalloc::LockedMemory;
 
 // This creates an asynchronous operation that runs atomically inside a transaction. Shared
 // memory must be passed as [`TVar`] to read from and write to it. The transaction is retried
