@@ -1,5 +1,5 @@
 ---
-"stronghold-stm": minor
+"stronghold-rlu": minor
 ---
 
 - asynchronuous software transactional memory framework as replacement for actix actor system

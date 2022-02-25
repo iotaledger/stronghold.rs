@@ -7,7 +7,7 @@ members = [
   "utils",
   "derive",
   "p2p",
-  "stm"
+  "rlu"
 ]
 exclude = [
   "products/commandline",

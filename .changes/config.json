@@ -101,8 +101,8 @@
         "stronghold-utils"
       ]
     },
-    "stronghold-stm": {
-      "path": "./stm/",
+    "stronghold-rlu": {
+      "path": "./rlu/",
       "manager": "rust",
       "dependencies": [
         "stronghold-engine"
