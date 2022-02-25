@@ -105,7 +105,7 @@ impl<P: BoxProvider> Drop for EncryptedRam<P> {
 impl<P: BoxProvider> Zeroize for EncryptedRam<P> {
     fn zeroize(&mut self) {
         self.cypher.zeroize();
-        self.config = LockedConfiguration::ZeroedConfig();
+        self.config = LockedConfiguration::ZeroedConfig;
     }
 }
 

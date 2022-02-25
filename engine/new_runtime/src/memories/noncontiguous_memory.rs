@@ -196,7 +196,7 @@ impl<P: BoxProvider> Zeroize for NonContiguousMemory<P> {
     fn zeroize(&mut self) {
         self.shard1.zeroize();
         self.shard2.zeroize();
-        self.config = LockedConfiguration::ZeroedConfig();
+        self.config = LockedConfiguration::ZeroedConfig;
     }
 }
 
