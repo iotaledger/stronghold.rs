@@ -58,7 +58,7 @@ pub async fn show_swarm_info_command(stronghold: &mut iota_stronghold::Stronghol
         listeners,
         connections,
     } = stronghold.get_swarm_info().await?;
-    let addrs = listeners.into_iter().map(|l| l.addrs).flatten();
+    let addrs = listeners.into_iter().flat_map(|l| l.addrs);
     let peers = connections.into_iter().map(|(p, _)| p);
     let info = format!(
         "-----------\nSwarm Info:\n-----------\nPeer Id : {},\nAddresses: {:?},\nPeers: {:?}\n",

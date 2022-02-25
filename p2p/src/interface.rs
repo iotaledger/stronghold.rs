@@ -708,11 +708,10 @@ where
                 .boxed();
             relay = None;
         }
-        let mdns;
-        if self.support_mdns {
-            mdns = Some(Mdns::new(MdnsConfig::default()).await?);
+        let mdns = if self.support_mdns {
+            Some(Mdns::new(MdnsConfig::default()).await?)
         } else {
-            mdns = None
+            None
         };
         let (address_info, mut firewall) = match self.state {
             Some(state) => (Some(state.address_info), state.firewall),
