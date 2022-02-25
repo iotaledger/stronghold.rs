@@ -1,6 +1,6 @@
 # Stronghold new runtime 
 
-This crate provides multiple types of secure memories which implementation is abstracted behind two interfaces `ProtectedMemory` and `LockedMemory`. 
+This crate provides multiple types of secure memory implementations, that are abstracted behind two interfaces `ProtectedMemory` and `LockedMemory`. 
 These interfaces are both present in the file _src/locked_memory.rs_
 
 ## `ProtectedMemory`
@@ -21,7 +21,7 @@ Currently we have a single type `Buffer` implementing the `ProtectedMemory` trai
 
 ## `LockedMemory`
 Locked memory is used to store sensitive data for long period of time.
-On top of having the same protections as `ProtectedMemory`, `LockedMemory` values are never not stored in clear. This means that even when scanning memory, an attacker can't read directly the sensitive data from a dump.
+On top of having the same protections as `ProtectedMemory`, `LockedMemory` values are never stored in clear. This means that even when scanning memory, an attacker can't read directly the sensitive data from a dump.
 We currently have multiple kind of locks on `LockedMemory`:
 - Encryption
 - NonContiguous data structure
