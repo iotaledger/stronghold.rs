@@ -724,6 +724,7 @@ impl Stronghold {
     pub async fn write_remote_vault(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         location: Location,
         payload: Vec<u8>,
         hint: RecordHint,
@@ -733,6 +734,7 @@ impl Stronghold {
 
         // write data
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: WriteToRemoteVault {
                 location: location.clone(),
@@ -751,12 +753,14 @@ impl Stronghold {
     pub async fn write_to_remote_store(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         key: Vec<u8>,
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: WriteToStore { key, payload, lifetime },
         };
@@ -765,9 +769,15 @@ impl Stronghold {
     }
 
     /// Read from the store of a remote Stronghold.
-    pub async fn read_from_remote_store(&self, peer: PeerId, key: Vec<u8>) -> P2pResult<Option<Vec<u8>>> {
+    pub async fn read_from_remote_store(
+        &self,
+        peer: PeerId,
+        client_path: Vec<u8>,
+        key: Vec<u8>,
+    ) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: ReadFromStore { key },
         };
@@ -779,10 +789,12 @@ impl Stronghold {
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         vault_path: V,
     ) -> P2pResult<Vec<(RecordId, RecordHint)>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: ListIds {
                 vault_path: vault_path.into(),
@@ -797,12 +809,15 @@ impl Stronghold {
     pub async fn remote_runtime_exec<P>(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         procedure: P,
     ) -> P2pResult<Result<P::Output, ProcedureError>>
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.remote_runtime_exec_chained(peer, vec![procedure.into()]).await?;
+        let res = self
+            .remote_runtime_exec_chained(peer, client_path, vec![procedure.into()])
+            .await?;
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
         Ok(mapped)
     }
@@ -812,11 +827,16 @@ impl Stronghold {
     pub async fn remote_runtime_exec_chained(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         procedures: Vec<StrongholdProcedure>,
     ) -> P2pResult<Result<Vec<ProcedureOutput>, ProcedureError>> {
         let actor = self.network_actor().await?;
         let request = Procedures { procedures };
-        let send_request = network_messages::SendRequest { peer, request };
+        let send_request = network_messages::SendRequest {
+            client_path,
+            peer,
+            request,
+        };
         let result = actor.send(send_request).await??;
         Ok(result)
     }

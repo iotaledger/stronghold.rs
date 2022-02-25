@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget},
-    state::p2p::{Network, NetworkConfig, ShRequest, ShResult},
+    actors::{secure_messages::WriteToVault, GetClient},
+    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
+    utils::LoadFromPath,
 };
 use actix::prelude::*;
+use engine::vault::ClientId;
 use futures::{FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
@@ -29,21 +31,21 @@ macro_rules! impl_handler {
 macro_rules! sh_request_dispatch {
     ($request:ident => |$inner: ident| $body:block) => {
         match $request {
-            ShRequest::CheckVault($inner) => $body
-            ShRequest::CheckRecord($inner) => $body
-            ShRequest::WriteToStore($inner) => $body
-            ShRequest::ReadFromStore($inner) => $body
-            ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::WriteToRemoteVault($inner) =>  {
+            Request::CheckVault($inner) => $body
+            Request::CheckRecord($inner) => $body
+            Request::WriteToStore($inner) => $body
+            Request::ReadFromStore($inner) => $body
+            Request::DeleteFromStore($inner) => $body
+            Request::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
             }
             #[cfg(test)]
-            ShRequest::ReadFromVault($inner) => $body
-            ShRequest::GarbageCollect($inner) => $body
-            ShRequest::ListIds($inner) => $body
-            ShRequest::ClearCache($inner) => $body
-            ShRequest::Procedures($inner) => $body
+            Request::ReadFromVault($inner) => $body
+            Request::GarbageCollect($inner) => $body
+            Request::RevokeData($inner) => $body
+            Request::ListIds($inner) => $body
+            Request::Procedures($inner) => $body
         }
     }
 }
@@ -62,9 +64,11 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
         let ReceiveRequest {
             request, response_tx, ..
         } = item;
+        let ShRequest { client_path, request } = request;
+        let client_id = ClientId::load_from_path(&client_path, &client_path);
         sh_request_dispatch!(request => |inner| {
             let fut = self.registry
-                .send(GetTarget)
+                .send(GetClient {id: client_id})
                 .and_then(|client| async { match client {
                     Some(client) => client.send(inner).await,
                     _ => Err(MailboxError::Closed)
@@ -79,7 +83,7 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
 
 impl<Rq> Handler<SendRequest<Rq>> for Network
 where
-    Rq: Into<ShRequest> + Message + 'static,
+    Rq: Into<Request> + Message + 'static,
     Rq::Result: TryFrom<ShResult, Error = ()>,
 {
     type Result = ResponseActFuture<Self, Result<Rq::Result, OutboundFailure>>;
@@ -87,8 +91,11 @@ where
     fn handle(&mut self, msg: SendRequest<Rq>, _: &mut Self::Context) -> Self::Result {
         let mut network = self.network.clone();
         async move {
-            let request: ShRequest = msg.request.into();
-            let res = network.send_request(msg.peer, request).await;
+            let sh_request = ShRequest {
+                client_path: msg.client_path,
+                request: msg.request.into(),
+            };
+            let res = network.send_request(msg.peer, sh_request).await;
             res.map(|wrapper| {
                 let res: Rq::Result = wrapper.try_into().unwrap();
                 res
@@ -202,6 +209,7 @@ pub mod messages {
         Rq: Message,
     {
         pub peer: PeerId,
+        pub client_path: Vec<u8>,
         pub request: Rq,
     }
 

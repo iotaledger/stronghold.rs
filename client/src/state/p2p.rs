@@ -4,7 +4,7 @@
 use crate::{
     actors::{
         secure_messages::{
-            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, Procedures, ReadFromStore,
+            CheckRecord, CheckVault, DeleteFromStore, GarbageCollect, ListIds, Procedures, ReadFromStore, RevokeData,
             WriteToStore, WriteToVault,
         },
         RecordError, Registry,
@@ -202,34 +202,40 @@ impl From<WriteToVault> for WriteToRemoteVault {
 
 pub type RemoteRecordError = String;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShRequest {
+    pub client_path: Vec<u8>,
+    pub request: Request,
+}
+
 // Wrapper for Requests to a remote Secure Client
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShRequest {
+pub enum Request {
     CheckVault(CheckVault),
     CheckRecord(CheckRecord),
     ListIds(ListIds),
     #[cfg(test)]
     ReadFromVault(ReadFromVault),
     WriteToRemoteVault(WriteToRemoteVault),
+    RevokeData(RevokeData),
+    GarbageCollect(GarbageCollect),
     ReadFromStore(ReadFromStore),
     WriteToStore(WriteToStore),
     DeleteFromStore(DeleteFromStore),
-    GarbageCollect(GarbageCollect),
-    ClearCache(ClearCache),
     Procedures(Procedures),
 }
 
-enum_from_inner!(ShRequest from CheckVault);
-enum_from_inner!(ShRequest from ListIds);
+enum_from_inner!(Request from CheckVault);
+enum_from_inner!(Request from ListIds);
 #[cfg(test)]
-enum_from_inner!(ShRequest from ReadFromVault);
-enum_from_inner!(ShRequest from WriteToRemoteVault);
-enum_from_inner!(ShRequest from ReadFromStore);
-enum_from_inner!(ShRequest from WriteToStore);
-enum_from_inner!(ShRequest from DeleteFromStore);
-enum_from_inner!(ShRequest from GarbageCollect);
-enum_from_inner!(ShRequest from ClearCache);
-enum_from_inner!(ShRequest from Procedures);
+enum_from_inner!(Request from ReadFromVault);
+enum_from_inner!(Request from WriteToRemoteVault);
+enum_from_inner!(Request from RevokeData);
+enum_from_inner!(Request from GarbageCollect);
+enum_from_inner!(Request from ReadFromStore);
+enum_from_inner!(Request from WriteToStore);
+enum_from_inner!(Request from DeleteFromStore);
+enum_from_inner!(Request from Procedures);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ShResult {

@@ -426,6 +426,9 @@ async fn test_stronghold_p2p() {
     let (res_tx, mut res_rx) = mpsc::channel(1);
     let res_tx_clone = res_tx.clone();
 
+    let remote_client = b"remote".to_vec();
+    let remote_client_clone = remote_client.clone();
+
     let spawned_local = arbiter.spawn(async move {
         let local_client = b"local".to_vec();
         let mut local_stronghold = Stronghold::init_stronghold_system(local_client, vec![])
@@ -447,14 +450,14 @@ async fn test_stronghold_p2p() {
 
         // test writing at remote and reading it from local stronghold
         let payload = local_stronghold
-            .read_from_remote_store(peer_id, key1)
+            .read_from_remote_store(peer_id, remote_client_clone.clone(), key1)
             .await
             .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e));
         assert_eq!(payload.unwrap(), data1);
 
         // test writing from local and reading it at remote
         local_stronghold
-            .write_to_remote_store(peer_id, key2, data2, None)
+            .write_to_remote_store(peer_id, remote_client_clone.clone(), key2, data2, None)
             .await
             .unwrap_or_else(|e| panic!("Could not write to remote store: {}", e));
         local_ready_tx.send(()).await.unwrap();
@@ -463,12 +466,18 @@ async fn test_stronghold_p2p() {
         let key3 = bytestring(1024);
         let original_data3 = b"some third data".to_vec();
         local_stronghold
-            .write_to_remote_store(peer_id, key3.clone(), original_data3.clone(), None)
+            .write_to_remote_store(
+                peer_id,
+                remote_client_clone.clone(),
+                key3.clone(),
+                original_data3.clone(),
+                None,
+            )
             .await
             .unwrap_or_else(|e| panic!("Could not write to remote store: {}", e));
 
         let payload = local_stronghold
-            .read_from_remote_store(peer_id, key3)
+            .read_from_remote_store(peer_id, remote_client_clone.clone(), key3)
             .await
             .unwrap_or_else(|e| panic!("Could not read from remote store: {}", e));
 
@@ -481,6 +490,7 @@ async fn test_stronghold_p2p() {
         match local_stronghold
             .remote_runtime_exec(
                 peer_id,
+                remote_client_clone,
                 Slip10Derive {
                     output: fresh::location(),
                     chain,
@@ -499,7 +509,6 @@ async fn test_stronghold_p2p() {
     assert!(spawned_local);
 
     let spawned_remote = arbiter.spawn(async move {
-        let remote_client = b"remote".to_vec();
         let mut remote_stronghold = Stronghold::init_stronghold_system(remote_client, vec![])
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
@@ -568,8 +577,9 @@ async fn test_p2p_config() {
 
     use crate::p2p::P2pError;
 
+    let remote_client = bytestring(4096);
     // Start remote stronghold and start listening
-    let mut remote_sh = Stronghold::init_stronghold_system(bytestring(4096), vec![])
+    let mut remote_sh = Stronghold::init_stronghold_system(remote_client.clone(), vec![])
         .await
         .unwrap();
     match remote_sh
@@ -640,7 +650,9 @@ async fn test_p2p_config() {
         Err(e) => panic!("Unexpected error {}", e),
     }
     // Test that the firewall rule is effective
-    let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
+    let res = remote_sh
+        .read_from_remote_store(peer_id, remote_client.clone(), bytestring(10))
+        .await;
     match res {
         Ok(_) => panic!("Request should be rejected."),
         Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),
@@ -673,7 +685,9 @@ async fn test_p2p_config() {
         Err(e) => panic!("Unexpected error {}", e),
     }
     // Test that the firewall rule is still effective
-    let res = remote_sh.read_from_remote_store(peer_id, bytestring(10)).await;
+    let res = remote_sh
+        .read_from_remote_store(peer_id, remote_client, bytestring(10))
+        .await;
     match res {
         Ok(_) => panic!("Request should be rejected."),
         Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),

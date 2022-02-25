@@ -23,6 +23,8 @@ use iota_stronghold::Location;
 use p2p::{Multiaddr, PeerId};
 use std::error::Error;
 
+const CLIENT_PATH: &[u8; 6] = b"client";
+
 // Mock remote Stronghold
 mod remote_stronghold {
     use super::*;
@@ -33,7 +35,7 @@ mod remote_stronghold {
     };
 
     pub async fn run(address_tx: oneshot::Sender<(PeerId, Multiaddr)>) -> Result<(), Box<dyn Error>> {
-        let mut stronghold = Stronghold::init_stronghold_system("client".into(), Vec::new()).await?;
+        let mut stronghold = Stronghold::init_stronghold_system(CLIENT_PATH.to_vec(), Vec::new()).await?;
         stronghold.spawn_p2p(NetworkConfig::default(), None).await?;
         stronghold.set_firewall_rule(Rule::AllowAll, Vec::new(), true).await?;
         let addr = stronghold.start_listening(None).await??;
@@ -49,7 +51,7 @@ mod remote_stronghold {
 mod local_client {
     use super::*;
     use iota_stronghold::{
-        p2p::{ShRequest, ShResult},
+        p2p::{Request, ShRequest, ShResult},
         procedures::{Ed25519Sign, GenerateKey, KeyType},
         Location, RecordHint,
     };
@@ -82,9 +84,11 @@ mod local_client {
             output: location,
             hint: key_hint,
         };
-        let res = network
-            .send_request(stronghold_id, ShRequest::Procedures(generate_key.into()))
-            .await?;
+        let request = ShRequest {
+            client_path: CLIENT_PATH.to_vec(),
+            request: Request::Procedures(generate_key.into()),
+        };
+        let res = network.send_request(stronghold_id, request).await?;
         match res {
             ShResult::Proc(res) => {
                 res?;
@@ -111,9 +115,11 @@ mod local_client {
             msg: msg_bytes,
             private_key: location,
         };
-        let res = network
-            .send_request(stronghold_id, ShRequest::Procedures(sign_message.into()))
-            .await?;
+        let request = ShRequest {
+            client_path: CLIENT_PATH.to_vec(),
+            request: Request::Procedures(sign_message.into()),
+        };
+        let res = network.send_request(stronghold_id, request).await?;
         match res {
             ShResult::Proc(res) => {
                 let signed: Vec<u8> = res?.pop().unwrap().into();
