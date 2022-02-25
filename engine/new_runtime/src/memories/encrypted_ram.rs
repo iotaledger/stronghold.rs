@@ -13,12 +13,11 @@ use serde::{
 // Additional data used as nonce
 const AD_SIZE: usize = 32;
 
-/// GuardedMemory is used when we want to store sensitive non encrypted data
-/// This shall always be short lived
+/// Buffer type in which the data is encrypted
 pub struct EncryptedRam<P: BoxProvider> {
     // Visibility within crate is for testing purpose
-    // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cypher is Buffer<u8>
-    cypher: Buffer<u8>,
+    // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cipher is Buffer<u8>
+    cipher: Buffer<u8>,
     // Configuration, we should only allow EncryptedRamConfig for this struct
     // We do not store the key in the struct config, just random data for security
     config: LockedConfiguration<P>,
@@ -26,7 +25,7 @@ pub struct EncryptedRam<P: BoxProvider> {
     ad: [u8; AD_SIZE],
 }
 
-// We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cypher is Buffer<u8>
+// We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cipher is Buffer<u8>
 impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
     fn alloc(payload: &[u8], config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
@@ -39,7 +38,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
                 P::random_buf(&mut ad).or(Err(EncryptionError))?;
                 Ok(EncryptedRam {
                     // Encrypt the payload before storing it
-                    cypher: {
+                    cipher: {
                         let encrypted_payload = P::box_seal(&key, &ad, payload).or(Err(EncryptionError))?;
                         Buffer::alloc(&encrypted_payload, BufferConfig(encrypted_payload.len()))
                             .expect("Failed to generate buffer")
@@ -76,7 +75,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
         // Decrypt and store the value in a Buffer
         if let EncryptedRamConfig(key, None) = config {
             // Note: data is not in the protected buffer here, change box_open to return a Buffer type?
-            let data = P::box_open(&key, &self.ad, &*self.cypher.borrow()).or(Err(DecryptionError))?;
+            let data = P::box_open(&key, &self.ad, &*self.cipher.borrow()).or(Err(DecryptionError))?;
             if let EncryptedRamConfig(_, Some(size)) = self.config {
                 Buffer::alloc(&data, BufferConfig(size))
             } else {
@@ -97,14 +96,14 @@ impl<P: BoxProvider> Drop for EncryptedRam<P> {
 
 impl<P: BoxProvider> Zeroize for EncryptedRam<P> {
     fn zeroize(&mut self) {
-        self.cypher.zeroize();
+        self.cipher.zeroize();
         self.config = LockedConfiguration::ZeroedConfig();
     }
 }
 
 impl<P: BoxProvider> Debug for EncryptedRam<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.cypher.fmt(f)
+        self.cipher.fmt(f)
     }
 }
 
@@ -199,8 +198,8 @@ mod tests {
             EncryptedRam::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], EncryptedRamConfig(key.clone(), Some(6)));
         assert!(ram.is_ok());
         let ram = ram.unwrap();
-        let cypher = &ram.cypher;
-        assert_ne!(*cypher.borrow(), [1, 2, 3, 4, 5, 6]);
+        let cipher = &ram.cipher;
+        assert_ne!(*cipher.borrow(), [1, 2, 3, 4, 5, 6]);
     }
 
 
