@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use stronghold_rlu::{NonBlockingQueue, NonBlockingStack, Queue, RLUVar, RluContext, Stack, TransactionError, RLU};
+use stronghold_rlu::{
+    NonBlockingQueue, NonBlockingStack, Queue, RLUVar, Read, RluContext, Stack, TransactionError, Write, RLU,
+};
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -96,12 +98,13 @@ fn test_queue() {
     assert_eq!(None, queue.poll());
 }
 
+#[ignore]
 #[test]
-fn test_queue_concurrent() {
+fn test_queue_threaded() {
     let queue = NonBlockingQueue::default();
 
     let mut workers = Vec::new();
-    let runs = 32;
+    let runs = 1024;
 
     for i in 0..runs {
         let q = queue.clone();
@@ -117,5 +120,42 @@ fn test_queue_concurrent() {
 
     for t in workers {
         t.join().expect("Failed to join thread");
+    }
+}
+
+#[ignore]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_queue_async() {
+    let queue = NonBlockingQueue::default();
+
+    let mut workers = Vec::new();
+    let runs = 4;
+
+    for i in 0..runs {
+        let q = queue.clone();
+
+        workers.push(tokio::spawn(async move {
+            q.put(i);
+        }));
+    }
+
+    // println!("all send, now reading");
+
+    for _ in 0..runs {
+        let q = queue.clone();
+        workers.push(tokio::spawn(async move {
+            match q.poll() {
+                Some(inner) => {
+                    println!("inner: {}", inner);
+                }
+                None => {
+                    println!("got none");
+                }
+            }
+        }));
+    }
+
+    for t in workers {
+        t.await.expect("Failed to join thread");
     }
 }

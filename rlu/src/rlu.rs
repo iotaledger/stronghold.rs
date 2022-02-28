@@ -173,7 +173,7 @@ where
 ///
 /// ## Example
 /// ```
-/// use stronghold_stm::rlu::Atomic;
+/// use stronghold_rlu::rlu::Atomic;
 /// let expected = 1024usize;
 /// let atomic_usize = Atomic::from(expected);
 /// assert_eq!(expected, *atomic_usize);
@@ -604,7 +604,9 @@ where
     ctrl: Arc<RLU<T>>,
 }
 
-impl<T> RluContext<T>
+/// [`Read<T>`] provides immutable read access to the synchronized data
+/// via the current managing context.
+pub trait Read<T>
 where
     T: Clone,
 {
@@ -618,7 +620,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use stronghold_stm::rlu::*;
+    /// use stronghold_rlu::rlu::*;
     ///
     /// // create simple value, that should be managed by RLU
     /// let value = 6usize;
@@ -644,7 +646,55 @@ where
     ///     Ok(())
     /// });
     /// ```
-    pub fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T> {
+    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T>;
+}
+
+/// [`Write<T>`] gives mutable access to synchronized value via the current managing
+/// context.
+pub trait Write<T>
+where
+    T: Clone,
+{
+    /// Returns an mutable [`WriteGuard`] on the value of [`RLUVar`]
+    ///
+    /// This function returns a mutable copy if the original value. The [`WriteGuard`]
+    /// ensures that after dereferencing and writing to the value, the internal log
+    /// will be updated to the most recent change
+    ///
+    /// # Example
+    /// ```
+    /// use stronghold_rlu::rlu::*;
+    ///
+    /// // create simple value, that should be managed by RLU
+    /// let value = 6usize;
+    ///
+    /// // first we need to create a controller
+    /// let ctrl = RLU::new();
+    ///
+    /// // via the controller  we create a RLUVar reference
+    /// let rlu_var: RLUVar<usize> = ctrl.create(value);
+    ///
+    /// // we clone the reference to it to use it inside a thread
+    /// let var_1 = rlu_var.clone();
+    ///
+    /// // via the controller we can spawn a thread safe context
+    /// ctrl.execute(move |mut context| {
+    ///     let mut inner = context.get_mut(&var_1)?;
+    ///     let data = &mut *inner;
+    ///     *data += 10;
+    ///     Ok(())
+    /// });
+    ///
+    /// assert_eq!(*rlu_var.get(), 16);
+    /// ```
+    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>>;
+}
+
+impl<T> Read<T> for RluContext<T>
+where
+    T: Clone,
+{
+    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T> {
         // prepare read lock
         self.read_lock();
 
@@ -728,40 +778,13 @@ where
             InnerVar::Original { data, .. } | InnerVar::Copy { data, .. } => ReadGuard::new(Ok(data), self),
         }
     }
+}
 
-    /// Returns an mutable [`WriteGuard`] on the value of [`RLUVar`]
-    ///
-    /// This function returns a mutable copy if the original value. The [`WriteGuard`]
-    /// ensures that after dereferencing and writing to the value, the internal log
-    /// will be updated to the most recent change
-    ///
-    /// # Example
-    /// ```
-    /// use stronghold_stm::rlu::*;
-    ///
-    /// // create simple value, that should be managed by RLU
-    /// let value = 6usize;
-    ///
-    /// // first we need to create a controller
-    /// let ctrl = RLU::new();
-    ///
-    /// // via the controller  we create a RLUVar reference
-    /// let rlu_var: RLUVar<usize> = ctrl.create(value);
-    ///
-    /// // we clone the reference to it to use it inside a thread
-    /// let var_1 = rlu_var.clone();
-    ///
-    /// // via the controller we can spawn a thread safe context
-    /// ctrl.execute(move |mut context| {
-    ///     let mut inner = context.get_mut(&var_1)?;
-    ///     let data = &mut *inner;
-    ///     *data += 10;
-    ///     Ok(())
-    /// });
-    ///
-    /// assert_eq!(*rlu_var.get(), 16);
-    /// ```
-    pub fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
+impl<T> Write<T> for RluContext<T>
+where
+    T: Clone,
+{
+    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
         self.write_lock();
 
         let self_id = self.id.load(Ordering::Acquire);
@@ -798,7 +821,12 @@ where
             self,
         ))
     }
+}
 
+impl<T> RluContext<T>
+where
+    T: Clone,
+{
     fn read_lock(&self) {
         self.local_clock.fetch_add(1, Ordering::SeqCst);
         self.is_writer.store(false, Ordering::SeqCst);
