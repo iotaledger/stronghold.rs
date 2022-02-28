@@ -25,7 +25,7 @@ Stronghold employs actix as actor framework to manage concurrent operations insi
 
 [x] - multiple concurrent reads and writes
 [x] - lock free integration
-[x] - (optionl) protected memory handling integrated
+[x] - (optional) protected memory handling integrated
 
 # Open Issues / Todo
 

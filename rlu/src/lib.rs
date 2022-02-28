@@ -3,14 +3,14 @@
 
 //! # Stronghold Read-Log-Update
 //!
-//! prose ...
+//! This crate implements the read-log-update (RLU) synchronization mechanism.
 #![allow(unused_variables, dead_code, clippy::type_complexity)]
 
 pub mod nb;
 pub mod rlu;
 
 pub use nb::{NonBlockingQueue, NonBlockingStack, Queue, Stack};
-pub use rlu::{RLUVar, RluContext, TransactionError, RLU};
+pub use rlu::{RLUVar, Read, RluContext, TransactionError, Write, RLU};
 
 // This creates an asynchronous operation that runs atomically inside a transaction. Shared
 // memory must be passed as [`TVar`] to read from and write to it. The transaction is retried
