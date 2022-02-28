@@ -4,6 +4,7 @@ members = [
   "engine/runtime",
   "engine/new_runtime",
   "client",
+  "client_new",
   "utils",
   "derive",
   "p2p",
