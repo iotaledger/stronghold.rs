@@ -50,7 +50,7 @@ mod local_client {
     use super::*;
     use iota_stronghold::{
         p2p::{ShRequest, ShResult},
-        procedures::{Ed25519Sign, GenerateKey, KeyType, OutputKey, PersistOutput, PersistSecret},
+        procedures::{Ed25519Sign, GenerateKey, KeyType},
         Location, RecordHint,
     };
     use p2p::{ChannelSinkConfig, EventChannel, StrongholdP2p};
@@ -77,9 +77,13 @@ mod local_client {
         let mut network = setup_network(stronghold_id, stronghold_addr).await?;
         println!("Generating new ed25519 keypair at location: {:?}", location);
         let key_hint = RecordHint::new("key").unwrap();
-        let generate_key = GenerateKey::new(KeyType::Ed25519).write_secret(location, key_hint);
+        let generate_key = GenerateKey {
+            ty: KeyType::Ed25519,
+            output: location,
+            hint: key_hint,
+        };
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(generate_key.into()))
+            .send_request(stronghold_id, ShRequest::Procedures(generate_key.into()))
             .await?;
         match res {
             ShResult::Proc(res) => {
@@ -103,13 +107,16 @@ mod local_client {
             message, location
         );
         let msg_bytes: Vec<u8> = message.into();
-        let sign_message = Ed25519Sign::new(msg_bytes, location).store_output(OutputKey::new("signed"));
+        let sign_message = Ed25519Sign {
+            msg: msg_bytes,
+            private_key: location,
+        };
         let res = network
-            .send_request(stronghold_id, ShRequest::Procedure(sign_message.into()))
+            .send_request(stronghold_id, ShRequest::Procedures(sign_message.into()))
             .await?;
         match res {
             ShResult::Proc(res) => {
-                let signed: Vec<u8> = res?.single_output().unwrap();
+                let signed: Vec<u8> = res?.pop().unwrap().into();
                 println!("Signed message: {:?}", signed);
                 Ok(())
             }
