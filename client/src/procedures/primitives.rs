@@ -669,24 +669,23 @@ impl GenerateSecret for Pbkdf2Hmac {
     type Output = ();
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let secret;
-        match self.hash_type {
+        let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut buffer = [0; SHA256_LEN];
                 PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count as usize, &mut buffer)?;
-                secret = buffer.to_vec()
+                buffer.to_vec()
             }
             Sha2Hash::Sha384 => {
                 let mut buffer = [0; SHA384_LEN];
                 PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count as usize, &mut buffer)?;
-                secret = buffer.to_vec()
+                buffer.to_vec()
             }
             Sha2Hash::Sha512 => {
                 let mut buffer = [0; SHA512_LEN];
                 PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count as usize, &mut buffer)?;
-                secret = buffer.to_vec()
+                buffer.to_vec()
             }
-        }
+        };
         Ok(Products { secret, output: () })
     }
 
