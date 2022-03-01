@@ -74,7 +74,7 @@ impl Default for ProtocolSupport {
 impl ProtocolSupport {
     // Derive the supported protocols from the firewall rules.
     // A direction will only be not supported if the firewall is configured to reject all request in that direction.
-    pub fn from_rules<TRq: Clone>(rules: &FirewallRules<TRq>) -> Self {
+    pub fn from_rules<TRq>(rules: &FirewallRules<TRq>) -> Self {
         let allow_inbound = rules
             .inbound
             .as_ref()

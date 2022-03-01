@@ -18,12 +18,12 @@
 //! # use p2p::{
 //! #   firewall::{
 //! #       permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-//! #       FirewallRules, Rule,
+//! #       FirewallRules, FwRequest, Rule,
 //! #   },
 //! #   ChannelSinkConfig, EventChannel, StrongholdP2p, StrongholdP2pBuilder,
 //! # };
 //! # use futures::channel::mpsc;
-//! # use std::{borrow::Borrow, error::Error, marker::PhantomData};
+//! # use std::{error::Error, marker::PhantomData};
 //! # use serde::{Serialize, Deserialize};
 //! # type MessageResponse = String;
 //! #

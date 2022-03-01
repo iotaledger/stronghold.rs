@@ -65,13 +65,13 @@ use futures::{channel::mpsc, FutureExt, StreamExt};
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallRequest, FirewallRules, Rule,
+        FirewallRequest, FirewallRules, FwRequest, Rule,
     },
     ChannelSinkConfig, EventChannel, PeerId, ReceiveRequest, RequestDirection, StrongholdP2p,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, error::Error, marker::PhantomData, str::FromStr, time::Duration};
+use std::{error::Error, marker::PhantomData, str::FromStr, time::Duration};
 use tokio::io::{stdin, AsyncBufReadExt, BufReader, Lines, Stdin};
 
 const RETRY_USER_INPUT_MAX: usize = 3;

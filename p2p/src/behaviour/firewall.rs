@@ -8,10 +8,20 @@ use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData};
+
+pub trait FwRequest<Rq>: Send + 'static {
+    fn from_request(request: &Rq) -> Self;
+}
+
+impl<T: Clone + Send + 'static, U: Borrow<T>> FwRequest<U> for T {
+    fn from_request(request: &U) -> Self {
+        request.borrow().clone()
+    }
+}
 
 /// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
-pub enum FirewallRequest<TRq: Clone> {
+pub enum FirewallRequest<TRq> {
     /// Query for a peer specific rule.
     /// This is necessary if there is neither a default- nor a peer-specific rule for that peer.
     PeerSpecificRule {
@@ -36,10 +46,9 @@ pub enum FirewallRequest<TRq: Clone> {
 }
 
 /// Rules for requests in a specific [`RequestDirection`].
-#[derive(Clone)]
 pub enum Rule<TRq, F = fn(&TRq) -> bool>
 where
-    F: Fn(&TRq) -> bool,
+    F: Clone + Fn(&TRq) -> bool,
 {
     /// Allow all requests
     AllowAll,
@@ -54,7 +63,7 @@ where
 
 impl<TRq, F> fmt::Debug for Rule<TRq, F>
 where
-    F: Fn(&TRq) -> bool,
+    F: Clone + Fn(&TRq) -> bool,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -62,6 +71,23 @@ where
             Rule::RejectAll { .. } => write!(f, "Rule::RejectAll"),
             Rule::Ask { .. } => write!(f, "Rule::Ask"),
             Rule::Restricted { .. } => write!(f, "Rule::Restricted"),
+        }
+    }
+}
+
+impl<TRq, F> Clone for Rule<TRq, F>
+where
+    F: Clone + Fn(&TRq) -> bool,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Rule::AllowAll => Rule::AllowAll,
+            Rule::RejectAll => Rule::RejectAll,
+            Rule::Restricted { restriction, _maker } => Rule::Restricted {
+                restriction: restriction.clone(),
+                _maker: *_maker,
+            },
+            Rule::Ask => Rule::Ask,
         }
     }
 }
@@ -90,15 +116,24 @@ impl RuleDirection {
 }
 
 /// Rule configuration for inbound and outbound requests.
-#[derive(Debug, Clone)]
-pub struct FirewallRules<TRq: Clone> {
+#[derive(Debug)]
+pub struct FirewallRules<TRq> {
     /// Rule for inbound requests.
     pub inbound: Option<Rule<TRq>>,
     /// Rule for outbound requests.
     pub outbound: Option<Rule<TRq>>,
 }
 
-impl<TRq: Clone> FirewallRules<TRq> {
+impl<TRq> Clone for FirewallRules<TRq> {
+    fn clone(&self) -> Self {
+        FirewallRules {
+            inbound: self.inbound.clone(),
+            outbound: self.outbound.clone(),
+        }
+    }
+}
+
+impl<TRq> FirewallRules<TRq> {
     /// Create a new instance with no rules.
     pub fn empty() -> Self {
         FirewallRules {
@@ -132,17 +167,17 @@ impl<TRq: Clone> FirewallRules<TRq> {
 /// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(try_from = "SerdeFirewallConfig")]
 #[serde(into = "SerdeFirewallConfig")]
-pub struct FirewallConfiguration<TRq: Clone> {
+pub struct FirewallConfiguration<TRq> {
     /// Default rules that are used if there are no peer-specific ones for a peer.
     pub default: FirewallRules<TRq>,
     /// Peer specific rules.
     pub peer_rules: HashMap<PeerId, FirewallRules<TRq>>,
 }
 
-impl<TRq: Clone> Default for FirewallConfiguration<TRq> {
+impl<TRq> Default for FirewallConfiguration<TRq> {
     fn default() -> Self {
         FirewallConfiguration {
             default: FirewallRules::empty(),
@@ -151,7 +186,16 @@ impl<TRq: Clone> Default for FirewallConfiguration<TRq> {
     }
 }
 
-impl<TRq: Clone> FirewallConfiguration<TRq> {
+impl<TRq> Clone for FirewallConfiguration<TRq> {
+    fn clone(&self) -> Self {
+        FirewallConfiguration {
+            default: self.default.clone(),
+            peer_rules: self.peer_rules.clone(),
+        }
+    }
+}
+
+impl<TRq> FirewallConfiguration<TRq> {
     /// Create a new instance with the given default rules.
     /// If no rules are set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
     /// inbound **and outbound** requests.

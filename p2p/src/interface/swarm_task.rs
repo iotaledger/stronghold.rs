@@ -4,7 +4,7 @@
 use crate::{
     assemble_relayed_addr,
     behaviour::{BehaviourState, EstablishedConnections},
-    firewall::FirewallRules,
+    firewall::{FirewallRules, FwRequest},
     RelayNotSupported,
 };
 use futures::{
@@ -16,7 +16,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use smallvec::SmallVec;
-use std::{borrow::Borrow, collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom};
 
 use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule, RuleDirection};
 
@@ -24,7 +24,7 @@ pub type Ack = ();
 
 // Perform actions on the Swarm.
 // The return value is sent back through the `tx_yield` oneshot channel.
-pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
+pub enum SwarmOperation<Rq, Rs, TRq> {
     SendRequest {
         peer: PeerId,
         request: Rq,
@@ -153,9 +153,9 @@ pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
 // [`SwarmOperation`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
 pub struct SwarmTask<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     // libp2p [`Swarm`][libp2p::Swarm] that uses `NetBehaviour` as network behaviour protocol.
     swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
@@ -192,9 +192,9 @@ where
 
 impl<Rq, Rs, TRq> SwarmTask<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     // Create new instance of a swarm-task.
     pub fn new(

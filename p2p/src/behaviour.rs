@@ -20,6 +20,7 @@ pub mod firewall;
 mod handler;
 #[doc(hidden)]
 mod request_manager;
+use self::firewall::FwRequest;
 pub use self::request_manager::EstablishedConnections;
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
@@ -55,7 +56,6 @@ use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{
-    borrow::Borrow,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
@@ -142,9 +142,9 @@ impl Default for NetBehaviourConfig {
 /// the configuration of a firewall to set permissions individually for different peers and request types.
 pub struct NetBehaviour<Rq, Rs, TRq = Rq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     // integrate Mdns protocol
     mdns: Toggle<Mdns>,
@@ -165,7 +165,7 @@ where
     next_inbound_id: Arc<AtomicU64>,
 
     // Manager for pending requests, their state and necessary actions.
-    request_manager: RequestManager<Rq, Rs, TRq>,
+    request_manager: RequestManager<Rq, Rs>,
     // Address information and relay settings for known peers.
     addresses: AddressInfo,
     // Configuration of the firewall.
@@ -185,9 +185,9 @@ where
 
 impl<Rq, Rs, TRq> NetBehaviour<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
     ///
@@ -262,8 +262,7 @@ where
     /// Send a new request to a remote peer.
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> RequestId {
         let request_id = self.next_request_id();
-        let approval_status =
-            self.check_approval_status(peer, request_id, request.borrow(), RequestDirection::Outbound);
+        let approval_status = self.check_approval_status(peer, request_id, &request, RequestDirection::Outbound);
         self.request_manager
             .on_new_out_request(peer, request_id, request, approval_status);
         request_id
@@ -417,7 +416,7 @@ where
         &mut self,
         peer: PeerId,
         request_id: RequestId,
-        request: &TRq,
+        request: &Rq,
         direction: RequestDirection,
     ) -> ApprovalStatus {
         // Check the firewall rules for the target peer and direction.
@@ -434,13 +433,13 @@ where
             }
             Some(Rule::Ask) => {
                 // Query for individual approval for the requests.
-                self.query_request_approval(peer, request_id, request.clone(), direction);
+                self.query_request_approval(peer, request_id, TRq::from_request(request), direction);
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::AllowAll) => ApprovalStatus::Approved,
             Some(Rule::RejectAll) => ApprovalStatus::Rejected,
             Some(Rule::Restricted { restriction, .. }) => {
-                if restriction(request) {
+                if restriction(&TRq::from_request(request)) {
                     ApprovalStatus::Approved
                 } else {
                     ApprovalStatus::Rejected
@@ -480,8 +479,7 @@ where
                 request,
                 response_tx,
             } => {
-                let approval_status =
-                    self.check_approval_status(peer, request_id, request.borrow(), RequestDirection::Inbound);
+                let approval_status = self.check_approval_status(peer, request_id, &request, RequestDirection::Inbound);
                 self.request_manager.on_new_in_request(
                     peer,
                     request_id,
@@ -577,9 +575,9 @@ where
 
 impl<Rq, Rs, TRq> NetworkBehaviour for NetBehaviour<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     type ProtocolsHandler = ProtoHandler<Rq, Rs>;
     type OutEvent = BehaviourEvent<Rq, Rs>;
@@ -925,7 +923,7 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BehaviourState<TRq: Clone> {
+pub struct BehaviourState<TRq> {
     pub firewall: FirewallConfiguration<TRq>,
     pub address_info: AddressInfo,
 }
@@ -1127,7 +1125,7 @@ mod test {
         }
     }
 
-    async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong, Ping>>) {
+    async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
         let id_keys = identity::Keypair::generate_ed25519();
         let peer = id_keys.public().to_peer_id();
         let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();

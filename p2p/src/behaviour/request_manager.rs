@@ -4,7 +4,7 @@
 pub use self::connections::EstablishedConnections;
 use super::{ProtocolSupport, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::{
-    firewall::{FirewallRules, Rule, RuleDirection},
+    firewall::{FirewallRules, FwRequest, Rule, RuleDirection},
     unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId,
 };
 mod connections;
@@ -15,11 +15,7 @@ use libp2p::{
     PeerId,
 };
 use smallvec::SmallVec;
-use std::{
-    borrow::Borrow,
-    collections::{HashMap, VecDeque},
-    marker::PhantomData,
-};
+use std::collections::{HashMap, VecDeque};
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub enum BehaviourAction<Rq, Rs> {
@@ -86,7 +82,7 @@ pub enum ApprovalStatus {
 //
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
-pub struct RequestManager<Rq: Borrow<TRq>, Rs, TRq> {
+pub struct RequestManager<Rq, Rs> {
     // Store of inbound requests that have not been approved yet.
     inbound_request_store: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Store of outbound requests that have not been approved, or where the target peer is not connected yet.
@@ -107,11 +103,9 @@ pub struct RequestManager<Rq: Borrow<TRq>, Rs, TRq> {
 
     // Actions that should be emitted by the NetBehaviour as NetworkBehaviourAction.
     actions: VecDeque<BehaviourAction<Rq, Rs>>,
-
-    _marker: PhantomData<TRq>,
 }
 
-impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
+impl<Rq, Rs> RequestManager<Rq, Rs> {
     pub fn new() -> Self {
         RequestManager {
             inbound_request_store: HashMap::new(),
@@ -121,7 +115,6 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
             awaiting_peer_rule: HashMap::new(),
             awaiting_approval: SmallVec::new(),
             actions: VecDeque::new(),
-            _marker: PhantomData,
         }
     }
 
@@ -350,7 +343,7 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
     // Handle pending requests for a newly received rule.
     // Emit necessary 'BehaviourEvents' depending on rules and direction.
     // The method return the requests for which the `NetBehaviour` should query a `FirewallRequest::RequestApproval`.
-    pub fn on_peer_rule(
+    pub fn on_peer_rule<TRq: FwRequest<Rq>>(
         &mut self,
         peer: PeerId,
         rules: FirewallRules<TRq>,
@@ -563,11 +556,11 @@ impl<Rq: Borrow<TRq>, Rs, TRq: Clone> RequestManager<Rq, Rs, TRq> {
     }
 
     // Get the request type of a store request.
-    fn get_request_value_ref(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<TRq> {
+    fn get_request_value_ref<TRq: FwRequest<Rq>>(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<TRq> {
         let request = match dir {
             RequestDirection::Inbound => self.inbound_request_store.get(request_id).map(|(_, rq, _)| rq),
             RequestDirection::Outbound => self.outbound_request_store.get(request_id).map(|(_, rq)| rq),
         };
-        request.map(|rq| rq.borrow().clone())
+        request.map(|rq| TRq::from_request(rq))
     }
 }

@@ -12,13 +12,13 @@ use libp2p::tcp::TokioTcpConfig;
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallRequest, FirewallRules, Rule, RuleDirection,
+        FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection,
     },
     ChannelSinkConfig, EventChannel, InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest,
     RequestDirection, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, fmt, future, marker::PhantomData, task::Poll, time::Duration};
+use std::{fmt, future, marker::PhantomData, task::Poll, time::Duration};
 use stronghold_utils::random::random;
 use tokio::time::sleep;
 

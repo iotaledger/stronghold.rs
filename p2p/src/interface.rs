@@ -13,7 +13,7 @@ pub use types::*;
 
 use crate::{
     behaviour::{BehaviourEvent, BehaviourState, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
-    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection},
+    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection},
     RelayNotSupported,
 };
 
@@ -33,7 +33,7 @@ use libp2p::{
 };
 #[cfg(feature = "tcp-transport")]
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
-use std::{borrow::Borrow, io, time::Duration};
+use std::{io, time::Duration};
 
 #[derive(Clone)]
 /// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
@@ -46,9 +46,8 @@ use std::{borrow::Borrow, io, time::Duration};
 ///
 /// ```
 /// # use serde::{Serialize, Deserialize};
-/// # use p2p::{ChannelSinkConfig, EventChannel, StrongholdP2p};
+/// # use p2p::{ChannelSinkConfig, EventChannel, FwRequest, StrongholdP2p};
 /// # use futures::channel::mpsc;
-/// # use std::borrow::Borrow;
 /// #
 /// // Type of the requests send to the remote.
 /// #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -69,11 +68,11 @@ use std::{borrow::Borrow, io, time::Duration};
 ///     Message,
 /// }
 ///
-/// impl Borrow<RequestType> for Request {
-///     fn borrow(&self) -> &RequestType {
-///         match self {
-///             Request::Ping => &RequestType::Ping,
-///             Request::Message(..) => &RequestType::Message,
+/// impl FwRequest<Request> for RequestType {
+///     fn borrow(request: &Request) -> RequestType {
+///         match request {
+///             Request::Ping => RequestType::Ping,
+///             Request::Message(..) => RequestType::Message,
 ///         }
 ///     }
 /// }
@@ -104,13 +103,13 @@ use std::{borrow::Borrow, io, time::Duration};
 pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
     // Request message type
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     // Response message type
     Rs: RqRsMessage,
     // Optional, tailored request-type that is used in the firewall to get approval.
     // This has the purpose of trimming the actual request down to the firewall-relevant information and e.g. avoid
     // exposing the request's actual content.
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     // Id of the local peer.
     local_peer_id: PeerId,
@@ -122,9 +121,9 @@ where
 
 impl<Rq, Rs, TRq> StrongholdP2p<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     /// Create a new [`StrongholdP2p`] instance with the default configuration.
     /// Refer to [`StrongholdP2pBuilder::new`] and [`StrongholdP2pBuilder::build`] for detailed information.
@@ -486,9 +485,9 @@ pub enum InitKeypair {
 /// Optionally all events regarding connections and listeners are forwarded as [`NetworkEvent`].
 pub struct StrongholdP2pBuilder<Rq, Rs, TRq = Rq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
     requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
@@ -519,9 +518,9 @@ where
 
 impl<Rq, Rs, TRq> StrongholdP2pBuilder<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
     /// Parameters:
     /// - `firewall_channel`: Channel for [`FirewallRequest`] if there are no fixed rules in the firewall or

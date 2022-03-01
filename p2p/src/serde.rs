@@ -74,7 +74,7 @@ pub enum SerdeRule {
 impl SerdeRule {
     pub fn into_rule_with_restriction<TRq, F>(self, restriction: F) -> Rule<TRq, F>
     where
-        F: Fn(&TRq) -> bool,
+        F: Clone + Fn(&TRq) -> bool,
     {
         Rule::try_from(self).unwrap_or(Rule::Restricted {
             restriction,
@@ -85,7 +85,7 @@ impl SerdeRule {
 
 impl<TRq, F> From<Rule<TRq, F>> for SerdeRule
 where
-    F: Fn(&TRq) -> bool,
+    F: Clone + Fn(&TRq) -> bool,
 {
     fn from(rule: Rule<TRq, F>) -> Self {
         match rule {
@@ -99,7 +99,7 @@ where
 
 impl<TRq, F> TryFrom<SerdeRule> for Rule<TRq, F>
 where
-    F: Fn(&TRq) -> bool,
+    F: Clone + Fn(&TRq) -> bool,
 {
     type Error = ();
     fn try_from(rule: SerdeRule) -> Result<Self, Self::Error> {
@@ -118,7 +118,7 @@ pub struct SerdeFirewallRules {
     outbound: Option<SerdeRule>,
 }
 
-impl<TRq: Clone> From<FirewallRules<TRq>> for SerdeFirewallRules {
+impl<TRq> From<FirewallRules<TRq>> for SerdeFirewallRules {
     fn from(rules: FirewallRules<TRq>) -> Self {
         SerdeFirewallRules {
             inbound: rules.inbound.map(|r| r.into()),
@@ -127,7 +127,7 @@ impl<TRq: Clone> From<FirewallRules<TRq>> for SerdeFirewallRules {
     }
 }
 
-impl<TRq: Clone> From<SerdeFirewallRules> for FirewallRules<TRq> {
+impl<TRq> From<SerdeFirewallRules> for FirewallRules<TRq> {
     fn from(rules: SerdeFirewallRules) -> Self {
         FirewallRules {
             inbound: rules.inbound.and_then(|r| r.try_into().ok()),
@@ -142,7 +142,7 @@ pub struct SerdeFirewallConfig {
     peer_rules: HashMap<SerdePeerId, SerdeFirewallRules>,
 }
 
-impl<TRq: Clone> From<FirewallConfiguration<TRq>> for SerdeFirewallConfig {
+impl<TRq> From<FirewallConfiguration<TRq>> for SerdeFirewallConfig {
     fn from(config: FirewallConfiguration<TRq>) -> Self {
         let default = config.default.into();
         let peer_rules = config
@@ -161,7 +161,7 @@ impl<TRq: Clone> From<FirewallConfiguration<TRq>> for SerdeFirewallConfig {
     }
 }
 
-impl<TRq: Clone> TryFrom<SerdeFirewallConfig> for FirewallConfiguration<TRq> {
+impl<TRq> TryFrom<SerdeFirewallConfig> for FirewallConfiguration<TRq> {
     type Error = multihash::Error;
 
     fn try_from(config: SerdeFirewallConfig) -> Result<Self, Self::Error> {
