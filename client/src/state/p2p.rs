@@ -16,12 +16,12 @@ use crate::{
 use actix::prelude::*;
 use futures::channel::mpsc;
 use p2p::{
-    firewall::{FirewallRules, FwRequest},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, ReceiveRequest, StrongholdP2p,
-    StrongholdP2pBuilder,
+    firewall::{FirewallRules, FwRequest, Rule, RuleDirection},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest,
+    StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, io, time::Duration};
+use std::{convert::TryFrom, io, marker::PhantomData, sync::Arc, time::Duration};
 
 #[cfg(test)]
 use crate::actors::secure_testing::ReadFromVault;
@@ -100,6 +100,15 @@ impl Network {
             _config: network_config,
         };
         Ok(actor)
+    }
+
+    pub async fn set_rule(&mut self, peer: PeerId, use_: bool, write: bool, clone: bool) {
+        let restriction = move |rq: &AccessRequest| rq.check(use_, write, clone);
+        let rule = Rule::Restricted {
+            restriction: Arc::new(restriction),
+            _maker: PhantomData,
+        };
+        self.network.set_peer_rule(peer, RuleDirection::Inbound, rule).await
     }
 }
 
@@ -273,6 +282,18 @@ impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
 pub struct AccessRequest {
     pub client_path: Vec<u8>,
     pub locations: Vec<Access>,
+}
+
+impl AccessRequest {
+    fn check(&self, use_: bool, write: bool, clone: bool) -> bool {
+        self.locations.iter().all(|access| match access {
+            Access::Use { .. } => use_,
+            Access::Write { .. } => write,
+            Access::Clone { .. } => clone,
+            Access::List { .. } => use_ || write || clone,
+            _ => todo!(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

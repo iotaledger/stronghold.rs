@@ -18,7 +18,7 @@ use p2p::{
     RequestDirection, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt, future, marker::PhantomData, task::Poll, time::Duration};
+use std::{fmt, future, marker::PhantomData, sync::Arc, task::Poll, time::Duration};
 use stronghold_utils::random::random;
 use tokio::time::sleep;
 
@@ -77,8 +77,7 @@ async fn init_peer() -> NewPeer {
 enum TestPermission {
     AllowAll,
     RejectAll,
-    PingOnly,
-    OtherOnly,
+    Restricted(RequestPermission),
 }
 
 impl TestPermission {
@@ -86,8 +85,8 @@ impl TestPermission {
         match random::<u8>() % 4 {
             0 => TestPermission::AllowAll,
             1 => TestPermission::RejectAll,
-            2 => TestPermission::PingOnly,
-            3 => TestPermission::OtherOnly,
+            2 => TestPermission::Restricted(RequestPermission::Ping),
+            3 => TestPermission::Restricted(RequestPermission::Other),
             _ => unreachable!(),
         }
     }
@@ -101,14 +100,13 @@ impl TestPermission {
         match self {
             TestPermission::AllowAll => Rule::AllowAll,
             TestPermission::RejectAll => Rule::RejectAll,
-            TestPermission::PingOnly => Rule::Restricted {
-                restriction: |rq: &RequestPermission| Self::restrict_by_type(rq, RequestPermission::Ping),
-                _maker: PhantomData,
-            },
-            TestPermission::OtherOnly => Rule::Restricted {
-                restriction: |rq: &RequestPermission| Self::restrict_by_type(rq, RequestPermission::Other),
-                _maker: PhantomData,
-            },
+            TestPermission::Restricted(permission) => {
+                let permission = *permission;
+                Rule::Restricted {
+                    restriction: Arc::new(move |rq: &RequestPermission| Self::restrict_by_type(rq, permission)),
+                    _maker: PhantomData,
+                }
+            }
         }
     }
 }
@@ -201,8 +199,8 @@ impl<'a> RulesTestConfig<'a> {
         let is_allowed = |rule: TestPermission| match rule {
             TestPermission::AllowAll => true,
             TestPermission::RejectAll => false,
-            TestPermission::PingOnly => matches!(req, Request::Ping),
-            TestPermission::OtherOnly => matches!(req, Request::Other),
+            TestPermission::Restricted(RequestPermission::Ping) => matches!(req, Request::Ping),
+            TestPermission::Restricted(RequestPermission::Other) => matches!(req, Request::Other),
         };
         if !is_allowed(a_rule) {
             let res = res_future.await;
@@ -220,7 +218,7 @@ impl<'a> RulesTestConfig<'a> {
                     Err(OutboundFailure::UnsupportedProtocols) | Err(OutboundFailure::ConnectionClosed) => {}
                     Err(e) => panic!("Unexpected Failure {:?}; config {}", e, self),
                 },
-                TestPermission::PingOnly | TestPermission::OtherOnly => {
+                TestPermission::Restricted(_) => {
                     match res_future.await {
                         Ok(_) => panic!("Unexpected response; config {}", self),
                         Err(OutboundFailure::Timeout) | Err(OutboundFailure::ConnectionClosed) => {}

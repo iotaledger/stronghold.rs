@@ -23,7 +23,7 @@
 //! #   ChannelSinkConfig, EventChannel, StrongholdP2p, StrongholdP2pBuilder,
 //! # };
 //! # use futures::channel::mpsc;
-//! # use std::{error::Error, marker::PhantomData};
+//! # use std::{error::Error, marker::PhantomData, sync::Arc};
 //! # use serde::{Serialize, Deserialize};
 //! # type MessageResponse = String;
 //! #
@@ -49,11 +49,12 @@
 //! assert_eq!(MessagePermission::Other.permission(), 4);
 //!
 //! // Create rule that only permits ping-messages.
+//! let restriction = |rq: &MessagePermission| {
+//!     let allowed_variant = FirewallPermission::none().add_permissions([&MessagePermission::Ping.permission()]);
+//!     allowed_variant.permits(&rq.permission())
+//! };
 //! let rule: Rule<MessagePermission> = Rule::Restricted {
-//!     restriction: |rq: &MessagePermission| {
-//!         let allowed_variant = FirewallPermission::none().add_permissions([&MessagePermission::Ping.permission()]);
-//!         allowed_variant.permits(&rq.permission())
-//!     },
+//!     restriction: Arc::new(restriction),
 //!     _maker: PhantomData,
 //! };
 //!

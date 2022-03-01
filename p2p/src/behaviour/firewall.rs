@@ -8,7 +8,7 @@ use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
 pub trait FwRequest<Rq>: Send + 'static {
     fn from_request(request: &Rq) -> Self;
@@ -46,25 +46,22 @@ pub enum FirewallRequest<TRq> {
 }
 
 /// Rules for requests in a specific [`RequestDirection`].
-pub enum Rule<TRq, F = fn(&TRq) -> bool>
-where
-    F: Clone + Fn(&TRq) -> bool,
-{
+pub enum Rule<TRq> {
     /// Allow all requests
     AllowAll,
     /// Reject all requests
     RejectAll,
     /// Approve /  Reject request based on the set function.
-    Restricted { restriction: F, _maker: PhantomData<TRq> },
+    Restricted {
+        restriction: Arc<dyn Fn(&TRq) -> bool + Send + Sync>,
+        _maker: PhantomData<TRq>,
+    },
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
     /// firewall-channel provided to the `NetBehaviour`.
     Ask,
 }
 
-impl<TRq, F> fmt::Debug for Rule<TRq, F>
-where
-    F: Clone + Fn(&TRq) -> bool,
-{
+impl<TRq> fmt::Debug for Rule<TRq> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Rule::AllowAll { .. } => write!(f, "Rule::AllowAll"),
@@ -75,10 +72,7 @@ where
     }
 }
 
-impl<TRq, F> Clone for Rule<TRq, F>
-where
-    F: Clone + Fn(&TRq) -> bool,
-{
+impl<TRq> Clone for Rule<TRq> {
     fn clone(&self) -> Self {
         match self {
             Rule::AllowAll => Rule::AllowAll,

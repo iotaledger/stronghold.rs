@@ -46,7 +46,7 @@ use std::{io, time::Duration};
 ///
 /// ```
 /// # use serde::{Serialize, Deserialize};
-/// # use p2p::{ChannelSinkConfig, EventChannel, FwRequest, StrongholdP2p};
+/// # use p2p::{firewall::FwRequest, ChannelSinkConfig, EventChannel, StrongholdP2p};
 /// # use futures::channel::mpsc;
 /// #
 /// // Type of the requests send to the remote.
@@ -69,7 +69,7 @@ use std::{io, time::Duration};
 /// }
 ///
 /// impl FwRequest<Request> for RequestType {
-///     fn borrow(request: &Request) -> RequestType {
+///     fn from_request(request: &Request) -> RequestType {
 ///         match request {
 ///             Request::Ping => RequestType::Ping,
 ///             Request::Message(..) => RequestType::Message,
