@@ -54,6 +54,8 @@ use std::{
     },
 };
 
+use crate::BusyBreaker;
+
 /// Global return type
 pub type Result<T> = core::result::Result<T, TransactionError>;
 
@@ -577,7 +579,15 @@ where
     where
         F: Fn(RluContext<T>) -> Result<()>,
     {
+        let breaker = BusyBreaker::default();
+
         loop {
+            // Keep the cpu busy for minimal amount of time
+            // WARNING: This can failed, because the breaker has reached the internal limits
+            // Using the breaker is a heuristic to wait for a certain amount of time until
+            // another thread has commited work. This should be configurable
+            breaker.spin().map_err(|e| TransactionError::Inner(e.to_string()))?;
+
             match func(self.context()) {
                 Err(err) => {
                     match err {
@@ -970,11 +980,11 @@ mod tests {
 
         log.push(1);
         log.push(1);
-
         log.next();
         log.push(1);
         log.push(1);
         assert_eq!(log.current(), 1);
+
         log.next();
         log.push(1);
         log.push(1);
