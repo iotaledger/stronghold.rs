@@ -3,8 +3,6 @@
 
 #![allow(non_snake_case)]
 
-use std::convert::TryInto;
-
 use crypto::{
     ciphers::{aes::Aes256Gcm, chacha::XChaCha20Poly1305, traits::Aead},
     keys::slip10,

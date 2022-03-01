@@ -14,7 +14,6 @@ use crate::vault::{
 
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryFrom,
     fmt::{self, Debug, Formatter},
     hash::Hash,
 };

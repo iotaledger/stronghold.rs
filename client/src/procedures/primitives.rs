@@ -22,7 +22,6 @@ use crypto::{
 };
 use engine::{runtime::GuardedVec, vault::RecordHint};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use stronghold_utils::GuardDebug;
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.

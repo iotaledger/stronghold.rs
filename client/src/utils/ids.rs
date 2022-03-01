@@ -5,8 +5,6 @@ use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, Id, RecordId, VaultId};
 
-use std::convert::TryInto;
-
 /// A trait that allows a datatype to load and setup its internal data through the use of a path and some data.
 pub trait LoadFromPath: Sized {
     /// Load from some data and a path.
