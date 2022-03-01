@@ -3,7 +3,7 @@
 
 use crate::{
     actors::{secure_messages::WriteToVault, GetClient},
-    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
+    state::p2p::{AccessRequest, Network, NetworkConfig, Request, ShRequest, ShResult},
     utils::LoadFromPath,
 };
 use actix::prelude::*;
@@ -42,7 +42,6 @@ macro_rules! sh_request_dispatch {
             }
             #[cfg(test)]
             Request::ReadFromVault($inner) => $body
-            Request::GarbageCollect($inner) => $body
             Request::RevokeData($inner) => $body
             Request::ListIds($inner) => $body
             Request::Procedures($inner) => $body
@@ -153,11 +152,11 @@ impl_handler!(ConnectPeer => Result<Multiaddr, DialErr>, |network, msg| {
     network.connect_peer(msg.peer).await
 });
 
-impl_handler!(GetFirewallDefault => FirewallRules<ShRequest>, |network, _msg| {
+impl_handler!(GetFirewallDefault => FirewallRules<AccessRequest>, |network, _msg| {
     network.get_firewall_default().await
 });
 
-impl_handler!(SetFirewallDefault<ShRequest> => (), |network, msg| {
+impl_handler!(SetFirewallDefault => (), |network, msg| {
     network.set_firewall_default(msg.direction, msg.rule).await
 });
 
@@ -165,11 +164,11 @@ impl_handler!(RemoveFirewallDefault => (), |network, msg| {
     network.remove_firewall_default(msg.direction).await
 });
 
-impl_handler!(GetFirewallRules => FirewallRules<ShRequest>, |network, msg| {
+impl_handler!(GetFirewallRules => FirewallRules<AccessRequest>, |network, msg| {
     network.get_peer_rules(msg.peer).await
 });
 
-impl_handler!(SetFirewallRule<ShRequest> => (), |network, msg| {
+impl_handler!(SetFirewallRule => (), |network, msg| {
     network.set_peer_rule(msg.peer, msg.direction, msg.rule).await
 });
 
@@ -259,14 +258,14 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "FirewallRules<ShRequest>")]
+    #[rtype(result = "FirewallRules<AccessRequest>")]
     pub struct GetFirewallDefault;
 
     #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct SetFirewallDefault<ShRequest> {
+    pub struct SetFirewallDefault {
         pub direction: RuleDirection,
-        pub rule: Rule<ShRequest>,
+        pub rule: Rule<AccessRequest>,
     }
 
     #[derive(Message)]
@@ -276,17 +275,17 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "FirewallRules<ShRequest>")]
+    #[rtype(result = "FirewallRules<AccessRequest>")]
     pub struct GetFirewallRules {
         pub peer: PeerId,
     }
 
     #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct SetFirewallRule<ShRequest> {
+    pub struct SetFirewallRule {
         pub peer: PeerId,
         pub direction: RuleDirection,
-        pub rule: Rule<ShRequest>,
+        pub rule: Rule<AccessRequest>,
     }
 
     #[derive(Message)]

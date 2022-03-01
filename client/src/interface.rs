@@ -45,7 +45,7 @@ use crate::{
         GetNetwork, InsertNetwork, RemoveNetwork,
     },
     procedures::FatalProcedureError,
-    state::p2p::{Network, NetworkConfig, ShRequest, WriteToRemoteVault},
+    state::p2p::{AccessRequest, Network, NetworkConfig, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -679,7 +679,7 @@ impl Stronghold {
     /// approved/ rejected based on this rule.
     pub async fn set_firewall_rule(
         &self,
-        rule: Rule<ShRequest>,
+        rule: Rule<AccessRequest>,
         peers: Vec<PeerId>,
         set_default: bool,
     ) -> StrongholdResult<()> {

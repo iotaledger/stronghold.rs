@@ -4,20 +4,21 @@
 use crate::{
     actors::{
         secure_messages::{
-            CheckRecord, CheckVault, DeleteFromStore, GarbageCollect, ListIds, Procedures, ReadFromStore, RevokeData,
-            WriteToStore, WriteToVault,
+            CheckRecord, CheckVault, DeleteFromStore, ListIds, Procedures, ReadFromStore, RevokeData, WriteToStore,
+            WriteToVault,
         },
         RecordError, Registry,
     },
     enum_from_inner,
-    procedures::{ProcedureError, ProcedureOutput},
+    procedures::{self, ProcedureError, ProcedureOutput, StrongholdProcedure},
     Location, RecordHint, RecordId,
 };
 use actix::prelude::*;
 use futures::channel::mpsc;
 use p2p::{
-    firewall::FirewallRules, BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair,
-    ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
+    firewall::{FirewallRules, FwRequest},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, ReceiveRequest, StrongholdP2p,
+    StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, io, time::Duration};
@@ -51,7 +52,7 @@ macro_rules! sh_result_mapping {
 /// a libp2p Swarm and continuously poll it.
 pub struct Network {
     // Interface of stronghold-p2p for all network interaction.
-    pub network: StrongholdP2p<ShRequest, ShResult>,
+    pub network: StrongholdP2p<ShRequest, ShResult, AccessRequest>,
     // Actor registry from which the address of the target client and snapshot actor can be queried.
     pub registry: Addr<Registry>,
     // Channel through which inbound requests are received.
@@ -116,7 +117,7 @@ pub struct NetworkConfig {
     connections_limit: Option<ConnectionLimits>,
     enable_mdns: bool,
     enable_relay: bool,
-    state: Option<BehaviourState<ShRequest>>,
+    state: Option<BehaviourState<AccessRequest>>,
 }
 
 impl NetworkConfig {
@@ -156,7 +157,7 @@ impl NetworkConfig {
     }
 
     /// Import state exported from a past network actor.
-    pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
+    pub fn load_state(mut self, state: BehaviourState<AccessRequest>) -> Self {
         self.state = Some(state);
         self
     }
@@ -218,7 +219,6 @@ pub enum Request {
     ReadFromVault(ReadFromVault),
     WriteToRemoteVault(WriteToRemoteVault),
     RevokeData(RevokeData),
-    GarbageCollect(GarbageCollect),
     ReadFromStore(ReadFromStore),
     WriteToStore(WriteToStore),
     DeleteFromStore(DeleteFromStore),
@@ -231,7 +231,6 @@ enum_from_inner!(Request from ListIds);
 enum_from_inner!(Request from ReadFromVault);
 enum_from_inner!(Request from WriteToRemoteVault);
 enum_from_inner!(Request from RevokeData);
-enum_from_inner!(Request from GarbageCollect);
 enum_from_inner!(Request from ReadFromStore);
 enum_from_inner!(Request from WriteToStore);
 enum_from_inner!(Request from DeleteFromStore);
@@ -267,5 +266,84 @@ impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
         } else {
             Err(())
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccessRequest {
+    pub client_path: Vec<u8>,
+    pub locations: Vec<Access>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Access {
+    Write { vault_path: Vec<u8> },
+    Clone { vault_path: Vec<u8> },
+    Use { vault_path: Vec<u8> },
+    List { vault_path: Vec<u8> },
+    ReadStore,
+    WriteStore,
+}
+
+impl FwRequest<ShRequest> for AccessRequest {
+    fn from_request(request: &ShRequest) -> Self {
+        let client_path = request.client_path.clone();
+        let locations = match &request.request {
+            Request::CheckVault(CheckVault { vault_path }) | Request::ListIds(ListIds { vault_path }) => {
+                vec![Access::List {
+                    vault_path: vault_path.clone(),
+                }]
+            }
+            Request::CheckRecord(CheckRecord { location }) => {
+                vec![Access::List {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            #[cfg(test)]
+            Request::ReadFromVault(ReadFromVault { location }) => {
+                vec![Access::Clone {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            Request::WriteToRemoteVault(WriteToRemoteVault { location, .. })
+            | Request::RevokeData(RevokeData { location }) => {
+                vec![Access::Write {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            Request::ReadFromStore(ReadFromStore { .. }) => vec![Access::ReadStore],
+            Request::WriteToStore(WriteToStore { .. }) | Request::DeleteFromStore(DeleteFromStore { .. }) => {
+                vec![Access::WriteStore]
+            }
+            Request::Procedures(p) => p
+                .procedures
+                .iter()
+                .flat_map(|proc| match proc {
+                    StrongholdProcedure::RevokeData(procedures::RevokeData { location, .. }) => vec![Access::Write {
+                        vault_path: location.vault_path().to_vec(),
+                    }],
+                    StrongholdProcedure::GarbageCollect(procedures::GarbageCollect { vault_path }) => {
+                        vec![Access::Write {
+                            vault_path: vault_path.clone(),
+                        }]
+                    }
+                    proc => {
+                        let mut access = Vec::new();
+                        if let Some(input) = proc.input() {
+                            access.push(Access::Use {
+                                vault_path: input.vault_path().to_vec(),
+                            });
+                        }
+                        if let Some(output) = proc.output() {
+                            access.push(Access::Write {
+                                vault_path: output.vault_path().to_vec(),
+                            });
+                        }
+                        access
+                    }
+                })
+                .collect(),
+        };
+        AccessRequest { client_path, locations }
     }
 }

@@ -78,6 +78,27 @@ impl Procedure for StrongholdProcedure {
 }
 
 impl StrongholdProcedure {
+    pub(crate) fn input(&self) -> Option<Location> {
+        match self {
+            StrongholdProcedure::CopyRecord(CopyRecord { source: input, .. })
+            | StrongholdProcedure::Slip10Derive(Slip10Derive {
+                input: Slip10DeriveInput::Seed(input),
+                ..
+            })
+            | StrongholdProcedure::Slip10Derive(Slip10Derive {
+                input: Slip10DeriveInput::Key(input),
+                ..
+            })
+            | StrongholdProcedure::PublicKey(PublicKey { private_key: input, .. })
+            | StrongholdProcedure::Ed25519Sign(Ed25519Sign { private_key: input, .. })
+            | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { private_key: input, .. })
+            | StrongholdProcedure::Hkdf(Hkdf { ikm: input, .. })
+            | StrongholdProcedure::Hmac(Hmac { key: input, .. })
+            | StrongholdProcedure::AeadEncrypt(AeadEncrypt { key: input, .. })
+            | StrongholdProcedure::AeadDecrypt(AeadDecrypt { key: input, .. }) => Some(input.clone()),
+            _ => None,
+        }
+    }
     pub(crate) fn output(&self) -> Option<Location> {
         match self {
             StrongholdProcedure::WriteVault(WriteVault { location: output, .. })
