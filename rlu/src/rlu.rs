@@ -46,33 +46,16 @@
 
 use log::*;
 use std::{
-    cell::Cell,
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 
-// FIXME: this belongs to the former implementation
-thread_local! {
-    #[deprecated]
-    static GUARD : Cell<bool> = Cell::new(false);
-}
-
-/// Virtual Type to use as return
-pub trait ReturnType: Clone + Send + Sync + Sized {}
-
 /// Global return type
 pub type Result<T> = core::result::Result<T, TransactionError>;
-
-/// Simplified atomic mutex
-#[deprecated]
-pub type ClonableMutex<T> = Arc<Mutex<T>>;
-
-/// auto impl for return type
-impl<T> ReturnType for T where T: Send + Sync + Clone + Sized {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
@@ -353,7 +336,58 @@ where
     }
 }
 
-#[derive(Debug)]
+pub struct RLUObject<T>
+where
+    T: Clone,
+{
+    rlu: Arc<RLU<T>>,
+    var: Arc<RLUVar<T>>,
+}
+
+impl<T> From<T> for RLUObject<T>
+where
+    T: Clone,
+{
+    fn from(data: T) -> Self {
+        let rlu = Arc::new(RLU::default());
+        let var = Arc::new(rlu.create(data));
+
+        Self { rlu, var }
+    }
+}
+
+impl<T> RLUObject<T>
+where
+    T: Clone,
+{
+    pub fn ctrl(&self) -> Arc<RLU<T>> {
+        self.rlu.clone()
+    }
+
+    pub fn var(&self) -> Arc<RLUVar<T>> {
+        self.var.clone()
+    }
+}
+
+impl<T> Clone for RLUObject<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            rlu: self.rlu.clone(),
+            var: self.var.clone(),
+        }
+    }
+}
+
+/// # RLUVar &lt;T&gt;
+/// This type represents an rlu managed type. The type is is not being constructed directly
+/// but with the help of [`RLU`].
+///
+/// # Examples
+/// ```no_run
+/// ```
 pub struct RLUVar<T>
 where
     T: Clone,
@@ -363,7 +397,7 @@ where
 
 impl<T> RLUVar<T>
 where
-    T: Clone + std::fmt::Debug,
+    T: Clone,
 {
     /// This function returns the inner value.
     pub fn get(&self) -> &T {

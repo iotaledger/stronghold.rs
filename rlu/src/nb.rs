@@ -213,6 +213,7 @@ mod queue {
 
         fn poll(&self) -> Option<&Self::Item> {
             loop {
+                // TODO replace with immutable retries
                 let head_ptr = self.head.load(Ordering::SeqCst);
                 let tail_ptr = self.tail.load(Ordering::SeqCst);
 
@@ -233,20 +234,23 @@ mod queue {
                         }
 
                         self.tail
-                            .compare_exchange(tail_ptr, next_ptr, Ordering::SeqCst, Ordering::Relaxed)
+                            .compare_exchange(tail_ptr, next_ptr, Ordering::SeqCst, Ordering::SeqCst)
                             .expect("swapping tail ptr failed");
                     } else {
                         let result = &unsafe { &*next_ptr }.value;
 
                         if self
                             .head
-                            .compare_exchange(head_ptr, next_ptr, Ordering::SeqCst, Ordering::Relaxed)
+                            .compare_exchange(head_ptr, next_ptr, Ordering::SeqCst, Ordering::SeqCst)
                             .is_ok()
                         {
                             return result.as_ref();
                         }
                     }
                 }
+
+                // hint cpu we are inside a busy loop to allow optimizations
+                std::hint::spin_loop();
             }
         }
     }

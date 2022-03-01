@@ -1,9 +1,11 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use stronghold_rlu::{
-    NonBlockingQueue, NonBlockingStack, Queue, RLUVar, Read, RluContext, Stack, TransactionError, Write, RLU,
+use rlu::{
+    NonBlockingQueue, NonBlockingStack, Queue, RLUObject, RLUVar, Read, RluContext, Stack, TransactionError, Write, RLU,
 };
+use std::{collections::HashMap, error::Error, hash::Hash, sync::Arc};
+use stronghold_rlu as rlu;
 
 #[cfg(test)]
 #[ctor::ctor]
@@ -40,7 +42,7 @@ fn test_mutliple_readers_single_write() {
     });
     let mut threads = Vec::new();
 
-    for _ in 0..1000 {
+    for _ in 0..10000 {
         let r1 = rlu_var.clone();
         let c1 = ctrl.clone();
 
@@ -54,7 +56,7 @@ fn test_mutliple_readers_single_write() {
                         **inner, EXPECTED
                     ))),
                     Ok(_) => unreachable!("You shouldn't see this"),
-                    Err(_) => Err(TransactionError::Abort),
+                    Err(_) => Err(TransactionError::Retry),
                 }
             };
 
@@ -70,6 +72,62 @@ fn test_mutliple_readers_single_write() {
 
     for j in threads {
         j.join().expect("Failed to join reader thread");
+    }
+
+    let value = rlu_var.get();
+    assert_eq!(value, &15)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_mutliple_readers_single_write_async() {
+    const EXPECTED: usize = 15usize;
+
+    let ctrl = RLU::new();
+    let rlu_var: RLUVar<usize> = ctrl.create(6usize);
+
+    let r1 = rlu_var.clone();
+    let c1 = ctrl.clone();
+
+    let j0 = tokio::spawn(async move {
+        match c1.execute(|mut context| {
+            let mut data = context.get_mut(&r1)?;
+            let inner = &mut *data;
+            *inner += 9usize;
+
+            Ok(())
+        }) {
+            Err(err) => Err(err),
+            Ok(()) => Ok(()),
+        }
+        .expect("Failed");
+    });
+    let mut threads = Vec::new();
+
+    for _ in 0..10000 {
+        let r1 = rlu_var.clone();
+        let c1 = ctrl.clone();
+
+        let j1 = tokio::spawn(async move {
+            let context_fn = |context: RluContext<usize>| {
+                let data = context.get(&r1);
+                match *data {
+                    Ok(inner) if **inner == EXPECTED => Ok(()),
+                    Ok(inner) if **inner != EXPECTED => Err(TransactionError::Retry),
+                    _ => Err(TransactionError::Retry), /* FIXME: this could be another error and should be handled
+                                                        * appropriately */
+                }
+            };
+
+            assert!(c1.execute(context_fn).is_ok());
+        });
+
+        threads.push(j1);
+    }
+
+    j0.await.expect("Failed to join writer thread");
+
+    for j in threads {
+        j.await.expect("Failed to join reader thread");
     }
 
     let value = rlu_var.get();
@@ -104,7 +162,7 @@ fn test_queue_threaded() {
     let queue = NonBlockingQueue::default();
 
     let mut workers = Vec::new();
-    let runs = 1024;
+    let runs = 8;
 
     for i in 0..runs {
         let q = queue.clone();
@@ -129,7 +187,7 @@ async fn test_queue_async() {
     let queue = NonBlockingQueue::default();
 
     let mut workers = Vec::new();
-    let runs = 4;
+    let runs = 16;
 
     for i in 0..runs {
         let q = queue.clone();
@@ -138,8 +196,6 @@ async fn test_queue_async() {
             q.put(i);
         }));
     }
-
-    // println!("all send, now reading");
 
     for _ in 0..runs {
         let q = queue.clone();
@@ -159,3 +215,191 @@ async fn test_queue_async() {
         t.await.expect("Failed to join thread");
     }
 }
+
+#[test]
+fn test_concurrent_reads_complex_type() {
+    use std::thread::spawn;
+
+    let c = RLU::default();
+
+    let var = c.create(HashMap::<usize, &str>::new());
+
+    let (vw_1, c1) = (var.clone(), c.clone());
+
+    let (vr_1, c3) = (var.clone(), c.clone());
+    let (vr_2, c4) = (var.clone(), c.clone());
+
+    // writes
+    let j0 = spawn(move || {
+        c1.execute(|mut ctx| {
+            let mut guard = ctx.get_mut(&vw_1)?;
+
+            (*guard).insert(1234, "hello, world");
+            drop(guard);
+
+            Ok(())
+        })
+        .expect("Failed to write");
+    });
+
+    // reads
+    let j1 = spawn(move || {
+        c3.execute(|ctx| {
+            let guard = ctx.get(&vr_1);
+
+            if let Ok(inner) = *guard {
+                let m = &**inner;
+                match m.contains_key(&1234) {
+                    true => return Ok(()),
+                    false => return Err(TransactionError::Retry),
+                }
+            }
+
+            Err(TransactionError::Retry)
+        })
+        .expect("Failed to read");
+    });
+
+    let j2 = spawn(move || {
+        c4.execute(|ctx| {
+            let guard = ctx.get(&vr_2);
+
+            if let Ok(inner) = *guard {
+                let m = &**inner;
+                match m.contains_key(&1234) {
+                    true => return Ok(()),
+                    false => {
+                        drop(guard);
+                        return Err(TransactionError::Retry);
+                    }
+                }
+            }
+
+            Err(TransactionError::Retry)
+        })
+        .expect("Failed to read");
+    });
+
+    [j0, j1, j2].into_iter().for_each(|thread| {
+        thread.join().expect("Failed to join");
+    });
+}
+
+// type integration
+
+/// Prototypical (LRU) cache impl
+pub struct Cache<K, V>
+where
+    K: Eq + Clone,
+    V: Clone,
+{
+    inner: RLUObject<HashMap<K, RLUObject<V>>>,
+}
+
+impl<K, V> Clone for Cache<K, V>
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<K, V> Default for Cache<K, V>
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+{
+    fn default() -> Self {
+        Self {
+            inner: HashMap::new().into(),
+        }
+    }
+}
+
+impl<K, V> Cache<K, V>
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+{
+    pub fn insert(&self, key: K, value: V) -> Result<(), Box<dyn Error>> {
+        let tvar = self.inner.var();
+
+        Ok(self.inner.ctrl().execute(move |mut ctx| {
+            let key = key.clone();
+            let value = value.clone();
+
+            let mut var = ctx.get_mut(&tvar)?;
+            (*var).insert(key, value.into());
+            Ok(())
+        })?)
+    }
+
+    pub fn get(&self, key: &K) -> Option<Arc<RLUVar<V>>> {
+        let tvar = self.inner.var();
+        let map = tvar.get();
+
+        if let Some(inner) = map.get(key) {
+            return Some(inner.var());
+        }
+
+        None
+    }
+
+    pub fn modify(&self, key: &K, value: V) -> Result<(), Box<dyn Error>> {
+        let tvar = self.inner.var();
+        let map = tvar.get();
+
+        if let Some(inner) = map.get(key) {
+            let inner_tvar = inner.var();
+            inner.ctrl().execute(|mut ctx| {
+                let mut guard = ctx.get_mut(&inner_tvar)?;
+                *guard = value.clone();
+
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    pub fn delete(&self, key: &K) -> Result<(), Box<dyn Error>> {
+        let ctrl = self.inner.ctrl();
+        let var = self.inner.var();
+
+        Ok(ctrl.execute(|mut ctx| {
+            let mut guard = ctx.get_mut(&var)?;
+            (*guard).remove(key);
+
+            Ok(())
+        })?)
+    }
+
+    pub fn delete_all(&self) -> Result<(), Box<dyn Error>> {
+        let ctrl = self.inner.ctrl();
+        let var = self.inner.var();
+
+        Ok(ctrl.execute(|mut ctx| {
+            let mut guard = ctx.get_mut(&var)?;
+            (*guard).clear();
+
+            Ok(())
+        })?)
+    }
+}
+
+#[test]
+fn test_cache_concurrent() -> Result<(), Box<dyn Error>> {
+    let cache = Cache::default();
+    cache.insert(1223usize, "hello, world")?;
+
+    assert!(cache.get(&1223).is_some());
+    assert_eq!(*cache.get(&1223).unwrap().get(), "hello, world");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cache_async() {}
