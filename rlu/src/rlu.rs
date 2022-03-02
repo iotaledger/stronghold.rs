@@ -523,6 +523,37 @@ where
     }
 }
 
+/// Additional configuration for [`RLU`]. The internal execution
+/// can be either [`RLUConfig::Abort`], if operation failed, [`RLUConfig::Retry`] again
+/// an unlimited number of times, or [`RLUConfig::RetryWithBreaker`] with a busy breaker.
+#[derive(Clone)]
+pub enum RLUStrategy {
+    /// Abort exeuction on failure
+    Abort,
+
+    /// Retry endlessly executing the calling function until
+    /// it succeeds. A possible used case for this might be to
+    /// check for a record again and again, until the corresponding
+    /// write has occured. The number of internal retries should be
+    /// really small in order to avoid any deadlocks.
+    Retry,
+
+    /// Try with a exponential breaker. Using a breaker that trips after
+    /// an configurable amount of time is a trade-off between correctness of
+    /// writes and code that tries to access a value that may not exists yet,
+    /// but will be written by a future call into RLU augmented data structures.
+    /// One such situation might occur, when integrating RLU into eg. a Cache
+    /// data structure, where data is written and read from concurrently.
+    /// Another calling process might assume the existence of a value, but writes
+    /// to it might not be finished but will eventually land. This case can be mitigated
+    /// by a "normal" retry, as the write can eventually be retrieved to be read.
+    ///
+    /// If it is uncertain, that a write has occured a retry with the breaker might
+    /// give enough time to wait for the write, while not creating an infinite
+    /// busy wait on the calling thread.
+    RetryWithBreaker(BusyBreaker),
+}
+
 /// [`RLU`] is the global context, where memory gets synchronized in concurrent setups. Since [`RLU`]
 /// can have multiple instances, it can be used for multiple types at once.
 pub struct RLU<T>
@@ -532,6 +563,7 @@ where
     global_count: Arc<AtomicUsize>,
     next_thread_id: Arc<AtomicUsize>,
     contexts: Arc<AtomicPtr<HashMap<usize, RluContext<T>>>>,
+    strategy: RLUStrategy,
 }
 
 impl<T> Default for RLU<T>
@@ -547,7 +579,14 @@ impl<T> RLU<T>
 where
     T: Clone + IntoRaw,
 {
+    /// Creates a new [`RLU`] with a [`RLUStrategy::Retry`] strategy.
     pub fn new() -> Self {
+        Self::with_strategy(RLUStrategy::Retry)
+    }
+
+    /// Creates a new [`RLU`] with a defined strategy for handling the results of executing
+    /// transactional functions.
+    pub fn with_strategy(strategy: RLUStrategy) -> Self {
         // store the context resolver on the heap
         let contexts_ptr = Box::into_raw(Box::new(HashMap::new()));
 
@@ -555,6 +594,7 @@ where
             global_count: Arc::new(AtomicUsize::new(0)),
             next_thread_id: Arc::new(AtomicUsize::new(0)),
             contexts: Arc::new(AtomicPtr::new(contexts_ptr)),
+            strategy,
         }
     }
 
@@ -582,17 +622,16 @@ where
         let breaker = BusyBreaker::default();
 
         loop {
-            // Keep the cpu busy for minimal amount of time
-            // WARNING: This can failed, because the breaker has reached the internal limits
-            // Using the breaker is a heuristic to wait for a certain amount of time until
-            // another thread has commited work. This should be configurable
-            breaker.spin().map_err(|e| TransactionError::Inner(e.to_string()))?;
-
             match func(self.context()) {
                 Err(err) => {
-                    match err {
-                        TransactionError::Retry => {
-                            // retry
+                    match &self.strategy {
+                        RLUStrategy::Retry => {}
+                        RLUStrategy::RetryWithBreaker(breaker) => {
+                            // Keep the cpu busy for minimal amount of time
+                            // WARNING: This can failed, because the breaker has reached the internal limits
+                            // Using the breaker is a heuristic to wait for a certain amount of time until
+                            // another thread has commited work. This should be configurable
+                            breaker.spin().map_err(|e| TransactionError::Inner(e.to_string()))?;
                         }
                         _ => return Err(err),
                     }
@@ -627,6 +666,7 @@ where
             global_count: self.global_count.clone(),
             next_thread_id: self.next_thread_id.clone(),
             contexts: self.contexts.clone(),
+            strategy: self.strategy.clone(),
         }
     }
 }
