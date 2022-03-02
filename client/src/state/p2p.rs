@@ -16,12 +16,12 @@ use crate::{
 use actix::prelude::*;
 use futures::channel::mpsc;
 use p2p::{
-    firewall::{FirewallRules, FwRequest, Rule, RuleDirection},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest,
-    StrongholdP2p, StrongholdP2pBuilder,
+    firewall::{FirewallRules, FwRequest},
+    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, ReceiveRequest, StrongholdP2p,
+    StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, io, marker::PhantomData, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, io, time::Duration};
 
 #[cfg(test)]
 use crate::actors::secure_testing::ReadFromVault;
@@ -100,15 +100,6 @@ impl Network {
             _config: network_config,
         };
         Ok(actor)
-    }
-
-    pub async fn set_rule(&mut self, peer: PeerId, use_: bool, write: bool, clone: bool) {
-        let restriction = move |rq: &AccessRequest| rq.check(use_, write, clone);
-        let rule = Rule::Restricted {
-            restriction: Arc::new(restriction),
-            _maker: PhantomData,
-        };
-        self.network.set_peer_rule(peer, RuleDirection::Inbound, rule).await
     }
 }
 
@@ -278,6 +269,99 @@ impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
     }
 }
 
+/// Permissions for remote peers to operate on the local vault or store of a client.
+#[derive(Debug, Default, Clone)]
+pub struct Permissions {
+    default: Option<ClientPermissions>,
+    exceptions: HashMap<Vec<u8>, Option<ClientPermissions>>,
+}
+
+impl Permissions {
+    /// No operations are permitted.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// All operations on all clients are permitted, including reading, writing and cloning secrets and reading/ writing
+    /// to the store,
+    pub fn all() -> Self {
+        Self {
+            default: Some(ClientPermissions::all()),
+            ..Default::default()
+        }
+    }
+
+    /// Set default permissions for accessing all clients without any explicit rules.
+    pub fn with_default_permissions(mut self, permissions: Option<ClientPermissions>) -> Self {
+        self.default = permissions;
+        self
+    }
+
+    /// Set specific permissions for access to the client at `client_path`.
+    pub fn with_client_permissions(mut self, client_path: Vec<u8>, permissions: Option<ClientPermissions>) -> Self {
+        self.exceptions.insert(client_path, permissions);
+        self
+    }
+}
+
+/// Restrict access to the vaults and store of a specific client.
+#[derive(Debug, Default, Clone)]
+pub struct ClientPermissions {
+    use_vault_default: bool,
+    use_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    write_vault_default: bool,
+    write_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    clone_vault_default: bool,
+    clone_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    read_store: bool,
+    write_store: bool,
+}
+
+impl ClientPermissions {
+    /// No access to any structures of the vault is permitted.
+    pub fn none() -> Self {
+        Self::default()
+    }
+    /// All operations on the client are permitted, including reading, writing and cloning secrets and reading/ writing
+    /// to the store,
+    pub fn all() -> Self {
+        ClientPermissions {
+            use_vault_default: true,
+            write_vault_default: true,
+            clone_vault_default: true,
+            read_store: true,
+            write_store: true,
+            ..Default::default()
+        }
+    }
+
+    /// Set default permissions for accessing vaults in this client.
+    pub fn with_default_vault_access(mut self, use_: bool, write: bool, clone_: bool) -> Self {
+        self.use_vault_default = use_;
+        self.write_vault_default = write;
+        self.clone_vault_default = clone_;
+        self
+    }
+
+    /// Set specific permissions for accessing the vault at `vault_path`.
+    pub fn with_vault_access(mut self, vault_path: Vec<u8>, use_: bool, write: bool, clone_: bool) -> Self {
+        self.use_vault_exceptions.insert(vault_path.clone(), use_);
+        self.use_vault_exceptions.insert(vault_path.clone(), write);
+        self.use_vault_exceptions.insert(vault_path, clone_);
+        self
+    }
+
+    /// Set read and write permissions for the client's store.
+    pub fn with_store_access(mut self, read: bool, write: bool) -> Self {
+        self.read_store = read;
+        self.write_store = write;
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessRequest {
     pub client_path: Vec<u8>,
@@ -285,13 +369,54 @@ pub struct AccessRequest {
 }
 
 impl AccessRequest {
-    fn check(&self, use_: bool, write: bool, clone: bool) -> bool {
+    pub fn check(&self, permissions: Permissions) -> bool {
+        match permissions
+            .exceptions
+            .get(&self.client_path)
+            .unwrap_or(&permissions.default)
+        {
+            Some(p) => self.check_with_permissions(p),
+            None => false,
+        }
+    }
+
+    fn check_with_permissions(&self, permissions: &ClientPermissions) -> bool {
         self.locations.iter().all(|access| match access {
-            Access::Use { .. } => use_,
-            Access::Write { .. } => write,
-            Access::Clone { .. } => clone,
-            Access::List { .. } => use_ || write || clone,
-            _ => todo!(),
+            Access::Use { vault_path } => permissions
+                .use_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(permissions.use_vault_default),
+            Access::Write { vault_path } => permissions
+                .write_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(permissions.write_vault_default),
+            Access::Clone { vault_path } => permissions
+                .clone_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(permissions.clone_vault_default),
+            Access::List { vault_path } => {
+                let use_ = permissions
+                    .use_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(permissions.use_vault_default);
+                let write = permissions
+                    .write_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(permissions.write_vault_default);
+                let clone_ = permissions
+                    .clone_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(permissions.clone_vault_default);
+                use_ || write || clone_
+            }
+            Access::ReadStore => permissions.read_store,
+            Access::WriteStore => permissions.write_store,
         })
     }
 }

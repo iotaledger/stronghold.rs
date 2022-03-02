@@ -45,13 +45,12 @@ use crate::{
         GetNetwork, InsertNetwork, RemoveNetwork,
     },
     procedures::FatalProcedureError,
-    state::p2p::{AccessRequest, Network, NetworkConfig, WriteToRemoteVault},
+    state::p2p::{Network, NetworkConfig, Permissions, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
-    firewall::{Rule, RuleDirection},
-    identity::Keypair,
-    DialErr, InitKeypair, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId, RelayNotSupported,
+    identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId,
+    RelayNotSupported,
 };
 #[cfg(feature = "p2p")]
 use std::io;
@@ -677,9 +676,9 @@ impl Stronghold {
     /// Change the firewall rule for specific peers, optionally also set it as the default rule, which applies if there
     /// are no specific rules for a peer. All inbound requests from the peers that this rule applies to, will be
     /// approved/ rejected based on this rule.
-    pub async fn set_firewall_rule(
+    pub async fn set_firewall_permissions(
         &self,
-        rule: Rule<AccessRequest>,
+        permissions: Permissions,
         peers: Vec<PeerId>,
         set_default: bool,
     ) -> StrongholdResult<()> {
@@ -688,8 +687,7 @@ impl Stronghold {
         if set_default {
             actor
                 .send(network_messages::SetFirewallDefault {
-                    direction: RuleDirection::Inbound,
-                    rule: rule.clone(),
+                    permissions: permissions.clone(),
                 })
                 .await?;
         }
@@ -698,22 +696,7 @@ impl Stronghold {
             actor
                 .send(network_messages::SetFirewallRule {
                     peer,
-                    direction: RuleDirection::Inbound,
-                    rule: rule.clone(),
-                })
-                .await?;
-        }
-        Ok(())
-    }
-
-    /// Remove peer specific rules from the firewall configuration.
-    pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StrongholdResult<()> {
-        let actor = self.network_actor().await?;
-        for peer in peers {
-            actor
-                .send(network_messages::RemoveFirewallRule {
-                    peer,
-                    direction: RuleDirection::Inbound,
+                    permissions: permissions.clone(),
                 })
                 .await?;
         }

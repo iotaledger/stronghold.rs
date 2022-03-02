@@ -73,7 +73,7 @@ async fn init_peer() -> NewPeer {
     (firewall_rx, rq_rx, event_rx, peer)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum TestPermission {
     AllowAll,
     RejectAll,
@@ -101,9 +101,9 @@ impl TestPermission {
             TestPermission::AllowAll => Rule::AllowAll,
             TestPermission::RejectAll => Rule::RejectAll,
             TestPermission::Restricted(permission) => {
-                let permission = *permission;
+                let permission = permission.clone();
                 Rule::Restricted {
-                    restriction: Arc::new(move |rq: &RequestPermission| Self::restrict_by_type(rq, permission)),
+                    restriction: Arc::new(move |rq: &RequestPermission| Self::restrict_by_type(rq, permission.clone())),
                     _maker: PhantomData,
                 }
             }
@@ -193,10 +193,10 @@ impl<'a> RulesTestConfig<'a> {
         let mut peer_a = self.peer_a.clone();
         let res_future = peer_a.send_request(peer_b_id, self.req.clone()).boxed();
 
-        let a_rule = self.a_rule.unwrap_or(self.a_default);
-        let b_rule = self.b_rule.unwrap_or(self.b_default);
+        let a_rule = self.a_rule.as_ref().unwrap_or(&self.a_default);
+        let b_rule = self.b_rule.as_ref().unwrap_or(&self.b_default);
         let req = self.req.clone();
-        let is_allowed = |rule: TestPermission| match rule {
+        let is_allowed = |rule: &TestPermission| match rule {
             TestPermission::AllowAll => true,
             TestPermission::RejectAll => false,
             TestPermission::Restricted(RequestPermission::Ping) => matches!(req, Request::Ping),

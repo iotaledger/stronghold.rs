@@ -17,7 +17,7 @@ pub fn build_plain(name: &Ident, data_enum: &DataEnum) -> TokenStream {
         })
         .collect::<TokenStream>();
     quote! {
-            #[derive(Debug, Clone, Copy)]
+            #[derive(Debug, Clone)]
             pub enum #name {
                 #plain_variants
             }

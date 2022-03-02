@@ -539,7 +539,7 @@ async fn test_stronghold_p2p() {
         remote_ready_tx.send(()).await.unwrap();
         local_ready_rx.recv().await.unwrap();
 
-        // test writing from local and reading it at remoteom local and reading it at remote
+        // test writing from local and reading it at remote
         let payload = remote_stronghold
             .read_from_store(key2_clone)
             .await
@@ -573,9 +573,7 @@ async fn test_stronghold_p2p() {
 #[cfg(feature = "p2p")]
 #[actix::test]
 async fn test_p2p_config() {
-    use p2p::{firewall::Rule, OutboundFailure};
-
-    use crate::p2p::P2pError;
+    use crate::p2p::{OutboundFailure, P2pError, Permissions};
 
     let remote_client = bytestring(4096);
     // Start remote stronghold and start listening
@@ -641,7 +639,7 @@ async fn test_p2p_config() {
     assert!(listeners.first().unwrap().addrs.contains(&addr));
     // Set a firewall rule
     stronghold
-        .set_firewall_rule(Rule::RejectAll, vec![remote_id], false)
+        .set_firewall_permissions(Permissions::default(), vec![remote_id], false)
         .await
         .unwrap();
     // Add the remote's address info

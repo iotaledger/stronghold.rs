@@ -30,14 +30,16 @@ mod remote_stronghold {
     use super::*;
     use futures::future::pending;
     use iota_stronghold::{
-        p2p::{NetworkConfig, Rule},
+        p2p::{NetworkConfig, Permissions},
         Stronghold,
     };
 
     pub async fn run(address_tx: oneshot::Sender<(PeerId, Multiaddr)>) -> Result<(), Box<dyn Error>> {
         let mut stronghold = Stronghold::init_stronghold_system(CLIENT_PATH.to_vec(), Vec::new()).await?;
         stronghold.spawn_p2p(NetworkConfig::default(), None).await?;
-        stronghold.set_firewall_rule(Rule::AllowAll, Vec::new(), true).await?;
+        stronghold
+            .set_firewall_permissions(Permissions::all(), Vec::new(), true)
+            .await?;
         let addr = stronghold.start_listening(None).await??;
         let peer_id = stronghold.get_swarm_info().await?.local_peer_id;
         address_tx.send((peer_id, addr)).unwrap();

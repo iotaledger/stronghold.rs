@@ -11,10 +11,14 @@ use engine::vault::ClientId;
 use futures::{FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
-    firewall::{FirewallRules, Rule},
+    firewall::{Rule, RuleDirection},
     DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported,
 };
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    marker::PhantomData,
+    sync::Arc,
+};
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -152,28 +156,26 @@ impl_handler!(ConnectPeer => Result<Multiaddr, DialErr>, |network, msg| {
     network.connect_peer(msg.peer).await
 });
 
-impl_handler!(GetFirewallDefault => FirewallRules<AccessRequest>, |network, _msg| {
-    network.get_firewall_default().await
-});
-
 impl_handler!(SetFirewallDefault => (), |network, msg| {
-    network.set_firewall_default(msg.direction, msg.rule).await
-});
-
-impl_handler!(RemoveFirewallDefault => (), |network, msg| {
-    network.remove_firewall_default(msg.direction).await
-});
-
-impl_handler!(GetFirewallRules => FirewallRules<AccessRequest>, |network, msg| {
-    network.get_peer_rules(msg.peer).await
+    let restriction = move |rq: &AccessRequest| rq.check(msg.permissions.clone());
+    let rule = Rule::Restricted {
+        restriction: Arc::new(restriction),
+        _maker: PhantomData,
+    };
+    network.set_firewall_default(RuleDirection::Inbound, rule).await
 });
 
 impl_handler!(SetFirewallRule => (), |network, msg| {
-    network.set_peer_rule(msg.peer, msg.direction, msg.rule).await
+    let restriction = move |rq: &AccessRequest| rq.check(msg.permissions.clone());
+    let rule = Rule::Restricted {
+        restriction: Arc::new(restriction),
+        _maker: PhantomData,
+    };
+    network.set_peer_rule(msg.peer, RuleDirection::Inbound, rule).await
 });
 
 impl_handler!(RemoveFirewallRule => (), |network, msg| {
-    network.remove_peer_rule(msg.peer, msg.direction).await
+    network.remove_peer_rule(msg.peer, RuleDirection::Inbound).await
 });
 
 impl_handler!(GetPeerAddrs => Vec<Multiaddr>, |network, msg| {
@@ -198,8 +200,10 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
 
 pub mod messages {
 
+    use crate::state::p2p::Permissions;
+
     use super::*;
-    use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
+    use p2p::{EstablishedConnections, Listener, Multiaddr, PeerId};
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -258,41 +262,22 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "FirewallRules<AccessRequest>")]
-    pub struct GetFirewallDefault;
-
-    #[derive(Message)]
     #[rtype(result = "()")]
     pub struct SetFirewallDefault {
-        pub direction: RuleDirection,
-        pub rule: Rule<AccessRequest>,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct RemoveFirewallDefault {
-        pub direction: RuleDirection,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "FirewallRules<AccessRequest>")]
-    pub struct GetFirewallRules {
-        pub peer: PeerId,
+        pub permissions: Permissions,
     }
 
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct SetFirewallRule {
         pub peer: PeerId,
-        pub direction: RuleDirection,
-        pub rule: Rule<AccessRequest>,
+        pub permissions: Permissions,
     }
 
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct RemoveFirewallRule {
         pub peer: PeerId,
-        pub direction: RuleDirection,
     }
 
     #[derive(Message)]
