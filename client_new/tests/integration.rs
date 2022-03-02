@@ -4,18 +4,30 @@
 #[cfg(feature = "std")]
 mod stronghold_test_std {
 
-    use iota_stronghold_new::{Cache, Result};
+    use iota_stronghold_new::Cache;
 
     #[test]
-    fn test_cache_concurrent() -> Result<()> {
+    fn test_cache_insert() {
         let cache = Cache::default();
-        cache.insert(1223usize, "hello, world")?;
 
+        assert!(cache.insert(1223usize, "hello, world", None).is_ok());
         assert!(cache.get(&1223).is_some());
-        assert_eq!(*cache.get(&1223).unwrap().get(), "hello, world");
-
-        Ok(())
+        if let Some(inner) = cache.get(&1223) {
+            assert_eq!(*inner, "hello, world");
+        }
     }
+
+    #[test]
+    fn test_cache_remove() {}
+
+    #[test]
+    fn test_cache_remove_all() {}
+
+    #[test]
+    fn test_cache_modify() {}
+
+    #[test]
+    fn test_cache_contains_key() {}
 
     #[tokio::test]
     async fn test_cache_async() {}

@@ -3,44 +3,74 @@
 
 use crate::Result;
 use std::{
+    cell::Cell,
     collections::HashMap,
     hash::Hash,
+    ops::Deref,
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
-// This module should potentially be moved to `runtime`
 use rlu::{RLUObject, RLUVar, Read, RluContext, Write, RLU};
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone)]
+pub(crate) struct Value<T>
+where
+    T: Clone,
+{
+    // data field.
+    pub val: RLUObject<T>,
+    // expiration time.
+    expiration: Option<SystemTime>,
+}
+
+impl<T> Deref for Value<T>
+where
+    T: Clone,
+{
+    type Target = RLUObject<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.val
+    }
+}
+
+impl<T> Value<T>
+where
+    T: Clone,
+{
+    /// Create a new [`Value`] with a specified expiration.
+    pub fn new(val: T, duration: Option<Duration>) -> Self {
+        Value {
+            val: val.into(),
+            expiration: duration.map(|d| SystemTime::now() + d),
+        }
+    }
+
+    /// Checks to see if the [`Value`] has expired.
+    pub fn has_expired(&self, time_now: SystemTime) -> bool {
+        self.expiration.map_or(false, |time| time_now >= time)
+    }
+}
+
+/// An evicting cache data structure.
+///
+/// *NOTE*: this is a port to an RLU based data structure from runtime
+#[derive(Clone)]
 pub struct Cache<K, V>
 where
     K: Eq + Clone,
     V: Clone,
 {
-    // the inner tabled data
-    inner: RLUObject<HashMap<K, RLUObject<V>>>,
+    // the inner table data
+    inner: RLUObject<HashMap<K, Value<V>>>,
     // the scan frequency for removing data based on the expiration time.
     scan_freq: Option<Duration>,
     // a created at timestamp.
     created_at: SystemTime,
     // a last scan timestamp.
     last_scan_at: Option<SystemTime>,
-}
-
-impl<K, V> Clone for Cache<K, V>
-where
-    K: Eq + Hash + Clone,
-    V: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            scan_freq: self.scan_freq,
-            created_at: self.created_at,
-            last_scan_at: self.last_scan_at,
-        }
-    }
 }
 
 impl<K, V> Default for Cache<K, V>
@@ -63,30 +93,73 @@ where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    pub fn insert(&self, key: K, value: V) -> Result<()> {
+    /// Insert a key-value pair into the cache.
+    /// If key was not present, a [`None`] is returned, else the value is updated and the old value is returned.  
+    ///
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let mut cache = Cache::default();
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "value";
+    ///
+    /// let insert = cache.insert(key, value, None);
+    ///
+    /// assert_eq!(cache.get(&key), Some(&value));
+    /// assert!(insert.unwrap().is_none());
+    /// ```
+    pub fn insert(&self, key: K, value: V, lifetime: Option<Duration>) -> Result<Option<V>> {
         let tvar = self.inner.var();
 
-        Ok(self.inner.ctrl().execute(move |mut ctx| {
-            let key = key.clone();
-            let value = value.clone();
+        let previous = self.get(&key).cloned();
 
-            let mut var = ctx.get_mut(&tvar)?;
-            (*var).insert(key, value.into());
-            Ok(())
-        })?)
+        self.inner
+            .ctrl()
+            .execute(move |mut ctx| {
+                let key = key.clone();
+                let value = value.clone();
+
+                let mut var = ctx.get_mut(tvar)?;
+
+                (*var).insert(key, Value::new(value, lifetime));
+
+                Ok(())
+            })
+            .map(|_| Option::<V>::None)?;
+
+        Ok(previous)
     }
-
-    pub fn get(&self, key: &K) -> Option<Arc<RLUVar<V>>> {
+    /// Gets the value associated with the specified key.
+    ///
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let mut cache = Cache::default();
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "value";
+    ///
+    /// cache.insert(key, value, None);
+    ///
+    /// assert_eq!(cache.get(&key), Some(&value))
+    /// ```
+    pub fn get(&self, key: &K) -> Option<&V> {
         let tvar = self.inner.var();
         let map = tvar.get();
 
         if let Some(inner) = map.get(key) {
-            return Some(inner.var());
+            return Some(inner.var().get());
         }
 
         None
     }
 
+    /// Modifies the value found at `key`, and replaces it with `value`
     pub fn modify(&self, key: &K, value: V) -> Result<()> {
         let tvar = self.inner.var();
         let map = tvar.get();
@@ -94,7 +167,7 @@ where
         if let Some(inner) = map.get(key) {
             let inner_tvar = inner.var();
             inner.ctrl().execute(|mut ctx| {
-                let mut guard = ctx.get_mut(&inner_tvar)?;
+                let mut guard = ctx.get_mut(inner_tvar)?;
                 *guard = value.clone();
 
                 Ok(())
@@ -103,28 +176,181 @@ where
         Ok(())
     }
 
-    pub fn delete(&self, key: &K) -> Result<()> {
+    /// Gets the value associated with the specified key.  If the key could not be found in the [`Cache`], creates and
+    /// inserts the value using a specified `func` function.
+    ///
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let mut cache = Cache::default();
+    ///
+    /// let key = "key";
+    /// let value = "value";
+    ///
+    /// assert_eq!(cache.get_or_insert(key, move || value, None), &value);
+    /// assert!(cache.contains_key(&key));
+    /// ```
+    pub fn get_or_insert<F>(&mut self, key: K, func: F, lifetime: Option<Duration>) -> &V
+    where
+        F: Fn() -> V,
+    {
+        let now = SystemTime::now();
+
+        // could this be done via entry api
+        match self.get(&key) {
+            Some(inner) => inner,
+            None => {
+                self.insert(key.clone(), func(), lifetime).expect("msg");
+                self.get(&key).unwrap()
+            }
+        }
+    }
+
+    /// Removes a key from the cache.  Returns the value from the key if the key existed in the cache.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let mut cache = Cache::default();
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "value";
+    ///
+    /// let insert = cache.insert(key, value, None);
+    /// assert!(cache.remove(&key).is_ok());
+    /// assert!(!cache.contains_key(&key));
+    /// ```
+    pub fn remove(&self, key: &K) -> Result<()> {
         let ctrl = self.inner.ctrl();
         let var = self.inner.var();
 
         Ok(ctrl.execute(|mut ctx| {
-            let mut guard = ctx.get_mut(&var)?;
+            let mut guard = ctx.get_mut(var)?;
             (*guard).remove(key);
 
             Ok(())
         })?)
     }
 
-    pub fn delete_all(&self) -> Result<()> {
+    pub fn remove_all(&self) -> Result<()> {
         let ctrl = self.inner.ctrl();
         let var = self.inner.var();
 
         Ok(ctrl.execute(|mut ctx| {
-            let mut guard = ctx.get_mut(&var)?;
+            let mut guard = ctx.get_mut(var)?;
             (*guard).clear();
 
             Ok(())
         })?)
+    }
+
+    // Check if the [`Cache<K, V>`] contains a specific key.
+    pub fn contains_key(&self, key: &K) -> bool {
+        let ctrl = self.inner.ctrl();
+        let var = self.inner.var();
+        let now = SystemTime::now();
+        let result = Cell::new(false);
+
+        ctrl.execute(|ctx| {
+            let inner = ctx.get(var);
+
+            result.set(
+                (*inner)
+                    .as_ref()
+                    .unwrap()
+                    .get(key)
+                    .filter(|value| !value.has_expired(now))
+                    .is_some(),
+            );
+            Ok(())
+        })
+        .expect(""); // FIXME: Proper Error Type
+        result.get()
+    }
+
+    // Get the last scanned at time.
+    pub fn get_last_scanned_at(&self) -> Option<SystemTime> {
+        self.last_scan_at
+    }
+
+    /// Get the cache's scan frequency.
+    ///
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let scan_freq = Duration::from_secs(60);
+    ///
+    /// let mut cache = Cache::create_with_scanner(scan_freq);
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "value";
+    ///
+    /// cache.insert(key, value, None);
+    ///
+    /// assert_eq!(cache.get_scan_freq(), Some(scan_freq));
+    /// ```
+    pub fn get_scan_freq(&self) -> Option<Duration> {
+        self.scan_freq
+    }
+
+    /// creates an empty [`Cache`] with a periodic scanner which identifies expired entries.
+    ///
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::types::Cache;
+    /// use std::time::Duration;
+    ///
+    /// let scan_freq = Duration::from_secs(60);
+    ///
+    /// let mut cache = Cache::create_with_scanner(scan_freq);
+    ///
+    /// let key: &'static str = "key";
+    /// let value: &'static str = "value";
+    ///
+    /// cache.insert(key, value, None);
+    ///
+    /// assert_eq!(cache.get(&key), Some(&value));
+    /// ```
+    pub fn create_with_scanner(scan_freq: Duration) -> Self {
+        Self {
+            inner: HashMap::new().into(),
+            scan_freq: Some(scan_freq),
+            created_at: SystemTime::now(),
+            last_scan_at: None,
+        }
+    }
+
+    /// attempts to remove expired items based on the current system time provided.
+    fn try_remove_expired_items(&mut self, now: SystemTime) {
+        // if let Some(frequency) = self.scan_freq {
+        //     let since = now
+        //         .duration_since(self.last_scan_at.unwrap_or(self.created_at))
+        //         .expect("System time is before the scanned time");
+
+        //     if since >= frequency {
+        //         self.table.retain(|_, value| !value.has_expired(now));
+
+        //         self.last_scan_at = Some(now)
+        //     }
+        // }
+        todo!()
+    }
+
+    /// Clear the stored cache and reset.
+    pub fn clear(&mut self) -> Result<()> {
+        self.remove_all()?;
+        self.scan_freq = None;
+        self.created_at = SystemTime::now();
+        self.last_scan_at = None;
+
+        Ok(())
     }
 }
 
