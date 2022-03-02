@@ -1,0 +1,39 @@
+name: Check rustdoc links
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+    paths:
+      - '.github/workflows/check-rustdoc-links.yml'
+      - '**.rs'
+      - '**.toml'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [engine, engine/runtime, client, products/commandline, derive, utils, p2p]
+    env: 
+      RUSTDOCFLAGS: --deny rustdoc::broken_intra_doc_links --deny rustdoc::private_intra_doc_links
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install rust-docs with stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rust-docs
+      - name: Check rustdoc for ${{ matrix.project }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --manifest-path=${{ matrix.project }}/Cargo.toml --no-deps --document-private-items
