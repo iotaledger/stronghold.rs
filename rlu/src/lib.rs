@@ -12,4 +12,4 @@ pub mod rlu;
 
 pub use breaker::BusyBreaker;
 pub use nb::{NonBlockingQueue, NonBlockingStack, Queue, Stack};
-pub use rlu::{IntoRaw, RLUObject, RLUVar, Read, Result, RluContext, TransactionError, Write, RLU};
+pub use rlu::{IntoRaw, RLUObject, RLUStrategy, RLUVar, Read, Result, RluContext, TransactionError, Write, RLU};

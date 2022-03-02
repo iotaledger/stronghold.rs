@@ -1,7 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use rlu::{NonBlockingQueue, NonBlockingStack, Queue, RLUVar, Read, RluContext, Stack, TransactionError, Write, RLU};
+use rlu::{
+    NonBlockingQueue, NonBlockingStack, Queue, RLUStrategy, RLUVar, Read, RluContext, Stack, TransactionError, Write,
+    RLU,
+};
 use std::collections::HashMap;
 use stronghold_rlu as rlu;
 
@@ -233,7 +236,6 @@ fn test_concurrent_reads_complex_type() {
             let mut guard = ctx.get_mut(&vw_1)?;
 
             (*guard).insert(1234, "hello, world");
-            drop(guard);
 
             Ok(())
         })
@@ -267,7 +269,70 @@ fn test_concurrent_reads_complex_type() {
                 match m.contains_key(&1234) {
                     true => return Ok(()),
                     false => {
-                        drop(guard);
+                        return Err(TransactionError::Retry);
+                    }
+                }
+            }
+
+            Err(TransactionError::Retry)
+        })
+        .expect("Failed to read");
+    });
+
+    [j0, j1, j2].into_iter().for_each(|thread| {
+        thread.join().expect("Failed to join");
+    });
+}
+
+#[test]
+fn test_concurrent_reads_with_complex_type_with_strategy() {
+    use std::thread::spawn;
+
+    let c = RLU::with_strategy(RLUStrategy::Retry);
+    let var = c.create(HashMap::<usize, &str>::new());
+    let (vw_1, c1) = (var.clone(), c.clone());
+    let (vr_1, c3) = (var.clone(), c.clone());
+    let (vr_2, c4) = (var.clone(), c.clone());
+
+    // writes
+    let j0 = spawn(move || {
+        c1.execute(|mut ctx| {
+            let mut guard = ctx.get_mut(&vw_1)?;
+
+            (*guard).insert(1234, "hello, world");
+
+            Ok(())
+        })
+        .expect("Failed to write");
+    });
+
+    // reads
+    let j1 = spawn(move || {
+        c3.execute(|ctx| {
+            let guard = ctx.get(&vr_1);
+
+            if let Ok(inner) = *guard {
+                let m = &**inner;
+                match m.contains_key(&1234) {
+                    true => return Ok(()),
+                    false => return Err(TransactionError::Retry),
+                }
+            }
+
+            Err(TransactionError::Retry)
+        })
+        .expect("Failed to read");
+    });
+
+    let j2 = spawn(move || {
+        c4.execute(|ctx| {
+            let guard = ctx.get(&vr_2);
+
+            if let Ok(inner) = *guard {
+                let m = &**inner;
+                match m.contains_key(&1234) {
+                    true => return Ok(()),
+                    false => {
                         return Err(TransactionError::Retry);
                     }
                 }
