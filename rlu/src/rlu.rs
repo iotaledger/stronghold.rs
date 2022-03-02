@@ -366,8 +366,8 @@ where
         self.rlu.clone()
     }
 
-    pub fn var(&self) -> Arc<RLUVar<T>> {
-        self.var.clone()
+    pub fn var(&self) -> &Arc<RLUVar<T>> {
+        &self.var
     }
 }
 
