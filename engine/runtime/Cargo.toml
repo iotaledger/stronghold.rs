@@ -5,7 +5,7 @@ authors = [
   "IOTA Stiftung",
   "tensor-programming <tensordeveloper@gmail.com>"
 ]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 description = "Runtime and allocation primitives for stronghold"
 readme = "README.md"

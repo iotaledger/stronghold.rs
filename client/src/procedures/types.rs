@@ -10,11 +10,7 @@ use engine::{
     vault::{RecordHint, VaultId},
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::{TryFrom, TryInto},
-    fmt::Debug,
-    string::FromUtf8Error,
-};
+use std::{fmt::Debug, string::FromUtf8Error};
 use thiserror::Error as DeriveError;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
@@ -216,7 +212,6 @@ impl From<String> for FatalProcedureError {
 #[cfg(test)]
 mod test {
     use super::ProcedureOutput;
-    use std::convert::{TryFrom, TryInto};
     use stronghold_utils::random;
 
     #[test]

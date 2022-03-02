@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{Block, Duplicate};
-use std::convert::TryInto;
 
 /// Dictionary size.
 const DICT_SIZE: usize = 4096;

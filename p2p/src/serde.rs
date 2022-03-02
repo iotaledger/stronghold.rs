@@ -9,11 +9,7 @@ use crate::{
 use libp2p::core::{multihash, PeerId};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    marker::PhantomData,
-};
+use std::{collections::HashMap, marker::PhantomData};
 
 #[derive(Serialize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SerdePeerId(Vec<u8>);

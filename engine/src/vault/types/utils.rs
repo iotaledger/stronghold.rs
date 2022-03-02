@@ -6,7 +6,6 @@ use crate::vault::{base64::Base64Encodable, crypto_box::BoxProvider};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
