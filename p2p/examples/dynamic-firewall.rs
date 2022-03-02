@@ -65,7 +65,7 @@ use futures::{channel::mpsc, FutureExt, StreamExt};
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallRequest, FirewallRules, FwRequest, Rule,
+        FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection,
     },
     ChannelSinkConfig, EventChannel, PeerId, ReceiveRequest, RequestDirection, StrongholdP2p,
 };
@@ -263,7 +263,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Channel through which approved inbound requests are forwarded.
     let (request_tx, mut request_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
 
-    let mut network = StrongholdP2p::new(firewall_tx, request_tx, None).await?;
+    let mut firewall_config = FirewallConfiguration::default();
+    firewall_config.set_default(Some(Rule::AllowAll), RuleDirection::Outbound);
+    let mut network = StrongholdP2p::new(firewall_tx, request_tx, None, firewall_config).await?;
 
     network.start_listening("/ip4/0.0.0.0/tcp/0".parse()?).await?;
     println!("\nLocal Peer Id: {}", network.peer_id());

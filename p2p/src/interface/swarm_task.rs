@@ -3,9 +3,9 @@
 
 use crate::{
     assemble_relayed_addr,
-    behaviour::{BehaviourState, EstablishedConnections},
-    firewall::{FirewallRules, FwRequest},
-    RelayNotSupported,
+    behaviour::EstablishedConnections,
+    firewall::{FirewallConfiguration, FwRequest},
+    AddressInfo, RelayNotSupported,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -103,8 +103,8 @@ pub enum SwarmOperation<Rq, Rs, TRq> {
         tx_yield: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
     },
 
-    GetFirewallDefault {
-        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
+    GetFirewallConfig {
+        tx_yield: oneshot::Sender<FirewallConfiguration<TRq>>,
     },
     SetFirewallDefault {
         direction: RuleDirection,
@@ -114,10 +114,6 @@ pub enum SwarmOperation<Rq, Rs, TRq> {
     RemoveFirewallDefault {
         direction: RuleDirection,
         tx_yield: oneshot::Sender<Ack>,
-    },
-    GetPeerRules {
-        peer: PeerId,
-        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
     },
     SetPeerRule {
         peer: PeerId,
@@ -140,8 +136,8 @@ pub enum SwarmOperation<Rq, Rs, TRq> {
         tx_yield: oneshot::Sender<Ack>,
     },
 
-    ExportConfig {
-        tx_yield: oneshot::Sender<BehaviourState<TRq>>,
+    ExportAddressInfo {
+        tx_yield: oneshot::Sender<AddressInfo>,
     },
 }
 
@@ -463,8 +459,8 @@ where
                     .use_specific_relay(target, relay, is_exclusive);
                 let _ = tx_yield.send(relayed_addr);
             }
-            SwarmOperation::GetFirewallDefault { tx_yield } => {
-                let fw_default = self.swarm.behaviour().get_firewall_default().clone();
+            SwarmOperation::GetFirewallConfig { tx_yield } => {
+                let fw_default = self.swarm.behaviour().get_firewall_config().clone();
                 let _ = tx_yield.send(fw_default);
             }
             SwarmOperation::SetFirewallDefault {
@@ -478,10 +474,6 @@ where
             SwarmOperation::RemoveFirewallDefault { direction, tx_yield } => {
                 self.swarm.behaviour_mut().remove_firewall_default(direction);
                 let _ = tx_yield.send(());
-            }
-            SwarmOperation::GetPeerRules { peer, tx_yield } => {
-                let fw_rules = self.swarm.behaviour().get_peer_rules(&peer).cloned();
-                let _ = tx_yield.send(fw_rules.unwrap_or_else(FirewallRules::empty));
             }
             SwarmOperation::SetPeerRule {
                 peer,
@@ -508,8 +500,8 @@ where
                 self.swarm.unban_peer_id(peer);
                 let _ = tx_yield.send(());
             }
-            SwarmOperation::ExportConfig { tx_yield } => {
-                let state = self.swarm.behaviour_mut().export_state();
+            SwarmOperation::ExportAddressInfo { tx_yield } => {
+                let state = self.swarm.behaviour_mut().export_address_info();
                 let _ = tx_yield.send(state);
             }
         }

@@ -3,7 +3,7 @@
 
 use crate::{
     actors::{secure_messages::WriteToVault, GetClient},
-    state::p2p::{AccessRequest, Network, NetworkConfig, Request, ShRequest, ShResult},
+    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
     utils::LoadFromPath,
 };
 use actix::prelude::*;
@@ -11,14 +11,10 @@ use engine::vault::ClientId;
 use futures::{FutureExt, TryFutureExt};
 use messages::*;
 use p2p::{
-    firewall::{Rule, RuleDirection},
-    DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported,
+    firewall::RuleDirection, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest,
+    RelayNotSupported,
 };
-use std::{
-    convert::{TryFrom, TryInto},
-    marker::PhantomData,
-    sync::Arc,
-};
+use std::convert::{TryFrom, TryInto};
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -116,8 +112,40 @@ impl Handler<ExportConfig> for Network {
         let mut network = self.network.clone();
         let config = self._config.clone();
         async move {
-            let state = network.export_state().await;
-            config.load_state(state)
+            let address_info = network.export_address_info().await;
+            config.with_address_info(address_info)
+        }
+        .into_actor(self)
+        .boxed_local()
+    }
+}
+
+impl Handler<SetFirewallDefault> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: SetFirewallDefault, _: &mut Self::Context) -> Self::Result {
+        self._config.permissions_default = msg.permissions.clone();
+        let mut network = self.network.clone();
+        async move {
+            network
+                .set_firewall_default(RuleDirection::Inbound, msg.permissions.into_rule())
+                .await
+        }
+        .into_actor(self)
+        .boxed_local()
+    }
+}
+
+impl Handler<SetFirewallRule> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: SetFirewallRule, _: &mut Self::Context) -> Self::Result {
+        self._config.peer_permissions.insert(msg.peer, msg.permissions.clone());
+        let mut network = self.network.clone();
+        async move {
+            network
+                .set_firewall_default(RuleDirection::Inbound, msg.permissions.into_rule())
+                .await
         }
         .into_actor(self)
         .boxed_local()
@@ -154,24 +182,6 @@ impl_handler!(StopListeningRelay => bool, |network, msg| {
 
 impl_handler!(ConnectPeer => Result<Multiaddr, DialErr>, |network, msg| {
     network.connect_peer(msg.peer).await
-});
-
-impl_handler!(SetFirewallDefault => (), |network, msg| {
-    let restriction = move |rq: &AccessRequest| rq.check(msg.permissions.clone());
-    let rule = Rule::Restricted {
-        restriction: Arc::new(restriction),
-        _maker: PhantomData,
-    };
-    network.set_firewall_default(RuleDirection::Inbound, rule).await
-});
-
-impl_handler!(SetFirewallRule => (), |network, msg| {
-    let restriction = move |rq: &AccessRequest| rq.check(msg.permissions.clone());
-    let rule = Rule::Restricted {
-        restriction: Arc::new(restriction),
-        _maker: PhantomData,
-    };
-    network.set_peer_rule(msg.peer, RuleDirection::Inbound, rule).await
 });
 
 impl_handler!(RemoveFirewallRule => (), |network, msg| {

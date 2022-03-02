@@ -6,7 +6,7 @@ use stronghold_utils::random::bytestring;
 
 #[cfg(feature = "p2p")]
 use crate::{
-    p2p::{identity::Keypair, NetworkConfig, PeerId, SwarmInfo},
+    p2p::{identity::Keypair, NetworkConfig, PeerId, Permissions, SwarmInfo},
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
     tests::fresh,
 };
@@ -435,7 +435,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         local_stronghold
-            .spawn_p2p(NetworkConfig::default(), None)
+            .spawn_p2p(NetworkConfig::new(Permissions::allow_all()), None)
             .await
             .unwrap_or_else(|e| panic!("Could not spawn p2p: {}", e));
 
@@ -513,7 +513,7 @@ async fn test_stronghold_p2p() {
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
         remote_stronghold
-            .spawn_p2p(NetworkConfig::default(), None)
+            .spawn_p2p(NetworkConfig::new(Permissions::allow_all()), None)
             .await
             .unwrap_or_else(|e| panic!("Could not create a stronghold instance: {}", e));
 
@@ -572,6 +572,7 @@ async fn test_stronghold_p2p() {
 
 #[cfg(feature = "p2p")]
 #[actix::test]
+#[ignore]
 async fn test_p2p_config() {
     use crate::p2p::{OutboundFailure, P2pError, Permissions};
 
@@ -581,7 +582,10 @@ async fn test_p2p_config() {
         .await
         .unwrap();
     match remote_sh
-        .spawn_p2p(NetworkConfig::default().with_mdns_enabled(false), None)
+        .spawn_p2p(
+            NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false),
+            None,
+        )
         .await
     {
         Ok(()) => {}
@@ -616,7 +620,7 @@ async fn test_p2p_config() {
     // Spawn p2p that uses the new keypair
     match stronghold
         .spawn_p2p(
-            NetworkConfig::default().with_mdns_enabled(false),
+            NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false),
             Some(keys_location.clone()),
         )
         .await

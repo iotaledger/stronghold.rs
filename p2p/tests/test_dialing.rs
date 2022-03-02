@@ -8,8 +8,8 @@ use futures::{
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
-    assemble_relayed_addr, firewall::FirewallRules, ChannelSinkConfig, EventChannel, Multiaddr, NetworkEvent, PeerId,
-    StrongholdP2p, StrongholdP2pBuilder,
+    assemble_relayed_addr, firewall::FirewallConfiguration, ChannelSinkConfig, EventChannel, Multiaddr, NetworkEvent,
+    PeerId, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -28,10 +28,14 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
     let (dummy_fw_tx, _) = mpsc::channel(10);
     let (dummy_rq_channel, _) = EventChannel::new(10, ChannelSinkConfig::DropLatest);
     let (event_channel, event_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
-    let builder = StrongholdP2pBuilder::new(dummy_fw_tx, dummy_rq_channel, Some(event_channel))
-        .with_firewall_default(FirewallRules::allow_all())
-        .with_mdns_support(false)
-        .with_connection_timeout(Duration::from_millis(1));
+    let builder = StrongholdP2pBuilder::new(
+        dummy_fw_tx,
+        dummy_rq_channel,
+        Some(event_channel),
+        FirewallConfiguration::allow_all(),
+    )
+    .with_mdns_support(false)
+    .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {
         let executor = |fut| {

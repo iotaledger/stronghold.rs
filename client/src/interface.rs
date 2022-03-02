@@ -507,9 +507,6 @@ impl Stronghold {
     /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
     /// The `key` parameter species the location in which in the config is stored, i.g.
     /// the key that was set on [`Stronghold::stop_p2p`].
-    ///
-    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
-    /// they will be skipped and have to be added manually.
     pub async fn spawn_p2p_load_config(
         &mut self,
         key: Vec<u8>,
@@ -565,9 +562,6 @@ impl Stronghold {
     /// Return `false` if there is no active network actor.
     /// Optionally store the current config (known addresses of remote peers and firewall rules) in the store
     /// at the specified `key`.
-    ///
-    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
-    /// they will be skipped and have to be added manually again after init.
     pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> StrongholdResult<bincode::Result<()>> {
         let actor = self
             .registry

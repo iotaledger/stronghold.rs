@@ -1,20 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    behaviour::{AddressInfo, PeerAddress},
-    firewall::{FirewallConfiguration, FirewallRules, Rule},
-};
+use crate::behaviour::{AddressInfo, PeerAddress};
 
 use libp2p::core::{multihash, PeerId};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    marker::PhantomData,
-    sync::Arc,
-};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SerdePeerId(Vec<u8>);
@@ -61,108 +53,5 @@ impl TryFrom<SerdeAddressInfo> for AddressInfo {
             relays.push(peer_id)
         }
         Ok(AddressInfo { peers, relays })
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub enum SerdeRule {
-    AllowAll,
-    RejectAll,
-    Ask,
-    Restricted,
-}
-
-impl SerdeRule {
-    pub fn into_rule_with_restriction<TRq>(self, restriction: Arc<dyn Fn(&TRq) -> bool + Send + Sync>) -> Rule<TRq> {
-        Rule::try_from(self).unwrap_or(Rule::Restricted {
-            restriction,
-            _maker: PhantomData,
-        })
-    }
-}
-
-impl<TRq> From<Rule<TRq>> for SerdeRule {
-    fn from(rule: Rule<TRq>) -> Self {
-        match rule {
-            Rule::AllowAll => SerdeRule::AllowAll,
-            Rule::RejectAll => SerdeRule::RejectAll,
-            Rule::Ask => SerdeRule::Ask,
-            Rule::Restricted { .. } => SerdeRule::Restricted,
-        }
-    }
-}
-
-impl<TRq> TryFrom<SerdeRule> for Rule<TRq> {
-    type Error = ();
-    fn try_from(rule: SerdeRule) -> Result<Self, Self::Error> {
-        match rule {
-            SerdeRule::AllowAll => Ok(Rule::AllowAll),
-            SerdeRule::RejectAll => Ok(Rule::RejectAll),
-            SerdeRule::Ask => Ok(Rule::Ask),
-            SerdeRule::Restricted => Err(()),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SerdeFirewallRules {
-    inbound: Option<SerdeRule>,
-    outbound: Option<SerdeRule>,
-}
-
-impl<TRq> From<FirewallRules<TRq>> for SerdeFirewallRules {
-    fn from(rules: FirewallRules<TRq>) -> Self {
-        SerdeFirewallRules {
-            inbound: rules.inbound.map(|r| r.into()),
-            outbound: rules.outbound.map(|r| r.into()),
-        }
-    }
-}
-
-impl<TRq> From<SerdeFirewallRules> for FirewallRules<TRq> {
-    fn from(rules: SerdeFirewallRules) -> Self {
-        FirewallRules {
-            inbound: rules.inbound.and_then(|r| r.try_into().ok()),
-            outbound: rules.outbound.and_then(|r| r.try_into().ok()),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SerdeFirewallConfig {
-    default: SerdeFirewallRules,
-    peer_rules: HashMap<SerdePeerId, SerdeFirewallRules>,
-}
-
-impl<TRq> From<FirewallConfiguration<TRq>> for SerdeFirewallConfig {
-    fn from(config: FirewallConfiguration<TRq>) -> Self {
-        let default = config.default.into();
-        let peer_rules = config
-            .peer_rules
-            .into_iter()
-            .filter_map(|(k, v)| {
-                let rules = SerdeFirewallRules::from(v);
-                if rules.inbound.is_some() || rules.outbound.is_some() {
-                    Some((SerdePeerId::from(k), rules))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        SerdeFirewallConfig { default, peer_rules }
-    }
-}
-
-impl<TRq> TryFrom<SerdeFirewallConfig> for FirewallConfiguration<TRq> {
-    type Error = multihash::Error;
-
-    fn try_from(config: SerdeFirewallConfig) -> Result<Self, Self::Error> {
-        let default = config.default.into();
-        let mut peer_rules = HashMap::new();
-        for (k, v) in config.peer_rules.into_iter() {
-            let peer_id = PeerId::try_from(k)?;
-            peer_rules.insert(peer_id, v.into());
-        }
-        Ok(FirewallConfiguration { default, peer_rules })
     }
 }

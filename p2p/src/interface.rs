@@ -12,9 +12,9 @@ use swarm_task::{SwarmOperation, SwarmTask};
 pub use types::*;
 
 use crate::{
-    behaviour::{BehaviourEvent, BehaviourState, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
-    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection},
-    RelayNotSupported,
+    behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
+    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule, RuleDirection},
+    AddressInfo, RelayNotSupported,
 };
 
 use futures::{
@@ -46,7 +46,7 @@ use std::{io, time::Duration};
 ///
 /// ```
 /// # use serde::{Serialize, Deserialize};
-/// # use p2p::{firewall::FwRequest, ChannelSinkConfig, EventChannel, StrongholdP2p};
+/// # use p2p::{firewall::{FirewallConfiguration, FwRequest}, ChannelSinkConfig, EventChannel, StrongholdP2p};
 /// # use futures::channel::mpsc;
 /// #
 /// // Type of the requests send to the remote.
@@ -98,7 +98,12 @@ use std::{io, time::Duration};
 /// // peers connecting / disconnecting, listener events or non-fatal failures.
 /// let (events_tx, events_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
 ///
-/// let p2p = StrongholdP2p::<Request, Response, RequestType>::new(firewall_tx, request_tx, Some(events_tx));
+/// let p2p = StrongholdP2p::<Request, Response, RequestType>::new(
+///     firewall_tx,
+///     request_tx,
+///     Some(events_tx),
+///     FirewallConfiguration::allow_all(),
+/// );
 /// ```
 pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
@@ -132,8 +137,9 @@ where
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
         requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<EventChannel<NetworkEvent>>,
+        firewall_config: FirewallConfiguration<TRq>,
     ) -> Result<Self, io::Error> {
-        StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel)
+        StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel, firewall_config)
             .build()
             .await
     }
@@ -244,11 +250,10 @@ where
         rx_yield.await.unwrap()
     }
 
-    /// Get the current default rules for the firewall.
-    /// The default rules are used for peers that do not have any explicit rules.
-    pub async fn get_firewall_default(&mut self) -> FirewallRules<TRq> {
+    /// Get the current firewall configuration.
+    pub async fn get_firewall_config(&mut self) -> FirewallConfiguration<TRq> {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetFirewallDefault { tx_yield };
+        let command = SwarmOperation::GetFirewallConfig { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -259,14 +264,6 @@ where
     pub async fn remove_firewall_default(&mut self, direction: RuleDirection) {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::RemoveFirewallDefault { direction, tx_yield };
-        self.send_command(command).await;
-        rx_yield.await.unwrap()
-    }
-
-    /// Get the explicit rules for a peer, if there are any.
-    pub async fn get_peer_rules(&mut self, peer: PeerId) -> FirewallRules<TRq> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetPeerRules { peer, tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -324,6 +321,14 @@ where
             address,
             tx_yield,
         };
+        self.send_command(command).await;
+        rx_yield.await.unwrap()
+    }
+
+    // Export the address info.
+    pub async fn export_address_info(&mut self) -> AddressInfo {
+        let (tx_yield, rx_yield) = oneshot::channel();
+        let command = SwarmOperation::ExportAddressInfo { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -429,15 +434,6 @@ where
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
-
-    // Export the firewall configuration and address info.
-    pub async fn export_state(&mut self) -> BehaviourState<TRq> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::ExportConfig { tx_yield };
-        self.send_command(command).await;
-        rx_yield.await.unwrap()
-    }
-
     async fn send_command(&mut self, command: SwarmOperation<Rq, Rs, TRq>) {
         let _ = poll_fn(|cx| self.command_tx.poll_ready(cx)).await;
         let _ = self.command_tx.start_send(command);
@@ -465,10 +461,6 @@ pub enum InitKeypair {
 /// Builder for new `StrongholdP2p`.
 ///
 /// Default behaviour:
-/// - All outbound requests are permitted
-/// - No firewall rules for inbound requests are set. In case of an inbound requests, a
-///   [`FirewallRequest::PeerSpecificRule`] request is sent through the `firewall_channel` to specify the rules for this
-///   peer.
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
 /// - No limit for simultaneous connections.
 /// - Request-timeout and Connection-timeout are 10s.
@@ -502,11 +494,11 @@ where
     // Limit of simultaneous connections.
     connections_limit: Option<ConnectionLimits>,
 
-    // Firewall config and list of known addresses that were persisted from a former running instance.
-    state: Option<BehaviourState<TRq>>,
+    // List of known addresses that were persisted from a former running instance.
+    address_info: Option<AddressInfo>,
 
-    // Default rules for the firewall.
-    default_rules: Option<FirewallRules<TRq>>,
+    // Firewall configuration.
+    firewall_config: FirewallConfiguration<TRq>,
 
     // Use Mdns protocol for peer discovery in the local network.
     //
@@ -531,8 +523,8 @@ where
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
         requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<EventChannel<NetworkEvent>>,
+        firewall_config: FirewallConfiguration<TRq>,
     ) -> Self {
-        let default_rules = FirewallRules::new(None, Some(Rule::AllowAll));
         StrongholdP2pBuilder {
             firewall_channel,
             requests_channel,
@@ -540,10 +532,10 @@ where
             ident: None,
             behaviour_config: Default::default(),
             connections_limit: None,
-            default_rules: Some(default_rules),
+            firewall_config,
             support_mdns: true,
             support_relay: true,
-            state: None,
+            address_info: None,
         }
     }
 
@@ -585,19 +577,8 @@ where
 
     /// Load the behaviour state from a former running instance.
     /// The state contains default and peer-specific rules, and the list of known addresses for remote peers.
-    pub fn load_state(mut self, state: BehaviourState<TRq>) -> Self {
-        self.state = Some(state);
-        self
-    }
-
-    /// Set the default firewall rules, which apply for all requests from/ to peers for which no peer-specific rule was
-    /// set. Per default in the firewall, no rules are set and a [`FirewallRequest::PeerSpecificRule`] request is
-    /// sent through the `firewall_channel` when a peer connect or an inbound/ outbound request is sent.
-    ///
-    /// **Note**: If former firewall config was loaded via `StrongholdP2pBuilder::load_state` the default rules will be
-    /// overwritten with this method.
-    pub fn with_firewall_default(mut self, rules: FirewallRules<TRq>) -> Self {
-        self.default_rules = Some(rules);
+    pub fn load_addresses(mut self, address_info: AddressInfo) -> Self {
+        self.address_info = Some(address_info);
         self
     }
 
@@ -646,7 +627,7 @@ where
     ///
     /// ```
     /// # use p2p::{
-    ///     firewall::FirewallRules,
+    ///     firewall::FirewallConfiguration,
     ///     ChannelSinkConfig, EventChannel,  StrongholdP2p, StrongholdP2pBuilder
     /// };
     /// # use futures::channel::mpsc;
@@ -657,8 +638,7 @@ where
     /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
     /// let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
     ///
-    /// let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None)
-    ///     .with_firewall_default(FirewallRules::allow_all());
+    /// let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None, FirewallConfiguration::allow_all());
     /// let p2p: StrongholdP2p<String, String> = builder
     ///     .build_with_transport(TokioTcpConfig::new(), |fut| {
     ///          tokio::spawn(fut);
@@ -712,21 +692,14 @@ where
         } else {
             None
         };
-        let (address_info, mut firewall) = match self.state {
-            Some(state) => (Some(state.address_info), state.firewall),
-            None => (None, FirewallConfiguration::default()),
-        };
-        if let Some(rules) = self.default_rules {
-            firewall.default = rules;
-        }
 
         let behaviour = NetBehaviour::new(
             self.behaviour_config,
             mdns,
             relay,
             self.firewall_channel,
-            firewall,
-            address_info,
+            self.firewall_config,
+            self.address_info,
         );
 
         let mut swarm_builder =

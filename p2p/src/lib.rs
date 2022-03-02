@@ -24,8 +24,7 @@ mod interface;
 mod serde;
 
 pub use behaviour::{
-    assemble_relayed_addr, firewall, AddressInfo, BehaviourState, EstablishedConnections, MessageProtocol,
-    RelayNotSupported,
+    assemble_relayed_addr, firewall, AddressInfo, EstablishedConnections, MessageProtocol, RelayNotSupported,
 };
 pub use interface::*;
 pub use libp2p_reexport::*;

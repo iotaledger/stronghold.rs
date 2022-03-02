@@ -16,12 +16,12 @@ use crate::{
 use actix::prelude::*;
 use futures::channel::mpsc;
 use p2p::{
-    firewall::{FirewallRules, FwRequest},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, ReceiveRequest, StrongholdP2p,
+    firewall::{FirewallConfiguration, FirewallRules, FwRequest, Rule},
+    AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest, StrongholdP2p,
     StrongholdP2pBuilder,
 };
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, io, time::Duration};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::{collections::HashMap, convert::TryFrom, io, marker::PhantomData, sync::Arc, time::Duration};
 
 #[cfg(test)]
 use crate::actors::secure_testing::ReadFromVault;
@@ -71,14 +71,32 @@ impl Network {
     ) -> Result<Self, io::Error> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
+        let firewall_default = FirewallRules {
+            inbound: Some(network_config.permissions_default.clone().into_rule()),
+            outbound: Some(Rule::AllowAll),
+        };
+        let peer_permissions = network_config
+            .peer_permissions
+            .clone()
+            .into_iter()
+            .map(|(peer, permissions)| {
+                let rules = FirewallRules {
+                    inbound: Some(permissions.into_rule()),
+                    outbound: Some(Rule::AllowAll),
+                };
+                (peer, rules)
+            })
+            .collect();
+        let firewall_config = FirewallConfiguration {
+            default: firewall_default,
+            peer_rules: peer_permissions,
+        };
+        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None, firewall_config)
             .with_mdns_support(network_config.enable_mdns)
             .with_relay_support(network_config.enable_relay);
-        if let Some(state) = network_config.state.take() {
-            builder = builder.load_state(state);
-        } else {
-            builder = builder.with_firewall_default(FirewallRules::allow_all())
-        }
+        if let Some(address_info) = network_config.addresses.take() {
+            builder = builder.load_addresses(address_info);
+        };
         if let Some(timeout) = network_config.request_timeout {
             builder = builder.with_request_timeout(timeout)
         }
@@ -103,24 +121,54 @@ impl Network {
     }
 }
 
-// Config for the new network.
-/// Default behaviour:
-/// - No limit for simultaneous connections.
-/// - Request-timeout and Connection-timeout are 10s.
-/// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
-///   the local network.
-/// - [`Relay`][`libp2p::relay`] functionality is disabled.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+/// Config for the new network.
+///
+/// Note: [`Default`] is implemented for [`NetworkConfig`] as [`NetworkConfig::new`] with [`Permissions::allow_none()`].
+#[derive(Debug, Default, Clone)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
     connections_limit: Option<ConnectionLimits>,
     enable_mdns: bool,
     enable_relay: bool,
-    state: Option<BehaviourState<AccessRequest>>,
+    addresses: Option<AddressInfo>,
+
+    pub(crate) peer_permissions: HashMap<PeerId, Permissions>,
+    pub(crate) permissions_default: Permissions,
+}
+
+impl Serialize for NetworkConfig {
+    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        todo!()
+    }
+}
+
+impl<'de> Deserialize<'de> for NetworkConfig {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        todo!()
+    }
 }
 
 impl NetworkConfig {
+    /// Create new network config with the given permission and default config:
+    /// - No limit for simultaneous connections.
+    /// - Request-timeout and Connection-timeout are 10s.
+    /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id
+    ///   to the local network.
+    /// - [`Relay`][`libp2p::relay`] functionality is disabled.
+    pub fn new(default_permissions: Permissions) -> Self {
+        NetworkConfig {
+            permissions_default: default_permissions,
+            ..Default::default()
+        }
+    }
+
     /// Set a timeout for receiving a response after a request was sent.
     ///
     /// This applies for inbound and outbound requests.
@@ -156,9 +204,9 @@ impl NetworkConfig {
         self
     }
 
-    /// Import state exported from a past network actor.
-    pub fn load_state(mut self, state: BehaviourState<AccessRequest>) -> Self {
-        self.state = Some(state);
+    /// Import known addresses and relays from a past network actor.
+    pub fn with_address_info(mut self, info: AddressInfo) -> Self {
+        self.addresses = Some(info);
         self
     }
 }
@@ -270,7 +318,7 @@ impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
 }
 
 /// Permissions for remote peers to operate on the local vault or store of a client.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Permissions {
     default: Option<ClientPermissions>,
     exceptions: HashMap<Vec<u8>, Option<ClientPermissions>>,
@@ -278,13 +326,13 @@ pub struct Permissions {
 
 impl Permissions {
     /// No operations are permitted.
-    pub fn none() -> Self {
+    pub fn allow_none() -> Self {
         Self::default()
     }
 
     /// All operations on all clients are permitted, including reading, writing and cloning secrets and reading/ writing
     /// to the store,
-    pub fn all() -> Self {
+    pub fn allow_all() -> Self {
         Self {
             default: Some(ClientPermissions::all()),
             ..Default::default()
@@ -302,10 +350,18 @@ impl Permissions {
         self.exceptions.insert(client_path, permissions);
         self
     }
+
+    pub(crate) fn into_rule(self) -> Rule<AccessRequest> {
+        let restriction = move |rq: &AccessRequest| rq.check(self.clone());
+        Rule::Restricted {
+            restriction: Arc::new(restriction),
+            _maker: PhantomData,
+        }
+    }
 }
 
 /// Restrict access to the vaults and store of a specific client.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ClientPermissions {
     use_vault_default: bool,
     use_vault_exceptions: HashMap<Vec<u8>, bool>,

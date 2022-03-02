@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod permissions;
-use crate::{serde::SerdeFirewallConfig, RequestDirection};
+use crate::RequestDirection;
 
 use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
-use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
 pub trait FwRequest<Rq>: Send + 'static {
@@ -161,9 +160,7 @@ impl<TRq> FirewallRules<TRq> {
 /// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(try_from = "SerdeFirewallConfig")]
-#[serde(into = "SerdeFirewallConfig")]
+#[derive(Debug)]
 pub struct FirewallConfiguration<TRq> {
     /// Default rules that are used if there are no peer-specific ones for a peer.
     pub default: FirewallRules<TRq>,
@@ -171,6 +168,10 @@ pub struct FirewallConfiguration<TRq> {
     pub peer_rules: HashMap<PeerId, FirewallRules<TRq>>,
 }
 
+/// Per default don't set any rule.
+/// In case of an inbound or outbound request, a [`FirewallRequest::PeerSpecificRule`] request is sent through the
+/// `firewall_channel` to specify the rules for the remote peer.
+/// This equals [`FirewallConfiguration::empty`].
 impl<TRq> Default for FirewallConfiguration<TRq> {
     fn default() -> Self {
         FirewallConfiguration {
@@ -190,6 +191,19 @@ impl<TRq> Clone for FirewallConfiguration<TRq> {
 }
 
 impl<TRq> FirewallConfiguration<TRq> {
+    /// Don't set any rules.
+    /// In case of an inbound or outbound request, a [`FirewallRequest::PeerSpecificRule`] request is sent through the
+    /// `firewall_channel` to specify the rules for the remote peer.
+    pub fn empty(default_in: Option<Rule<TRq>>, default_out: Option<Rule<TRq>>) -> Self {
+        FirewallConfiguration {
+            default: FirewallRules {
+                inbound: default_in,
+                outbound: default_out,
+            },
+            peer_rules: HashMap::new(),
+        }
+    }
+
     /// Create a new instance with the given default rules.
     /// If no rules are set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
     /// inbound **and outbound** requests.

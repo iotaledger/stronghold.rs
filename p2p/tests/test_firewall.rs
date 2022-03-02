@@ -12,7 +12,7 @@ use libp2p::tcp::TokioTcpConfig;
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection,
+        FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection,
     },
     ChannelSinkConfig, EventChannel, InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest,
     RequestDirection, StrongholdP2p, StrongholdP2pBuilder,
@@ -57,6 +57,7 @@ async fn init_peer() -> NewPeer {
         firewall_tx,
         request_channel,
         Some(event_channel),
+        FirewallConfiguration::default(),
     );
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {
@@ -580,10 +581,6 @@ async fn firewall_ask() {
     let run_test = async {
         let (mut firewall_a, _, _, mut peer_a) = init_peer().await;
         let (mut firewall_b, mut b_rq_rx, mut b_event_rx, mut peer_b) = init_peer().await;
-
-        // Firewall should have no rules per default and ask each time a peer connects.
-        peer_a.remove_firewall_default(RuleDirection::Both).await;
-        peer_b.remove_firewall_default(RuleDirection::Both).await;
 
         let peer_b_id = peer_b.peer_id();
         let peer_b_addr = peer_b

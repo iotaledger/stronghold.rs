@@ -18,7 +18,7 @@
 //! # use p2p::{
 //! #   firewall::{
 //! #       permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-//! #       FirewallRules, FwRequest, Rule,
+//! #       FirewallConfiguration, FwRequest, Rule,
 //! #   },
 //! #   ChannelSinkConfig, EventChannel, StrongholdP2p, StrongholdP2pBuilder,
 //! # };
@@ -61,8 +61,7 @@
 //! # let (firewall_tx, firewall_rx) = mpsc::channel(10);
 //! # let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
 //! #
-//! let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None)
-//!     .with_firewall_default(FirewallRules::new(Some(rule), None));
+//! let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None, FirewallConfiguration::allow_all());
 //!
 //! // Use `MessagePermissions` in StrongholdP2p as type for firewall requests.
 //! let p2p: StrongholdP2p<Message, MessageResponse, MessagePermission> = builder.build().await?;

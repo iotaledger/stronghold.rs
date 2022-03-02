@@ -36,9 +36,8 @@ mod remote_stronghold {
 
     pub async fn run(address_tx: oneshot::Sender<(PeerId, Multiaddr)>) -> Result<(), Box<dyn Error>> {
         let mut stronghold = Stronghold::init_stronghold_system(CLIENT_PATH.to_vec(), Vec::new()).await?;
-        stronghold.spawn_p2p(NetworkConfig::default(), None).await?;
         stronghold
-            .set_firewall_permissions(Permissions::all(), Vec::new(), true)
+            .spawn_p2p(NetworkConfig::new(Permissions::allow_all()), None)
             .await?;
         let addr = stronghold.start_listening(None).await??;
         let peer_id = stronghold.get_swarm_info().await?.local_peer_id;
@@ -57,7 +56,7 @@ mod local_client {
         procedures::{Ed25519Sign, GenerateKey, KeyType},
         Location, RecordHint,
     };
-    use p2p::{ChannelSinkConfig, EventChannel, StrongholdP2p};
+    use p2p::{firewall::FirewallConfiguration, ChannelSinkConfig, EventChannel, StrongholdP2p};
 
     async fn setup_network(
         stronghold_id: PeerId,
@@ -65,7 +64,7 @@ mod local_client {
     ) -> Result<StrongholdP2p<ShRequest, ShResult>, Box<dyn Error>> {
         let (firewall_tx, _) = mpsc::channel(0);
         let (request_tx, _) = EventChannel::new(0, ChannelSinkConfig::Block);
-        let mut network = StrongholdP2p::new(firewall_tx, request_tx, None).await?;
+        let mut network = StrongholdP2p::new(firewall_tx, request_tx, None, FirewallConfiguration::allow_all()).await?;
         // Add address info of remote Stronghold.
         network.add_address(stronghold_id, stronghold_addr).await;
         println!("\nStarted new client.");

@@ -53,7 +53,6 @@ use libp2p::{
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
-use serde::{Deserialize, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{
     sync::{atomic::AtomicU64, Arc},
@@ -270,8 +269,8 @@ where
 
     /// Get the current default rules for the firewall.
     /// The default rules are used for peers that do not have any explicit rules.
-    pub fn get_firewall_default(&self) -> &FirewallRules<TRq> {
-        self.firewall.get_default_rules()
+    pub fn get_firewall_config(&self) -> &FirewallConfiguration<TRq> {
+        &self.firewall
     }
 
     /// Set the default configuration for the firewall.
@@ -314,11 +313,6 @@ where
         }
     }
 
-    /// Get the explicit rules for a peer, if there are any.
-    pub fn get_peer_rules(&self, peer: &PeerId) -> Option<&FirewallRules<TRq>> {
-        self.firewall.get_rules(peer)
-    }
-
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
     pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule<TRq>) {
         self.firewall.set_rule(peer, Some(rule), direction);
@@ -339,6 +333,11 @@ where
     /// Remove an address from the known addresses of a remote peer.
     pub fn remove_address(&mut self, peer: &PeerId, address: &Multiaddr) {
         self.addresses.remove_address(peer, address);
+    }
+
+    // Export collected info about known relays and peer addresses.
+    pub fn export_address_info(&self) -> AddressInfo {
+        self.addresses.clone()
     }
 
     // Get currently established connections.
@@ -398,14 +397,6 @@ where
         }
         Ok(self.addresses.use_relay(target, relay, is_exclusive))
     }
-
-    pub fn export_state(&self) -> BehaviourState<TRq> {
-        BehaviourState {
-            firewall: self.firewall.clone(),
-            address_info: self.addresses.clone(),
-        }
-    }
-
     /// [`RequestId`] for the next outbound request.
     fn next_request_id(&mut self) -> RequestId {
         *self.next_request_id.inc()
@@ -920,12 +911,6 @@ where
             relay.inject_expired_external_addr(addr);
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BehaviourState<TRq> {
-    pub firewall: FirewallConfiguration<TRq>,
-    pub address_info: AddressInfo,
 }
 
 #[cfg(test)]
