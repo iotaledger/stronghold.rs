@@ -71,11 +71,6 @@ impl PeerConnectionManager {
         self.established.iter().map(|(p, c)| (*p, c.clone())).collect()
     }
 
-    // Remove all connections of a peer, return the concatenated list of pending responses from the connections.
-    pub fn remove_all_connections(&mut self, peer: &PeerId) -> Option<EstablishedConnections> {
-        self.established.remove(peer)
-    }
-
     // Insert a newly established connection.
     pub fn add_connection(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
         self.established.entry(peer).or_default().connections.insert(id, point);

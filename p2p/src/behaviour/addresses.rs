@@ -1,8 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::serde::SerdeAddressInfo;
-
 use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -30,8 +28,6 @@ impl Default for PeerAddress {
 
 // Known relays and peer addresses.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(try_from = "SerdeAddressInfo")]
-#[serde(into = "SerdeAddressInfo")]
 pub struct AddressInfo {
     // Addresses and relay config for each peer.
     pub peers: HashMap<PeerId, PeerAddress>,

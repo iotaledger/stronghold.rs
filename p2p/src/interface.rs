@@ -27,7 +27,7 @@ use libp2p::{
     identity::Keypair,
     mdns::{Mdns, MdnsConfig},
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
-    relay::{new_transport_and_behaviour, RelayConfig},
+    relay::v1::{new_transport_and_behaviour, RelayConfig},
     swarm::SwarmBuilder,
     yamux::YamuxConfig,
 };

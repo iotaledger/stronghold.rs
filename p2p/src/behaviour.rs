@@ -36,7 +36,7 @@ use futures::{
     FutureExt, StreamExt, TryFutureExt,
 };
 pub use handler::MessageProtocol;
-use handler::{ConnectionHandler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
+use handler::{Handler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
 use libp2p::{
     core::{
         connection::{ConnectionId, ListenerId},
@@ -44,12 +44,12 @@ use libp2p::{
         ConnectedPoint, Multiaddr, PeerId,
     },
     mdns::Mdns,
-    relay::Relay,
+    relay::v1::Relay,
     swarm::{
+        behaviour::toggle::Toggle,
         dial_opts::{DialOpts, PeerCondition},
-        toggle::Toggle,
-        IntoProtocolsHandler, IntoProtocolsHandlerSelect, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
-        PollParameters, ProtocolsHandler,
+        ConnectionHandler, IntoConnectionHandler, IntoConnectionHandlerSelect, NetworkBehaviour,
+        NetworkBehaviourAction, NotifyHandler, PollParameters,
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
@@ -59,11 +59,11 @@ use std::{
     time::Duration,
 };
 
-type ProtoHandler<Rq, Rs> = IntoProtocolsHandlerSelect<
-    ConnectionHandler<Rq, Rs>,
-    IntoProtocolsHandlerSelect<
-        <Toggle<Mdns> as NetworkBehaviour>::ProtocolsHandler,
-        <Toggle<Relay> as NetworkBehaviour>::ProtocolsHandler,
+type ProtoHandler<Rq, Rs> = IntoConnectionHandlerSelect<
+    Handler<Rq, Rs>,
+    IntoConnectionHandlerSelect<
+        <Toggle<Mdns> as NetworkBehaviour>::ConnectionHandler,
+        <Toggle<Relay> as NetworkBehaviour>::ConnectionHandler,
     >,
 >;
 
@@ -203,7 +203,7 @@ where
     ///     identity::Keypair,
     ///     mdns::{Mdns, MdnsConfig},
     ///     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
-    ///     relay::{new_transport_and_behaviour, RelayConfig},
+    ///     relay::v1::{new_transport_and_behaviour, RelayConfig},
     ///     tcp::TokioTcpConfig,
     ///     yamux::YamuxConfig,
     ///     Swarm, Transport
@@ -439,14 +439,14 @@ where
         }
     }
 
-    fn new_request_response_handler(&mut self, peer: Option<PeerId>) -> ConnectionHandler<Rq, Rs> {
+    fn new_request_response_handler(&mut self, peer: Option<PeerId>) -> Handler<Rq, Rs> {
         let protocol_support = match peer {
             Some(peer) => ProtocolSupport::from_rules(&self.firewall.get_effective_rules(&peer)),
             None => ProtocolSupport::Full,
         };
         // Use full protocol support on init.
         // Once the connection is established, this will be updated with the effective rules for the remote peer.
-        ConnectionHandler::new(
+        Handler::new(
             self.supported_protocols.clone(),
             protocol_support,
             self.connection_timeout,
@@ -455,14 +455,14 @@ where
         )
     }
 
-    fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ProtocolsHandler {
+    fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ConnectionHandler {
         let handler = self.new_request_response_handler(peer);
         let mdns_handler = self.mdns.new_handler();
         let relay_handler = self.relay.new_handler();
-        IntoProtocolsHandler::select(handler, IntoProtocolsHandler::select(mdns_handler, relay_handler))
+        IntoConnectionHandler::select(handler, IntoConnectionHandler::select(mdns_handler, relay_handler))
     }
 
-    // Handle new [`HandlerOutEvent`] emitted by the [`ConnectionHandler`].
+    // Handle new [`HandlerOutEvent`] emitted by the [`Handler`].
     fn handle_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
         match event {
             HandlerOutEvent::ReceivedRequest {
@@ -570,10 +570,10 @@ where
     Rs: RqRsMessage,
     TRq: FwRequest<Rq>,
 {
-    type ProtocolsHandler = ProtoHandler<Rq, Rs>;
+    type ConnectionHandler = ProtoHandler<Rq, Rs>;
     type OutEvent = BehaviourEvent<Rq, Rs>;
 
-    fn new_handler(&mut self) -> Self::ProtocolsHandler {
+    fn new_handler(&mut self) -> Self::ConnectionHandler {
         self.new_handler_for_peer(None)
     }
 
@@ -581,7 +581,7 @@ where
         &mut self,
         peer: PeerId,
         connection: ConnectionId,
-        event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
+        event: <<Self::ConnectionHandler as IntoConnectionHandler>::Handler as ConnectionHandler>::OutEvent,
     ) {
         match event {
             EitherOutput::First(ev) => self.handle_handler_event(peer, connection, ev),
@@ -594,7 +594,7 @@ where
         &mut self,
         cx: &mut Context<'_>,
         _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
+    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ConnectionHandler>> {
         // Drive mdns.
         let _ = self.mdns.poll(cx, _params);
 
@@ -626,9 +626,9 @@ where
                 } => {
                     let rq_rs_handler = self.new_request_response_handler(opts.get_peer_id());
                     let mdns_handler = self.mdns.new_handler();
-                    let handler = IntoProtocolsHandler::select(
+                    let handler = IntoConnectionHandler::select(
                         rq_rs_handler,
-                        IntoProtocolsHandler::select(mdns_handler, relay_handler),
+                        IntoConnectionHandler::select(mdns_handler, relay_handler),
                     );
                     return Poll::Ready(NetworkBehaviourAction::Dial { opts, handler });
                 }
@@ -735,33 +735,13 @@ where
         addresses
     }
 
-    fn inject_connected(&mut self, peer: &PeerId) {
-        if let Some(relay) = self.relay.as_mut() {
-            relay.inject_connected(peer);
-        }
-        if let Some(mdns) = self.mdns.as_mut() {
-            mdns.inject_connected(peer);
-        }
-        self.request_manager.on_peer_connected(*peer);
-    }
-
-    fn inject_disconnected(&mut self, peer: &PeerId) {
-        if let Some(relay) = self.relay.as_mut() {
-            relay.inject_disconnected(peer);
-        }
-
-        if let Some(mdns) = self.mdns.as_mut() {
-            mdns.inject_disconnected(peer);
-        }
-        self.request_manager.on_peer_disconnected(*peer);
-    }
-
     fn inject_connection_established(
         &mut self,
         peer: &PeerId,
         connection: &ConnectionId,
         endpoint: &ConnectedPoint,
         failed_addresses: Option<&Vec<Multiaddr>>,
+        _other_established: usize,
     ) {
         // If the remote connected to us and there is no rule for inbound requests yet, query firewall.
         if endpoint.is_listener() && self.firewall.get_effective_rules(peer).inbound.is_none() {
@@ -784,11 +764,11 @@ where
             .prioritize_addr(*peer, endpoint.get_remote_address().clone());
 
         if let Some(relay) = self.relay.as_mut() {
-            relay.inject_connection_established(peer, connection, endpoint, failed_addresses);
+            relay.inject_connection_established(peer, connection, endpoint, failed_addresses, _other_established);
         }
 
         if let Some(mdns) = self.mdns.as_mut() {
-            mdns.inject_connection_established(peer, connection, endpoint, failed_addresses);
+            mdns.inject_connection_established(peer, connection, endpoint, failed_addresses, _other_established);
         }
     }
 
@@ -797,15 +777,16 @@ where
         peer: &PeerId,
         connection: &ConnectionId,
         _endpoint: &ConnectedPoint,
-        _handler: <Self::ProtocolsHandler as IntoProtocolsHandler>::Handler,
+        _handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
+        remaining_established: usize,
     ) {
         self.request_manager.on_connection_closed(*peer, connection);
         let (_, select) = _handler.into_inner();
         let (mdns_handler, relay_handler) = select.into_inner();
         self.mdns
-            .inject_connection_closed(peer, connection, _endpoint, mdns_handler);
+            .inject_connection_closed(peer, connection, _endpoint, mdns_handler, remaining_established);
         self.relay
-            .inject_connection_closed(peer, connection, _endpoint, relay_handler);
+            .inject_connection_closed(peer, connection, _endpoint, relay_handler, remaining_established);
     }
 
     fn inject_address_change(
@@ -827,7 +808,7 @@ where
     fn inject_dial_failure(
         &mut self,
         peer_id: Option<PeerId>,
-        _handler: Self::ProtocolsHandler,
+        _handler: Self::ConnectionHandler,
         _error: &libp2p::swarm::DialError,
     ) {
         if let Some(peer) = peer_id {
@@ -843,7 +824,7 @@ where
         &mut self,
         _local_addr: &Multiaddr,
         _send_back_addr: &Multiaddr,
-        _handler: Self::ProtocolsHandler,
+        _handler: Self::ConnectionHandler,
     ) {
         let (_, select) = _handler.into_inner();
         let (mdns_handler, relay_handler) = select.into_inner();
@@ -924,7 +905,7 @@ mod test {
         core::{identity, upgrade, PeerId, Transport},
         mdns::{Mdns, MdnsConfig},
         noise::{Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
-        relay::{new_transport_and_behaviour, RelayConfig},
+        relay::v1::{new_transport_and_behaviour, RelayConfig},
         swarm::{Swarm, SwarmBuilder, SwarmEvent},
         tcp::TokioTcpConfig,
         yamux::YamuxConfig,

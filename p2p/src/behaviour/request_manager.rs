@@ -249,14 +249,15 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         }
     }
 
-    // Handle a newly connected peer i.g. that at least one connection was established.
-    // Assign pending request to a connection and mark them as ready.
-    pub fn on_peer_connected(&mut self, peer: PeerId) {
-        // Check that there is at least one active connection to the remote.
-        if !self.connections.is_connected(&peer) {
+    // Handle a new connection to a remote peer.
+    pub fn on_connection_established(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
+        let is_first_connection = !self.connections.is_connected(&peer);
+        self.connections.add_connection(peer, id, point);
+        if !is_first_connection {
             return;
         }
-        // Handle pending requests
+
+        // Assign pending request to a connection and mark them as ready.
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
                 let (peer, request) = unwrap_or_return!(self.outbound_request_store.remove(&request_id));
@@ -273,23 +274,6 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
                 self.actions.push_back(action);
             });
         }
-    }
-
-    // Handle a remote peer disconnecting completely.
-    // Emit failures for the pending responses on all pending connections.
-    pub fn on_peer_disconnected(&mut self, peer: PeerId) {
-        if let Some(established) = self.connections.remove_all_connections(&peer) {
-            established
-                .connections
-                .keys()
-                .into_iter()
-                .for_each(|conn_id| self.on_connection_closed(peer, conn_id))
-        }
-    }
-
-    // Handle a new individual connection to a remote peer.
-    pub fn on_connection_established(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
-        self.connections.add_connection(peer, id, point);
     }
 
     // Handle an individual connection closing.
@@ -462,7 +446,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         self.awaiting_peer_rule.entry(peer).or_insert_with(HashMap::new);
     }
 
-    // Add a [`BehaviourAction::SetProtocolSupport`] to the action queue to inform the `ConnectionHandler` of changed
+    // Add a [`BehaviourAction::SetProtocolSupport`] to the action queue to inform the `Handler` of changed
     // protocol support.
     pub fn set_protocol_support(
         &mut self,

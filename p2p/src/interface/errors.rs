@@ -13,10 +13,10 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
+pub use libp2p::multihash::Multihash;
 use libp2p::{
-    core::connection::{ConnectionLimit, PendingConnectionError},
-    swarm::DialError,
-    Multiaddr, TransportError,
+    swarm::{ConnectionLimit, DialError, PendingConnectionError},
+    Multiaddr, PeerId, TransportError,
 };
 use std::{convert::TryFrom, io};
 use thiserror::Error;
@@ -41,9 +41,12 @@ pub enum DialErr {
     #[error(" Pending connection attempt has been aborted.")]
     Aborted,
     /// The peer identity obtained on the connection did not
-    /// match the one that was expected or is otherwise invalid.
-    #[error("Invalid peer ID.")]
-    InvalidPeerId,
+    /// match the one that was expected.
+    #[error("Wrong peer ID, obtained: {obtained:?}")]
+    WrongPeerId { obtained: PeerId },
+    /// The provided peer identity is invalid.
+    #[error("Invalid peer ID: {0:?}")]
+    InvalidPeerId(Multihash),
     /// An I/O error occurred on the connection.
     #[error("An I/O error occurred on the connection: {0}.")]
     ConnectionIo(io::Error),
@@ -64,12 +67,13 @@ impl TryFrom<DialError> for DialErr {
                 DialErr::ConnectionLimit { limit, current }
             }
             DialError::LocalPeerId => DialErr::LocalPeerId,
-            DialError::NoAddresses => DialErr::NoAddresses,
+            DialError::WrongPeerId { obtained, .. } => DialErr::WrongPeerId { obtained },
+            DialError::InvalidPeerId(hash) => DialErr::InvalidPeerId(hash),
             DialError::DialPeerConditionFalse(_) => return Err(()),
             DialError::Aborted => DialErr::Aborted,
-            DialError::InvalidPeerId => DialErr::InvalidPeerId,
             DialError::ConnectionIo(e) => DialErr::ConnectionIo(e),
             DialError::Transport(addrs) => DialErr::Transport(addrs),
+            DialError::NoAddresses => DialErr::NoAddresses,
         };
         Ok(e)
     }
@@ -82,9 +86,10 @@ pub enum ConnectionErr {
     #[error("I/O error: {0}")]
     Io(io::Error),
     /// The peer identity obtained on the connection did not
-    /// match the one that was expected or is otherwise invalid.
-    #[error("Invalid peer ID.")]
-    InvalidPeerId,
+    /// match the one that was expected.
+    #[error("Wrong peer Id, obtained: {obtained:?}")]
+    WrongPeerId { obtained: PeerId },
+
     /// An error occurred while negotiating the transport protocol(s).
     #[error("Transport error: {0}")]
     Transport(TransportErr),
@@ -103,7 +108,7 @@ impl From<PendingConnectionError<TransportError<io::Error>>> for ConnectionErr {
             PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
                 ConnectionErr::Io(e)
             }
-            PendingConnectionError::InvalidPeerId => ConnectionErr::InvalidPeerId,
+            PendingConnectionError::WrongPeerId { obtained, .. } => ConnectionErr::WrongPeerId { obtained },
             PendingConnectionError::ConnectionLimit(ConnectionLimit { limit, current }) => {
                 ConnectionErr::ConnectionLimit { limit, current }
             }

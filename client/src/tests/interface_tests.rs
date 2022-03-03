@@ -572,7 +572,6 @@ async fn test_stronghold_p2p() {
 
 #[cfg(feature = "p2p")]
 #[actix::test]
-#[ignore]
 async fn test_p2p_config() {
     use crate::p2p::{OutboundFailure, P2pError, Permissions};
 

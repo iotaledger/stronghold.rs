@@ -21,7 +21,6 @@ mod libp2p_reexport {
     pub type NoiseKeypair = libp2p::noise::Keypair<libp2p::noise::X25519Spec>;
 }
 mod interface;
-mod serde;
 
 pub use behaviour::{
     assemble_relayed_addr, firewall, AddressInfo, EstablishedConnections, MessageProtocol, RelayNotSupported,

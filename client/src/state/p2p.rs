@@ -20,7 +20,7 @@ use p2p::{
     AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest, StrongholdP2p,
     StrongholdP2pBuilder,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::TryFrom, io, marker::PhantomData, sync::Arc, time::Duration};
 
 #[cfg(test)]
@@ -124,7 +124,7 @@ impl Network {
 /// Config for the new network.
 ///
 /// Note: [`Default`] is implemented for [`NetworkConfig`] as [`NetworkConfig::new`] with [`Permissions::allow_none()`].
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
@@ -138,24 +138,6 @@ pub struct NetworkConfig {
 
     peer_permissions: HashMap<PeerId, Permissions>,
     permissions_default: Permissions,
-}
-
-impl Serialize for NetworkConfig {
-    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        todo!()
-    }
-}
-
-impl<'de> Deserialize<'de> for NetworkConfig {
-    fn deserialize<D>(_: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        todo!()
-    }
 }
 
 impl NetworkConfig {

@@ -16,8 +16,8 @@
 use crate::{behaviour::BehaviourEvent, ConnectionErr};
 use futures::channel::oneshot;
 use libp2p::{
-    core::connection::{ConnectedPoint, ConnectionError, ConnectionLimits as Libp2pConnectionLimits},
-    swarm::SwarmEvent,
+    core::connection::ConnectedPoint,
+    swarm::{ConnectionError, ConnectionLimits as Libp2pConnectionLimits, SwarmEvent},
     Multiaddr, PeerId,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
