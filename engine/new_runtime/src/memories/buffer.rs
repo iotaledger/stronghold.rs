@@ -1,6 +1,4 @@
 use crate::boxed::Boxed;
-use crate::locked_memory::{MemoryError::{self, *}, ProtectedMemory};
-use crate::locked_memory::ProtectedConfiguration::{self, *};
 use crate::types::{Bytes, ConstEq, Randomized, Zeroed};
 use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
@@ -28,20 +26,13 @@ pub struct RefMut<'a, T: Bytes> {
     boxed: &'a mut Boxed<T>,
 }
 
-impl<T: Bytes> ProtectedMemory<T> for Buffer<T> {
-    fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError> {
-        match config {
-            BufferConfig(size) => Ok(Buffer {
-                boxed: Boxed::new(size, |b| b.as_mut_slice().copy_from_slice(payload)),
-            }),
-
-            // We don't allow any other configurations for Buffer
-            _ => Err(ConfigurationNotAllowed),
+impl<T: Bytes> Buffer<T> {
+    pub fn alloc(payload: &[T], size: usize) -> Self {
+        Buffer {
+            boxed: Boxed::new(size, |b| b.as_mut_slice().copy_from_slice(payload)),
         }
     }
-}
 
-impl<T: Bytes> Buffer<T> {
     pub fn len(&self) -> usize {
         self.boxed.len()
     }
@@ -257,8 +248,7 @@ where
             seq.push(e);
         }
 
-        let seq = Buffer::alloc(seq.as_slice(), BufferConfig(seq.len()))
-            .expect("Buffer could not be allocated, this should not happen here");
+        let seq = Buffer::alloc(seq.as_slice(), seq.len());
 
         Ok(seq)
     }
@@ -285,9 +275,8 @@ mod tests {
 
     #[test]
     fn test_init() {
-        let buf = Buffer::<u64>::alloc(&[1, 2, 3, 4, 5, 6][..], BufferConfig(6));
-        assert!(buf.is_ok());
-        assert_eq!((*buf.unwrap().borrow()), [1, 2, 3, 4, 5, 6]);
+        let buf = Buffer::<u64>::alloc(&[1, 2, 3, 4, 5, 6][..], 6);
+        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
@@ -304,9 +293,8 @@ mod tests {
 
         assert_eq!(*v, [7, 1]);
 
-        let vec = Buffer::<[u8; 2]>::alloc(&[[1, 2], [3, 4]][..], BufferConfig(2));
-        assert!(vec.is_ok());
-        assert_eq!(*vec.unwrap().borrow(), [[1, 2], [3, 4]]);
+        let vec = Buffer::<[u8; 2]>::alloc(&[[1, 2], [3, 4]][..], 2);
+        assert_eq!(*vec.borrow(), [[1, 2], [3, 4]]);
     }
 
     #[test]

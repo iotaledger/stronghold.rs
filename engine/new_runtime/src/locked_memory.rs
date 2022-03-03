@@ -8,64 +8,46 @@ use zeroize::Zeroize;
 pub enum MemoryError {
     EncryptionError,
     DecryptionError,
-    SizeNeededForAllocation,
     NCSizeNotAllowed,
     ConfigurationNotAllowed,
     FileSystemError,
 }
 
-#[derive(Debug)]
-pub enum ProtectedConfiguration {
-    ZeroedConfig(),
-    BufferConfig(usize),
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum NCMemory {
+    NCFile,
+    NCRam,
+    NCRamFile
 }
 
-// Different possible configuration for the memory
-// This is still in development
-// Size is an Option type because size is required for memory allocation but
-// not necessary for unlocking the memory
-#[derive(Debug)]
-pub enum LockedConfiguration<P: BoxProvider> {
-    // Default configuration when zeroed out
-    ZeroedConfig(),
-
-    // Non-encrypted file memory
-    FileConfig(Option<usize>),
-
-    // Encrypted ram memory
-    // Needs a key for encryption/decryption
-    // Needs size for allocation but not for unlocking
-    EncryptedRamConfig(Key<P>, Option<usize>),
-
-    // Encrypted file memory, needs a key and size of non encrypted data
-    EncryptedFileConfig(Key<P>, Option<usize>),
-
-    // Non contiguous non encrypted memory in ram and disk
-    NCRamAndFileConfig(Option<usize>),
-
-    // Non contiguous non encrypted memory in ram
-    NCRamConfig(Option<usize>),
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum MemoryType {
+    Ram,
+    File,
+    NonContiguous(NCMemory)
 }
 
-impl<P: BoxProvider> LockedConfiguration<P> {
-    // Check that variants type are the same
-    pub fn is_eq_config_type(&self, other: &Self) -> bool {
-        use LockedConfiguration::*;
-        match (self, other) {
-            (ZeroedConfig(), ZeroedConfig()) => true,
-            (FileConfig(_), FileConfig(_)) => true,
-            (EncryptedRamConfig(_, _), EncryptedRamConfig(_, _)) => true,
-            (EncryptedFileConfig(_, _), EncryptedFileConfig(_, _)) => true,
-            (NCRamAndFileConfig(_), NCRamAndFileConfig(_)) => true,
-            (NCRamConfig(_), NCRamConfig(_)) => true,
-            (_, _) => false
-        }
-    }
+
+#[derive(Debug, Clone)]
+pub struct LockedConfiguration<P: BoxProvider> {
+    pub mem_type: MemoryType,
+    pub encrypted: Option<Key<P>>
 }
+
+
+// /// Currently accepted configuration
+// impl<P: BoxProvider> LockedConfiguration<P> {
+//     fn encrypted_ram_config() -> Self {
+//         LockedConfiguration { 
+//     }
+// }
 
 impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
     fn zeroize(&mut self) {
-        *self = LockedConfiguration::ZeroedConfig()
+        if self.encrypted.is_some() {
+            self.encrypted = Some(Key::random())
+        }
     }
 }
 
@@ -75,38 +57,18 @@ impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
 // with random noise to avoid storing sensitive data there
 impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
     fn eq(&self, other: &Self) -> bool {
-        use LockedConfiguration::*;
-        match (self, other) {
-            (ZeroedConfig(), ZeroedConfig()) => true,
-            (FileConfig(s1), FileConfig(s2)) => s1 == s2,
-            (EncryptedRamConfig(_, s1), EncryptedRamConfig(_, s2)) => s1 == s2,
-            (EncryptedFileConfig(_, s1), EncryptedFileConfig(_, s2)) => s1 == s2,
-            (NCRamAndFileConfig(s1), NCRamAndFileConfig(s2)) => s1 == s2,
-            (NCRamConfig(s1), NCRamConfig(s2)) => s1 == s2,
-            (_, _) => false
-        }
+        self.mem_type == other.mem_type &&
+            std::mem::discriminant(&self.encrypted) == std::mem::discriminant(&other.encrypted)
     }
 }
 
 impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
-/// Memory storage with default protections to store sensitive data
-pub trait ProtectedMemory<T: Bytes>: Debug + Sized + Zeroize + Drop {
-    /// Writes the payload into a LockedMemory then locks it
-    fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError>;
-
-    /// Cleans up any trace of the memory used
-    /// Does not free any memory, the name may be misleading
-    fn dealloc(&mut self) -> Result<(), MemoryError> {
-        self.zeroize();
-        Ok(())
-    }
-}
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
 pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize + Drop {
     /// Writes the payload into a LockedMemory then locks it
-    fn alloc(payload: &[T], config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
+    fn alloc(payload: &[T], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Cleans up any trace of the memory used
     /// Shall be called in drop()
@@ -116,7 +78,7 @@ pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize + Drop
     }
 
     /// Locks the memory and possibly reallocates
-    fn lock(self, payload: Buffer<T>, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
+    fn lock(self, payload: Buffer<T>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Unlocks the memory and returns an unlocked Buffer
     fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<T>, MemoryError>;
