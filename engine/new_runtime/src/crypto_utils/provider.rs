@@ -7,7 +7,7 @@ use crypto::{
 };
 
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
-use zeroize::{Zeroize};
+use zeroize::Zeroize;
 
 #[derive(Ord, PartialEq, Eq, PartialOrd, Zeroize)]
 pub struct Provider;
@@ -15,7 +15,6 @@ impl Provider {
     const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;
     const TAG_LEN: usize = XChaCha20Poly1305::TAG_LENGTH;
 }
-
 
 impl BoxProvider for Provider {
     type Error = crypto::Error;

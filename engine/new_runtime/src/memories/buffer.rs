@@ -1,8 +1,15 @@
-use crate::boxed::Boxed;
-use crate::types::{Bytes, ConstEq, Randomized, Zeroed};
-use core::fmt::{self, Debug, Formatter};
-use core::marker::PhantomData;
-use core::ops::{Deref, DerefMut};
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::{
+    boxed::Boxed,
+    types::{Bytes, ConstEq, Randomized, Zeroed},
+};
+use core::{
+    fmt::{self, Debug, Formatter},
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -37,10 +44,12 @@ impl<T: Bytes> Buffer<T> {
         self.boxed.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.boxed.is_empty()
     }
 
+    #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.boxed.size()
     }
@@ -49,12 +58,14 @@ impl<T: Bytes> Buffer<T> {
         Ref::new(&self.boxed)
     }
 
+    #[allow(dead_code)]
     pub fn borrow_mut(&mut self) -> RefMut<'_, T> {
         RefMut::new(&mut self.boxed)
     }
 }
 
 impl<T: Bytes + Randomized> Buffer<T> {
+    #[allow(dead_code)]
     pub fn random(len: usize) -> Self {
         Self {
             boxed: Boxed::random(len),
@@ -68,9 +79,16 @@ impl<T: Bytes> Zeroize for Buffer<T> {
     }
 }
 
+impl<T: Bytes> Drop for Buffer<T> {
+    fn drop(&mut self) {
+        self.boxed.zeroize()
+    }
+}
+
 impl<T: Bytes> ZeroizeOnDrop for Buffer<T> {}
 
 impl<T: Bytes + Zeroed> Buffer<T> {
+    #[allow(dead_code)]
     pub fn zero(len: usize) -> Self {
         Self {
             boxed: Boxed::zero(len),

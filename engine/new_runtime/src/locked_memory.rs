@@ -1,7 +1,12 @@
-use crate::crypto_utils::crypto_box::{BoxProvider, Key};
-use crate::memories::buffer::Buffer;
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::{
+    crypto_utils::crypto_box::{BoxProvider, Key},
+    memories::buffer::Buffer,
+};
 use core::fmt::Debug;
-use zeroize::{Zeroize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Debug)]
 pub enum MemoryError {
@@ -40,7 +45,6 @@ impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
     }
 }
 
-
 // We implement PartialEq for configuration which contains a key
 // We don't want to include the key in the comparison because when the
 // configuration is stored in LockedMemory, the key is actually replaced
@@ -55,7 +59,7 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
 impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<P: BoxProvider>: Debug + Zeroize + Drop + Sized {
+pub trait LockedMemory<P: BoxProvider>: Debug + Zeroize + ZeroizeOnDrop + Sized {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 

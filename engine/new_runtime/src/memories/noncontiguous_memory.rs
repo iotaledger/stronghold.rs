@@ -1,14 +1,21 @@
-use crate::memories::buffer::Buffer;
-use crate::memories::file_memory::FileMemory;
-use crate::crypto_utils::crypto_box::{BoxProvider};
-use crate::locked_memory::{LockedMemory, LockedConfiguration, MemoryType::*, NCMemory::*};
-use crate::locked_memory::MemoryError::{self, *};
-use crypto::hashes::sha;
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::{
+    crypto_utils::crypto_box::BoxProvider,
+    locked_memory::{
+        LockedConfiguration, LockedMemory,
+        MemoryError::{self, *},
+        MemoryType::*,
+        NCMemory::{NCRam, NCRamFile},
+    },
+    memories::{buffer::Buffer, file_memory::FileMemory},
+};
 use core::fmt::{self, Debug, Formatter};
-use zeroize::{Zeroize};
+use crypto::hashes::sha;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-
-static IMPOSSIBLE_CASE: &'static str = "NonContiguousMemory: this case should not happen if allocated properly";
+static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
 
 // Currently we only support data of 32 bytes in noncontiguous memory
 const NC_DATA_SIZE: usize = 32;
@@ -16,27 +23,25 @@ const NC_DATA_SIZE: usize = 32;
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
 enum MemoryShard<P: BoxProvider> {
-    // EncryptedFileShard(FileMemory<P>),
-    // EncryptedRamShard(EncryptedRam<P>),
     FileShard(FileMemory<P>),
     RamShard(Buffer<u8>),
 }
 use MemoryShard::*;
 
-
-/// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to store keys hence the size of the data depends on the chosen box provider
-pub struct NonContiguousMemory<P: BoxProvider>
-{
+/// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to
+/// store keys hence the size of the data depends on the chosen box provider
+pub struct NonContiguousMemory<P: BoxProvider> {
     shard1: MemoryShard<P>,
     shard2: MemoryShard<P>,
     config: LockedConfiguration<P>,
 }
 
-impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P>
-{
+impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P> {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
-        if size != NC_DATA_SIZE { return  Err(NCSizeNotAllowed) };
+        if size != NC_DATA_SIZE {
+            return Err(NCSizeNotAllowed);
+        };
         let random = P::random_vec(NC_DATA_SIZE).expect("Failed to generate random vec");
         let mut digest = [0u8; NC_DATA_SIZE];
 
@@ -46,19 +51,31 @@ impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P>
         let buf1 = Buffer::alloc(&random, NC_DATA_SIZE);
         let shard1 = RamShard(buf1);
         let shard2 = match config {
-            LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None} => {
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            } => {
                 let fmem = FileMemory::alloc(
                     &digest,
                     NC_DATA_SIZE,
-                    LockedConfiguration { mem_type: File, encrypted: None})?;
+                    LockedConfiguration {
+                        mem_type: File,
+                        encrypted: None,
+                    },
+                )?;
                 FileShard(fmem)
-            },
-            LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None} => {
+            }
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRam),
+                encrypted: None,
+            } => {
                 let buf2 = Buffer::alloc(&digest, NC_DATA_SIZE);
                 RamShard(buf2)
-            },
+            }
             // We don't allow any other configurations
-            _ => { return Err(ConfigurationNotAllowed); }
+            _ => {
+                return Err(ConfigurationNotAllowed);
+            }
         };
 
         Ok(NonContiguousMemory { shard1, shard2, config })
@@ -71,30 +88,28 @@ impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P>
 
     /// Unlocks the memory and returns an unlocked Buffer
     // To retrieve secret value you xor the hash contained in shard1 with value in shard2
-    fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError> {
+    fn unlock(&self, _config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError> {
         let mut data1 = [0u8; NC_DATA_SIZE];
         sha::SHA256(&self.get_buffer_from_shard1().borrow(), &mut data1);
 
         let data = match &self.shard2 {
-            RamShard(b2) => {
-                xor(&data1, &b2.borrow())
-            },
+            RamShard(b2) => xor(&data1, &b2.borrow()),
             FileShard(fm) => {
-                let buf = fm.unlock(LockedConfiguration { mem_type: File, encrypted: None })
+                let buf = fm
+                    .unlock(LockedConfiguration {
+                        mem_type: File,
+                        encrypted: None,
+                    })
                     .expect("Failed to unlock file memory");
-                let x = xor(&data1, &buf.borrow()); x
-            },
-            _ => panic!("{}", IMPOSSIBLE_CASE)
-
+                let x = xor(&data1, &buf.borrow());
+                x
+            }
         };
         Ok(Buffer::alloc(&data, NC_DATA_SIZE))
     }
 }
 
-
-impl<P: BoxProvider> NonContiguousMemory<P>
-{
-
+impl<P: BoxProvider> NonContiguousMemory<P> {
     fn get_buffer_from_shard1(&self) -> &Buffer<u8> {
         match &self.shard1 {
             RamShard(buf) => buf,
@@ -102,12 +117,11 @@ impl<P: BoxProvider> NonContiguousMemory<P>
         }
     }
 
-
     // Refresh the shards to increase security, may be called every _n_ seconds or
     // punctually
+    #[allow(dead_code)]
     fn refresh(self) -> Result<Self, MemoryError> {
         let random = P::random_vec(NC_DATA_SIZE).expect("Failed to generate random vec");
-        let mut hash_of_random = [0u8; NC_DATA_SIZE];
 
         // Refresh shard1
         let data_of_old_shard1: &[u8] = &self.get_buffer_from_shard1().borrow();
@@ -118,7 +132,7 @@ impl<P: BoxProvider> NonContiguousMemory<P>
         let new_config;
         let mut hash_of_old_shard1 = [0u8; NC_DATA_SIZE];
         let mut hash_of_new_shard1 = [0u8; NC_DATA_SIZE];
-        sha::SHA256(&data_of_old_shard1, &mut hash_of_old_shard1);
+        sha::SHA256(data_of_old_shard1, &mut hash_of_old_shard1);
         sha::SHA256(&new_data1, &mut hash_of_new_shard1);
 
         match &self.shard2 {
@@ -126,30 +140,41 @@ impl<P: BoxProvider> NonContiguousMemory<P>
                 let new_data2 = xor(&b2.borrow(), &hash_of_old_shard1);
                 let new_data2 = xor(&new_data2, &hash_of_new_shard1);
                 new_shard2 = RamShard(Buffer::alloc(&new_data2, NC_DATA_SIZE));
-                new_config = LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None };
-            },
+                new_config = LockedConfiguration {
+                    mem_type: NonContiguous(NCRam),
+                    encrypted: None,
+                };
+            }
             FileShard(fm) => {
-                let buf = fm.unlock(LockedConfiguration { mem_type: File, encrypted: None })
+                let buf = fm
+                    .unlock(LockedConfiguration {
+                        mem_type: File,
+                        encrypted: None,
+                    })
                     .expect("Failed to unlock file memory");
                 let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1);
                 let new_data2 = xor(&new_data2, &hash_of_new_shard1);
-                let new_fm = FileMemory::alloc(&new_data2,
-                                               NC_DATA_SIZE, 
-                                               LockedConfiguration { mem_type: File, encrypted: None })?;
+                let new_fm = FileMemory::alloc(
+                    &new_data2,
+                    NC_DATA_SIZE,
+                    LockedConfiguration {
+                        mem_type: File,
+                        encrypted: None,
+                    },
+                )?;
                 new_shard2 = FileShard(new_fm);
-                new_config = LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None };
-            },
-            _ => panic!("{}", IMPOSSIBLE_CASE)
-
+                new_config = LockedConfiguration {
+                    mem_type: NonContiguous(NCRamFile),
+                    encrypted: None,
+                };
+            }
         };
 
-        Ok(
-            NonContiguousMemory {
-                shard1: new_shard1,
-                shard2: new_shard2,
-                config: new_config
-            }
-        )
+        Ok(NonContiguousMemory {
+            shard1: new_shard1,
+            shard2: new_shard2,
+            config: new_config,
+        })
     }
 }
 
@@ -161,14 +186,11 @@ fn xor(a: &[u8], b: &[u8]) -> [u8; NC_DATA_SIZE] {
     ouput
 }
 
-
 impl<P: BoxProvider> Debug for NonContiguousMemory<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "hidden")
     }
 }
-
-
 
 //##### Zeroize
 impl<P: BoxProvider> Zeroize for MemoryShard<P> {
@@ -180,9 +202,7 @@ impl<P: BoxProvider> Zeroize for MemoryShard<P> {
     }
 }
 
-
-impl<P: BoxProvider> Zeroize for NonContiguousMemory<P>
-{
+impl<P: BoxProvider> Zeroize for NonContiguousMemory<P> {
     fn zeroize(&mut self) {
         self.shard1.zeroize();
         self.shard2.zeroize();
@@ -190,14 +210,13 @@ impl<P: BoxProvider> Zeroize for NonContiguousMemory<P>
     }
 }
 
-impl<P: BoxProvider> Drop for NonContiguousMemory<P>
-{
+impl<P: BoxProvider> ZeroizeOnDrop for NonContiguousMemory<P> {}
+
+impl<P: BoxProvider> Drop for NonContiguousMemory<P> {
     fn drop(&mut self) {
         self.zeroize()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -208,12 +227,20 @@ mod tests {
     fn test_functionality_full_ram() {
         // Check alloc
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRam),
+                encrypted: None,
+            },
+        );
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
-        let buf = ncm.unlock(LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
+        let buf = ncm.unlock(LockedConfiguration {
+            mem_type: NonContiguous(NCRam),
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((&*buf.borrow()), &data);
@@ -221,12 +248,20 @@ mod tests {
         // Check locking
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.update(buf,
-                           NC_DATA_SIZE,
-                           LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
+        let ncm = ncm.update(
+            buf,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRam),
+                encrypted: None,
+            },
+        );
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
-        let buf = ncm.unlock(LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
+        let buf = ncm.unlock(LockedConfiguration {
+            mem_type: NonContiguous(NCRam),
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((&*buf.borrow()), &data);
@@ -236,12 +271,20 @@ mod tests {
     fn test_functionality_ram_file() {
         // Check alloc
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            },
+        );
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
-        let buf = ncm.unlock(LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let buf = ncm.unlock(LockedConfiguration {
+            mem_type: NonContiguous(NCRamFile),
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((&*buf.borrow()), &data);
@@ -249,12 +292,20 @@ mod tests {
         // Check locking
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.update(buf,
-                           NC_DATA_SIZE,
-                           LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let ncm = ncm.update(
+            buf,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            },
+        );
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
-        let buf = ncm.unlock(LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let buf = ncm.unlock(LockedConfiguration {
+            mem_type: NonContiguous(NCRamFile),
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((&*buf.borrow()), &data);
@@ -263,36 +314,49 @@ mod tests {
     #[test]
     fn test_refresh() {
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            },
+        );
 
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
 
         let shard1_before_refresh = ncm.get_buffer_from_shard1().clone();
-        let shard2_before_refresh =
-            if let FileShard(fm) = &ncm.shard2 {
-                fm.unlock(LockedConfiguration { mem_type: File, encrypted: None}).unwrap()
-            } else {
-                panic!("{}", IMPOSSIBLE_CASE)
-            };
+        let shard2_before_refresh = if let FileShard(fm) = &ncm.shard2 {
+            fm.unlock(LockedConfiguration {
+                mem_type: File,
+                encrypted: None,
+            })
+            .unwrap()
+        } else {
+            panic!("{}", IMPOSSIBLE_CASE)
+        };
 
         let ncm = ncm.refresh();
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
 
         let shard1_after_refresh = ncm.get_buffer_from_shard1();
-        let shard2_after_refresh =
-            if let FileShard(fm) = &ncm.shard2 {
-                fm.unlock(LockedConfiguration { mem_type: File, encrypted: None}).unwrap()
-            } else {
-                panic!("{}", IMPOSSIBLE_CASE)
-            };
-
+        let shard2_after_refresh = if let FileShard(fm) = &ncm.shard2 {
+            fm.unlock(LockedConfiguration {
+                mem_type: File,
+                encrypted: None,
+            })
+            .unwrap()
+        } else {
+            panic!("{}", IMPOSSIBLE_CASE)
+        };
 
         // Check that secrets is still ok after refresh
-        let buf = ncm.unlock(LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let buf = ncm.unlock(LockedConfiguration {
+            mem_type: NonContiguous(NCRamFile),
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((&*buf.borrow()), &data);
@@ -307,9 +371,14 @@ mod tests {
     fn test_boojum_security() {
         // With full Ram
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRam),
+                encrypted: None,
+            },
+        );
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
 
@@ -322,9 +391,14 @@ mod tests {
 
         // With Ram and File
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            },
+        );
 
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
@@ -333,7 +407,12 @@ mod tests {
             assert_ne!(&*buf.borrow(), &data);
         }
         if let FileShard(fm) = &ncm.shard2 {
-            let buf = fm.unlock(LockedConfiguration { mem_type: File, encrypted: None}).unwrap();
+            let buf = fm
+                .unlock(LockedConfiguration {
+                    mem_type: File,
+                    encrypted: None,
+                })
+                .unwrap();
             assert_ne!(&*buf.borrow(), &data);
         }
     }
@@ -342,9 +421,14 @@ mod tests {
     fn test_zeroize() {
         // Check alloc
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data,
-                                                         NC_DATA_SIZE,
-                                                         LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
+        let ncm = NonContiguousMemory::<Provider>::alloc(
+            &data,
+            NC_DATA_SIZE,
+            LockedConfiguration {
+                mem_type: NonContiguous(NCRamFile),
+                encrypted: None,
+            },
+        );
 
         assert!(ncm.is_ok());
         let mut ncm = ncm.unwrap();
@@ -355,7 +439,10 @@ mod tests {
         }
 
         if let FileShard(fm) = &ncm.shard2 {
-            let buf = fm.unlock(LockedConfiguration { mem_type: File, encrypted: None});
+            let buf = fm.unlock(LockedConfiguration {
+                mem_type: File,
+                encrypted: None,
+            });
             // We can't unlock a zeroized filememory
             assert!(buf.is_err());
         }

@@ -1,15 +1,19 @@
-use crate::crypto_utils::crypto_box::{BoxProvider, Key};
-use crate::locked_memory::{MemoryError::*, *};
-use crate::memories::buffer::Buffer;
-use crate::types::{ContiguousBytes};
-use core::fmt::{self, Debug, Formatter};
-use rand_ascii::distributions::Alphanumeric;
-use rand_ascii::{thread_rng, Rng};
-use std::fs::{self, File};
-use std::io::prelude::*;
-use zeroize::{Zeroize};
+// Copyright 2020-2021 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
 
-static ERR_SIZE_NONE: &'static str = "FileMemory: the size should not be None if allocated properly";
+use crate::{
+    crypto_utils::crypto_box::{BoxProvider, Key},
+    locked_memory::{MemoryError::*, *},
+    memories::buffer::Buffer,
+    types::ContiguousBytes,
+};
+use core::fmt::{self, Debug, Formatter};
+use rand_ascii::{distributions::Alphanumeric, thread_rng, Rng};
+use std::{
+    fs::{self, File},
+    io::prelude::*,
+};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 const FILENAME_SIZE: usize = 16;
 const AD_SIZE: usize = 32;
@@ -64,18 +68,24 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             // File without encryption
-            LockedConfiguration { mem_type: MemoryType::File, encrypted: None } => {
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: None,
+            } => {
                 let fname = FileMemory::<P>::write_to_file(payload.as_bytes()).or(Err(FileSystemError))?;
                 Ok(FileMemory {
                     fname,
                     config,
                     ad: [0u8; AD_SIZE],
-                    size
+                    size,
                 })
             }
 
             // With encryption
-            LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(ref key) } => {
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: Some(ref key),
+            } => {
                 let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
                 P::random_buf(&mut ad).or(Err(EncryptionError))?;
                 let encrypted_payload = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
@@ -85,9 +95,12 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
                 // for security reasons
                 Ok(FileMemory {
                     fname,
-                    config: LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(Key::random()) },
+                    config: LockedConfiguration {
+                        mem_type: MemoryType::File,
+                        encrypted: Some(Key::random()),
+                    },
                     ad,
-                    size
+                    size,
                 })
             }
 
@@ -101,15 +114,17 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
         match config {
             // The current choice is to allocate a completely new file and
             // remove the previous one
-            LockedConfiguration { mem_type: MemoryType::File, encrypted: None } => {
-                FileMemory::alloc(&payload.borrow(), size, config)
-            }
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: None,
+            } => FileMemory::alloc(&payload.borrow(), size, config),
 
             // The current choice is to allocate a completely new file and
             // remove the previous one
-            LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(_) } => {
-                FileMemory::alloc(&payload.borrow(), size, config)
-            }
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: Some(_),
+            } => FileMemory::alloc(&payload.borrow(), size, config),
 
             // We don't allow any other configurations for FileMemory
             _ => Err(ConfigurationNotAllowed),
@@ -119,14 +134,18 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
     /// Unlocks the memory and returns an unlocked Buffer
     fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError> {
         // Check if self config and given config matches
-        if std::mem::discriminant(&self.config) != std::mem::discriminant(&config) {
+        if std::mem::discriminant(&self.config.encrypted) != std::mem::discriminant(&config.encrypted) {
             return Err(ConfigurationNotAllowed);
         }
 
         let mut data = self.read_file().or(Err(FileSystemError))?;
 
         // If data is encrypted
-        if let LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(ref key) } = config {
+        if let LockedConfiguration {
+            mem_type: MemoryType::File,
+            encrypted: Some(ref key),
+        } = config
+        {
             data = P::box_open(key, &self.ad, &data).or(Err(DecryptionError))?;
         }
 
@@ -134,8 +153,8 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
     }
 }
 
-
 impl<P: BoxProvider> Zeroize for FileMemory<P> {
+    #[allow(unused_must_use)]
     fn zeroize(&mut self) {
         self.clear_and_delete_file();
         self.fname.zeroize();
@@ -144,12 +163,13 @@ impl<P: BoxProvider> Zeroize for FileMemory<P> {
     }
 }
 
+impl<P: BoxProvider> ZeroizeOnDrop for FileMemory<P> {}
+
 impl<P: BoxProvider> Drop for FileMemory<P> {
     fn drop(&mut self) {
         self.zeroize()
     }
 }
-
 
 impl<P: BoxProvider> Debug for FileMemory<P> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
@@ -164,37 +184,77 @@ mod tests {
 
     #[test]
     fn test_functionality() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
+        let fm = FileMemory::<Provider>::alloc(
+            &[1, 2, 3, 4, 5, 6][..],
+            6,
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: None,
+            },
+        );
         assert!(fm.is_ok());
         let fm = fm.unwrap();
         assert!(std::path::Path::new(&fm.fname).exists());
-        let buf = fm.unlock(LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
+        let buf = fm.unlock(LockedConfiguration {
+            mem_type: MemoryType::File,
+            encrypted: None,
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.update(buf, 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
+        let fm = fm.update(
+            buf,
+            6,
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: None,
+            },
+        );
         assert!(fm.is_ok());
     }
 
     #[test]
     fn test_functionality_encryption() {
         let key = Key::random();
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key.clone())});
+        let fm = FileMemory::<Provider>::alloc(
+            &[1, 2, 3, 4, 5, 6][..],
+            6,
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: Some(key.clone()),
+            },
+        );
         assert!(fm.is_ok());
         let fm = fm.unwrap();
         assert!(std::path::Path::new(&fm.fname).exists());
-        let buf = fm.unlock(LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key.clone())});
+        let buf = fm.unlock(LockedConfiguration {
+            mem_type: MemoryType::File,
+            encrypted: Some(key.clone()),
+        });
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.update(buf, 6,
-                         LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key.clone())});
+        let fm = fm.update(
+            buf,
+            6,
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: Some(key),
+            },
+        );
         assert!(fm.is_ok());
     }
 
     #[test]
     fn test_zeroize() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
+        let fm = FileMemory::<Provider>::alloc(
+            &[1, 2, 3, 4, 5, 6][..],
+            6,
+            LockedConfiguration {
+                mem_type: MemoryType::File,
+                encrypted: None,
+            },
+        );
         assert!(fm.is_ok());
         let mut fm = fm.unwrap();
         let fname = fm.fname.clone();
@@ -208,7 +268,6 @@ mod tests {
 
     #[test]
     // Check that file content cannot be read directly
-    //TODO
-    fn test_security() {
-    }
+    // TODO
+    fn test_security() {}
 }
