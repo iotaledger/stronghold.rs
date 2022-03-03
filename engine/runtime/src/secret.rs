@@ -12,8 +12,8 @@ use core::{
 /// A Type for guarding secrets allocated to the stack.
 ///
 /// Provides the following security features and guarentees:
-/// * The Memory is locked with [`mlock`].
-/// * When the memory is freed, [`munlock`] is called.
+/// * The Memory is locked with `mlock`.
+/// * When the memory is freed, `munlock` is called.
 /// * the memory is zeroed out when no longer in use.
 /// * values are compared in constant time.
 /// * values are prevented from being Debugged.

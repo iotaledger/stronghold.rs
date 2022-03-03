@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-/// A macro for defining functions whose return values will wrapped in a [`Cache`].
+/// A macro for defining functions whose return values will wrapped in a [`Cache`][super::Cache].
 ///
 /// # Example
 /// ```
