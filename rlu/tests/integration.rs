@@ -1,10 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use rlu::{
-    NonBlockingQueue, NonBlockingStack, Queue, RLUStrategy, RLUVar, Read, RluContext, Stack, TransactionError, Write,
-    RLU,
-};
+use rlu::{RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use std::collections::HashMap;
 use stronghold_rlu as rlu;
 
@@ -57,7 +54,7 @@ fn test_mutliple_readers_single_write() {
                         **inner, EXPECTED
                     ))),
                     Ok(_) => unreachable!("You shouldn't see this"),
-                    Err(_) => Err(TransactionError::Retry),
+                    Err(_) => Err(TransactionError::Failed),
                 }
             };
 
@@ -113,9 +110,9 @@ async fn test_mutliple_readers_single_write_async() {
                 let data = context.get(&r1);
                 match *data {
                     Ok(inner) if **inner == EXPECTED => Ok(()),
-                    Ok(inner) if **inner != EXPECTED => Err(TransactionError::Retry),
-                    _ => Err(TransactionError::Retry), /* FIXME: this could be another error and should be handled
-                                                        * appropriately */
+                    Ok(inner) if **inner != EXPECTED => Err(TransactionError::Failed),
+                    _ => Err(TransactionError::Failed), /* FIXME: this could be another error and should be handled
+                                                         * appropriately */
                 }
             };
 
@@ -133,88 +130,6 @@ async fn test_mutliple_readers_single_write_async() {
 
     let value = rlu_var.get();
     assert_eq!(value, &15)
-}
-
-#[test]
-fn test_stack() {
-    let stack = NonBlockingStack::default();
-    let end = 10000;
-
-    (0..=end).for_each(|n| stack.push(n));
-    (0..=end).rev().for_each(|n| assert_eq!(Some(&n), stack.pop()));
-
-    assert_eq!(None, stack.pop());
-}
-
-#[test]
-fn test_queue() {
-    let queue = NonBlockingQueue::default();
-    let end = 2;
-
-    (0..=end).for_each(|n| queue.put(n));
-    (0..=end).for_each(|n| assert_eq!(Some(&n), queue.poll()));
-
-    assert_eq!(None, queue.poll());
-}
-
-#[ignore]
-#[test]
-fn test_queue_threaded() {
-    let queue = NonBlockingQueue::default();
-
-    let mut workers = Vec::new();
-    let runs = 8;
-
-    for i in 0..runs {
-        let q = queue.clone();
-        workers.push(std::thread::spawn(move || q.put(i)));
-    }
-
-    for _ in 0..runs {
-        let q = queue.clone();
-        workers.push(std::thread::spawn(move || {
-            q.poll();
-        }));
-    }
-
-    for t in workers {
-        t.join().expect("Failed to join thread");
-    }
-}
-
-#[ignore]
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn test_queue_async() {
-    let queue = NonBlockingQueue::default();
-
-    let mut workers = Vec::new();
-    let runs = 16;
-
-    for i in 0..runs {
-        let q = queue.clone();
-
-        workers.push(tokio::spawn(async move {
-            q.put(i);
-        }));
-    }
-
-    for _ in 0..runs {
-        let q = queue.clone();
-        workers.push(tokio::spawn(async move {
-            match q.poll() {
-                Some(inner) => {
-                    println!("inner: {}", inner);
-                }
-                None => {
-                    println!("got none");
-                }
-            }
-        }));
-    }
-
-    for t in workers {
-        t.await.expect("Failed to join thread");
-    }
 }
 
 #[test]
@@ -251,11 +166,11 @@ fn test_concurrent_reads_complex_type() {
                 let m = &**inner;
                 match m.contains_key(&1234) {
                     true => return Ok(()),
-                    false => return Err(TransactionError::Retry),
+                    false => return Err(TransactionError::Failed),
                 }
             }
 
-            Err(TransactionError::Retry)
+            Err(TransactionError::Failed)
         })
         .expect("Failed to read");
     });
@@ -269,12 +184,12 @@ fn test_concurrent_reads_complex_type() {
                 match m.contains_key(&1234) {
                     true => return Ok(()),
                     false => {
-                        return Err(TransactionError::Retry);
+                        return Err(TransactionError::Failed);
                     }
                 }
             }
 
-            Err(TransactionError::Retry)
+            Err(TransactionError::Failed)
         })
         .expect("Failed to read");
     });
@@ -315,11 +230,11 @@ fn test_concurrent_reads_with_complex_type_with_strategy() {
                 let m = &**inner;
                 match m.contains_key(&1234) {
                     true => return Ok(()),
-                    false => return Err(TransactionError::Retry),
+                    false => return Err(TransactionError::Failed),
                 }
             }
 
-            Err(TransactionError::Retry)
+            Err(TransactionError::Failed)
         })
         .expect("Failed to read");
     });
@@ -333,12 +248,12 @@ fn test_concurrent_reads_with_complex_type_with_strategy() {
                 match m.contains_key(&1234) {
                     true => return Ok(()),
                     false => {
-                        return Err(TransactionError::Retry);
+                        return Err(TransactionError::Failed);
                     }
                 }
             }
 
-            Err(TransactionError::Retry)
+            Err(TransactionError::Failed)
         })
         .expect("Failed to read");
     });
