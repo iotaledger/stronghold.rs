@@ -133,8 +133,11 @@ pub struct NetworkConfig {
     enable_relay: bool,
     addresses: Option<AddressInfo>,
 
-    pub(crate) peer_permissions: HashMap<PeerId, Permissions>,
-    pub(crate) permissions_default: Permissions,
+    peer_client_mapping: HashMap<PeerId, Option<ClientMapping>>,
+    client_mapping_default: Option<ClientMapping>,
+
+    peer_permissions: HashMap<PeerId, Permissions>,
+    permissions_default: Permissions,
 }
 
 impl Serialize for NetworkConfig {
@@ -209,6 +212,315 @@ impl NetworkConfig {
         self.addresses = Some(info);
         self
     }
+
+    /// Extend the peer-specific permissions.
+    pub fn with_peer_permission(mut self, permissions: HashMap<PeerId, Permissions>) -> Self {
+        self.peer_permissions.extend(permissions);
+        self
+    }
+
+    /// Set default mapping for inbound requests to a target client.
+    ///
+    /// This maps the `client_path` that is sent from the remote (as part of their request) to a local
+    /// target client with another `client_path`.
+    /// In case of `None` the client_path remains unchanged.
+    pub fn with_default_client_mapping(mut self, mapping: Option<ClientMapping>) -> Self {
+        self.client_mapping_default = mapping;
+        self
+    }
+
+    /// Extend mapping for inbound requests to a target client from specific peers.
+    ///
+    /// See [`NetworkConfig::with_default_client_mapping`].
+    pub fn with_peer_client_mapping(mut self, map: HashMap<PeerId, Option<ClientMapping>>) -> Self {
+        self.peer_client_mapping.extend(map);
+        self
+    }
+
+    pub(crate) fn peer_permissions_mut(&mut self) -> &mut HashMap<PeerId, Permissions> {
+        &mut self.peer_permissions
+    }
+
+    pub(crate) fn permissions_default_mut(&mut self) -> &mut Permissions {
+        &mut self.permissions_default
+    }
+
+    pub(crate) fn peer_client_mapping_mut(&mut self) -> &mut HashMap<PeerId, Option<ClientMapping>> {
+        &mut self.peer_client_mapping
+    }
+
+    pub(crate) fn client_mapping_default_mut(&mut self) -> &mut Option<ClientMapping> {
+        &mut self.client_mapping_default
+    }
+}
+
+/// Permissions for remote peers to operate on the local vault or store of a client.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Permissions {
+    default: Option<ClientPermissions>,
+    exceptions: HashMap<Vec<u8>, Option<ClientPermissions>>,
+}
+
+impl Permissions {
+    /// No operations are permitted.
+    pub fn allow_none() -> Self {
+        Self::default()
+    }
+
+    /// All operations on all clients are permitted, including reading, writing and cloning secrets and reading/ writing
+    /// to the store,
+    pub fn allow_all() -> Self {
+        Self {
+            default: Some(ClientPermissions::all()),
+            ..Default::default()
+        }
+    }
+
+    /// Set default permissions for accessing all clients without any explicit rules.
+    ///
+    /// In case of `None` no access is permitted.
+    pub fn with_default_permissions(mut self, permissions: Option<ClientPermissions>) -> Self {
+        self.default = permissions;
+        self
+    }
+
+    /// Extend permissions for access to specific `client_path`s.
+    ///
+    /// In case of `None` no access to this client is permitted.
+    pub fn extend_client_permissions(mut self, permissions: HashMap<Vec<u8>, Option<ClientPermissions>>) -> Self {
+        self.exceptions.extend(permissions);
+        self
+    }
+
+    pub(crate) fn into_rule(self) -> Rule<AccessRequest> {
+        let restriction = move |rq: &AccessRequest| self.is_permitted(rq);
+        Rule::Restricted {
+            restriction: Arc::new(restriction),
+            _maker: PhantomData,
+        }
+    }
+
+    pub(crate) fn is_permitted(&self, request: &AccessRequest) -> bool {
+        match self.exceptions.get(&request.client_path).unwrap_or(&self.default) {
+            Some(p) => p.is_permitted(request),
+            None => false,
+        }
+    }
+}
+
+/// Restrict access to the vaults and store of a specific client.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ClientPermissions {
+    use_vault_default: bool,
+    use_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    write_vault_default: bool,
+    write_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    clone_vault_default: bool,
+    clone_vault_exceptions: HashMap<Vec<u8>, bool>,
+
+    read_store: bool,
+    write_store: bool,
+}
+
+impl ClientPermissions {
+    /// No access to any structures of the vault is permitted.
+    pub fn none() -> Self {
+        Self::default()
+    }
+    /// All operations on the client are permitted.
+    /// This include reading, writing and cloning secrets, and reading/ writing to the store,
+    pub fn all() -> Self {
+        ClientPermissions {
+            use_vault_default: true,
+            write_vault_default: true,
+            clone_vault_default: true,
+            read_store: true,
+            write_store: true,
+            ..Default::default()
+        }
+    }
+
+    /// Set default permission for accessing vaults in this client.
+    ///
+    /// - `use_` grants the remote temporary access to use the vault's secret in a procedure.
+    /// - `write` permits the remote to write to the vault, including the permission to delete secrets.
+    /// - `clone_` allow the remote to sync with this vault and to clone secrets to their own vault. If the remote
+    ///   cloned a secret, it is not possible to revoke their access to it anymore.
+    pub fn with_default_vault_access(mut self, use_: bool, write: bool, clone_: bool) -> Self {
+        self.use_vault_default = use_;
+        self.write_vault_default = write;
+        self.clone_vault_default = clone_;
+        self
+    }
+
+    /// Set specific permissions for accessing the vault at `vault_path`.
+    ///
+    /// See [`ClientPermissions::with_default_vault_access`] for more info in the parameters.
+    pub fn with_vault_access(mut self, vault_path: Vec<u8>, use_: bool, write: bool, clone_: bool) -> Self {
+        self.use_vault_exceptions.insert(vault_path.clone(), use_);
+        self.use_vault_exceptions.insert(vault_path.clone(), write);
+        self.use_vault_exceptions.insert(vault_path, clone_);
+        self
+    }
+
+    /// Set read and write permissions for the client's store.
+    pub fn with_store_access(mut self, read: bool, write: bool) -> Self {
+        self.read_store = read;
+        self.write_store = write;
+        self
+    }
+
+    // Check if a inbound request is permitted according to the set permissions.
+    pub(crate) fn is_permitted(&self, request: &AccessRequest) -> bool {
+        request.required_access.iter().all(|access| match access {
+            Access::Use { vault_path } => self
+                .use_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(self.use_vault_default),
+            Access::Write { vault_path } => self
+                .write_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(self.write_vault_default),
+            Access::Clone { vault_path } => self
+                .clone_vault_exceptions
+                .get(vault_path)
+                .copied()
+                .unwrap_or(self.clone_vault_default),
+            Access::List { vault_path } => {
+                let use_ = self
+                    .use_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(self.use_vault_default);
+                let write = self
+                    .write_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(self.write_vault_default);
+                let clone_ = self
+                    .clone_vault_exceptions
+                    .get(vault_path)
+                    .copied()
+                    .unwrap_or(self.clone_vault_default);
+                use_ || write || clone_
+            }
+            Access::ReadStore => self.read_store,
+            Access::WriteStore => self.write_store,
+        })
+    }
+}
+
+// Required client, vault and store access of an inbound `ShRequest`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccessRequest {
+    // Client to which the request should be forwarded.
+    // Note: this is already the mapped client_path. See `ClientMapping`.
+    pub client_path: Vec<u8>,
+    // List of vault and record access that the ShRequest needs.
+    pub required_access: Vec<Access>,
+}
+
+// Required access to a vault or the store of a client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Access {
+    // Write to a vault.
+    Write { vault_path: Vec<u8> },
+    // Clone the secret from a vault to the remote's local vault.
+    Clone { vault_path: Vec<u8> },
+    // Use the secret from the vault in a procedure.
+    Use { vault_path: Vec<u8> },
+    // List the ids and hints of all entries in the vault.
+    List { vault_path: Vec<u8> },
+    // Read from the client store.
+    ReadStore,
+    // Write to the client store.
+    WriteStore,
+}
+
+impl FwRequest<ShRequest> for AccessRequest {
+    fn from_request(request: &ShRequest) -> Self {
+        let client_path = request.client_path.clone();
+        let required_access = match &request.request {
+            Request::CheckVault(CheckVault { vault_path }) | Request::ListIds(ListIds { vault_path }) => {
+                vec![Access::List {
+                    vault_path: vault_path.clone(),
+                }]
+            }
+            Request::CheckRecord(CheckRecord { location }) => {
+                vec![Access::List {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            #[cfg(test)]
+            Request::ReadFromVault(ReadFromVault { location }) => {
+                vec![Access::Clone {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            Request::WriteToRemoteVault(WriteToRemoteVault { location, .. })
+            | Request::RevokeData(RevokeData { location }) => {
+                vec![Access::Write {
+                    vault_path: location.vault_path().to_vec(),
+                }]
+            }
+            Request::ReadFromStore(ReadFromStore { .. }) => vec![Access::ReadStore],
+            Request::WriteToStore(WriteToStore { .. }) | Request::DeleteFromStore(DeleteFromStore { .. }) => {
+                vec![Access::WriteStore]
+            }
+            Request::Procedures(p) => p
+                .procedures
+                .iter()
+                .flat_map(|proc| match proc {
+                    StrongholdProcedure::RevokeData(procedures::RevokeData { location, .. }) => vec![Access::Write {
+                        vault_path: location.vault_path().to_vec(),
+                    }],
+                    StrongholdProcedure::GarbageCollect(procedures::GarbageCollect { vault_path }) => {
+                        vec![Access::Write {
+                            vault_path: vault_path.clone(),
+                        }]
+                    }
+                    proc => {
+                        let mut access = Vec::new();
+                        if let Some(input) = proc.input() {
+                            access.push(Access::Use {
+                                vault_path: input.vault_path().to_vec(),
+                            });
+                        }
+                        if let Some(output) = proc.output() {
+                            access.push(Access::Write {
+                                vault_path: output.vault_path().to_vec(),
+                            });
+                        }
+                        access
+                    }
+                })
+                .collect(),
+        };
+        AccessRequest {
+            client_path,
+            required_access,
+        }
+    }
+}
+
+/// Map the `client_path` requested by the remote peer to a local
+/// `client_path`.
+///
+/// Request from / to a remote peer include a path of the client to which
+/// the requests should be forwarded. [`ClientMapping`] allows to map this
+/// client_path to a local one. In case of `None` the requested `client_path` is kept
+/// as it is.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ClientMapping {
+    /// Map specific `client_path`s to local `client_path`s.
+    pub map_client_paths: HashMap<Vec<u8>, Option<Vec<u8>>>,
+
+    /// Default mapping for all requested `client_path`s for which not extra rule has been set.
+    pub default: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Message, Clone, Serialize, Deserialize)]
@@ -314,238 +626,5 @@ impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
         } else {
             Err(())
         }
-    }
-}
-
-/// Permissions for remote peers to operate on the local vault or store of a client.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Permissions {
-    default: Option<ClientPermissions>,
-    exceptions: HashMap<Vec<u8>, Option<ClientPermissions>>,
-}
-
-impl Permissions {
-    /// No operations are permitted.
-    pub fn allow_none() -> Self {
-        Self::default()
-    }
-
-    /// All operations on all clients are permitted, including reading, writing and cloning secrets and reading/ writing
-    /// to the store,
-    pub fn allow_all() -> Self {
-        Self {
-            default: Some(ClientPermissions::all()),
-            ..Default::default()
-        }
-    }
-
-    /// Set default permissions for accessing all clients without any explicit rules.
-    pub fn with_default_permissions(mut self, permissions: Option<ClientPermissions>) -> Self {
-        self.default = permissions;
-        self
-    }
-
-    /// Set specific permissions for access to the client at `client_path`.
-    pub fn with_client_permissions(mut self, client_path: Vec<u8>, permissions: Option<ClientPermissions>) -> Self {
-        self.exceptions.insert(client_path, permissions);
-        self
-    }
-
-    pub(crate) fn into_rule(self) -> Rule<AccessRequest> {
-        let restriction = move |rq: &AccessRequest| rq.check(self.clone());
-        Rule::Restricted {
-            restriction: Arc::new(restriction),
-            _maker: PhantomData,
-        }
-    }
-}
-
-/// Restrict access to the vaults and store of a specific client.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ClientPermissions {
-    use_vault_default: bool,
-    use_vault_exceptions: HashMap<Vec<u8>, bool>,
-
-    write_vault_default: bool,
-    write_vault_exceptions: HashMap<Vec<u8>, bool>,
-
-    clone_vault_default: bool,
-    clone_vault_exceptions: HashMap<Vec<u8>, bool>,
-
-    read_store: bool,
-    write_store: bool,
-}
-
-impl ClientPermissions {
-    /// No access to any structures of the vault is permitted.
-    pub fn none() -> Self {
-        Self::default()
-    }
-    /// All operations on the client are permitted, including reading, writing and cloning secrets and reading/ writing
-    /// to the store,
-    pub fn all() -> Self {
-        ClientPermissions {
-            use_vault_default: true,
-            write_vault_default: true,
-            clone_vault_default: true,
-            read_store: true,
-            write_store: true,
-            ..Default::default()
-        }
-    }
-
-    /// Set default permissions for accessing vaults in this client.
-    pub fn with_default_vault_access(mut self, use_: bool, write: bool, clone_: bool) -> Self {
-        self.use_vault_default = use_;
-        self.write_vault_default = write;
-        self.clone_vault_default = clone_;
-        self
-    }
-
-    /// Set specific permissions for accessing the vault at `vault_path`.
-    pub fn with_vault_access(mut self, vault_path: Vec<u8>, use_: bool, write: bool, clone_: bool) -> Self {
-        self.use_vault_exceptions.insert(vault_path.clone(), use_);
-        self.use_vault_exceptions.insert(vault_path.clone(), write);
-        self.use_vault_exceptions.insert(vault_path, clone_);
-        self
-    }
-
-    /// Set read and write permissions for the client's store.
-    pub fn with_store_access(mut self, read: bool, write: bool) -> Self {
-        self.read_store = read;
-        self.write_store = write;
-        self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessRequest {
-    pub client_path: Vec<u8>,
-    pub locations: Vec<Access>,
-}
-
-impl AccessRequest {
-    pub fn check(&self, permissions: Permissions) -> bool {
-        match permissions
-            .exceptions
-            .get(&self.client_path)
-            .unwrap_or(&permissions.default)
-        {
-            Some(p) => self.check_with_permissions(p),
-            None => false,
-        }
-    }
-
-    fn check_with_permissions(&self, permissions: &ClientPermissions) -> bool {
-        self.locations.iter().all(|access| match access {
-            Access::Use { vault_path } => permissions
-                .use_vault_exceptions
-                .get(vault_path)
-                .copied()
-                .unwrap_or(permissions.use_vault_default),
-            Access::Write { vault_path } => permissions
-                .write_vault_exceptions
-                .get(vault_path)
-                .copied()
-                .unwrap_or(permissions.write_vault_default),
-            Access::Clone { vault_path } => permissions
-                .clone_vault_exceptions
-                .get(vault_path)
-                .copied()
-                .unwrap_or(permissions.clone_vault_default),
-            Access::List { vault_path } => {
-                let use_ = permissions
-                    .use_vault_exceptions
-                    .get(vault_path)
-                    .copied()
-                    .unwrap_or(permissions.use_vault_default);
-                let write = permissions
-                    .write_vault_exceptions
-                    .get(vault_path)
-                    .copied()
-                    .unwrap_or(permissions.write_vault_default);
-                let clone_ = permissions
-                    .clone_vault_exceptions
-                    .get(vault_path)
-                    .copied()
-                    .unwrap_or(permissions.clone_vault_default);
-                use_ || write || clone_
-            }
-            Access::ReadStore => permissions.read_store,
-            Access::WriteStore => permissions.write_store,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Access {
-    Write { vault_path: Vec<u8> },
-    Clone { vault_path: Vec<u8> },
-    Use { vault_path: Vec<u8> },
-    List { vault_path: Vec<u8> },
-    ReadStore,
-    WriteStore,
-}
-
-impl FwRequest<ShRequest> for AccessRequest {
-    fn from_request(request: &ShRequest) -> Self {
-        let client_path = request.client_path.clone();
-        let locations = match &request.request {
-            Request::CheckVault(CheckVault { vault_path }) | Request::ListIds(ListIds { vault_path }) => {
-                vec![Access::List {
-                    vault_path: vault_path.clone(),
-                }]
-            }
-            Request::CheckRecord(CheckRecord { location }) => {
-                vec![Access::List {
-                    vault_path: location.vault_path().to_vec(),
-                }]
-            }
-            #[cfg(test)]
-            Request::ReadFromVault(ReadFromVault { location }) => {
-                vec![Access::Clone {
-                    vault_path: location.vault_path().to_vec(),
-                }]
-            }
-            Request::WriteToRemoteVault(WriteToRemoteVault { location, .. })
-            | Request::RevokeData(RevokeData { location }) => {
-                vec![Access::Write {
-                    vault_path: location.vault_path().to_vec(),
-                }]
-            }
-            Request::ReadFromStore(ReadFromStore { .. }) => vec![Access::ReadStore],
-            Request::WriteToStore(WriteToStore { .. }) | Request::DeleteFromStore(DeleteFromStore { .. }) => {
-                vec![Access::WriteStore]
-            }
-            Request::Procedures(p) => p
-                .procedures
-                .iter()
-                .flat_map(|proc| match proc {
-                    StrongholdProcedure::RevokeData(procedures::RevokeData { location, .. }) => vec![Access::Write {
-                        vault_path: location.vault_path().to_vec(),
-                    }],
-                    StrongholdProcedure::GarbageCollect(procedures::GarbageCollect { vault_path }) => {
-                        vec![Access::Write {
-                            vault_path: vault_path.clone(),
-                        }]
-                    }
-                    proc => {
-                        let mut access = Vec::new();
-                        if let Some(input) = proc.input() {
-                            access.push(Access::Use {
-                                vault_path: input.vault_path().to_vec(),
-                            });
-                        }
-                        if let Some(output) = proc.output() {
-                            access.push(Access::Write {
-                                vault_path: output.vault_path().to_vec(),
-                            });
-                        }
-                        access
-                    }
-                })
-                .collect(),
-        };
-        AccessRequest { client_path, locations }
     }
 }

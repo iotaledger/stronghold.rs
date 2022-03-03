@@ -3,7 +3,7 @@
 
 use crate::{
     actors::{secure_messages::WriteToVault, GetClient},
-    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
+    state::p2p::{ClientMapping, Network, NetworkConfig, Request, ShRequest, ShResult},
     utils::LoadFromPath,
 };
 use actix::prelude::*;
@@ -61,9 +61,31 @@ impl Actor for Network {
 impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
     fn handle(&mut self, item: ReceiveRequest<ShRequest, ShResult>, ctx: &mut Self::Context) {
         let ReceiveRequest {
-            request, response_tx, ..
+            request,
+            response_tx,
+            peer,
+            ..
         } = item;
         let ShRequest { client_path, request } = request;
+        let mapping = match self._config.peer_client_mapping_mut().get(&peer) {
+            Some(m) => m,
+            None => self._config.client_mapping_default_mut(),
+        };
+        let client_path = match mapping {
+            Some(ClientMapping {
+                map_client_paths,
+                default,
+            }) => match map_client_paths
+                .get(&client_path)
+                .cloned()
+                .unwrap_or_else(|| default.clone())
+            {
+                Some(path) => path,
+                None => client_path,
+            },
+            None => client_path,
+        };
+
         let client_id = ClientId::load_from_path(&client_path, &client_path);
         sh_request_dispatch!(request => |inner| {
             let fut = self.registry
@@ -124,7 +146,8 @@ impl Handler<SetFirewallDefault> for Network {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: SetFirewallDefault, _: &mut Self::Context) -> Self::Result {
-        self._config.permissions_default = msg.permissions.clone();
+        let default_permissions = self._config.permissions_default_mut();
+        *default_permissions = msg.permissions.clone();
         let mut network = self.network.clone();
         async move {
             network
@@ -140,7 +163,8 @@ impl Handler<SetFirewallRule> for Network {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: SetFirewallRule, _: &mut Self::Context) -> Self::Result {
-        self._config.peer_permissions.insert(msg.peer, msg.permissions.clone());
+        let peer_permissions = self._config.peer_permissions_mut();
+        peer_permissions.insert(msg.peer, msg.permissions.clone());
         let mut network = self.network.clone();
         async move {
             network
