@@ -11,7 +11,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rlu::{RLUObject, RLUVar, Read, RluContext, Write, RLU};
+use rlu::{RLUObject, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
@@ -150,6 +150,21 @@ where
     /// ```
     pub fn get(&self, key: &K) -> Option<&V> {
         let tvar = self.inner.var();
+        let ctrl = self.inner.ctrl();
+
+        ctrl.execute(|ctx| {
+            let read = ctx.get(tvar);
+            match &*read {
+                Ok(inner) => {
+                    let val = inner.get(key);
+
+                    Ok(())
+                }
+                Err(e) => Err(TransactionError::Inner(e.to_string())),
+            }
+        })
+        .ok();
+
         let map = tvar.get();
 
         if let Some(inner) = map.get(key) {

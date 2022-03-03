@@ -4,7 +4,11 @@
 #[cfg(feature = "std")]
 mod stronghold_test_std {
 
-    use std::collections::HashMap;
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
 
     use iota_stronghold_new::Cache;
     use rand_utils::random::{string, usize};
@@ -12,7 +16,6 @@ mod stronghold_test_std {
     #[test]
     fn test_cache_insert() {
         let cache = Cache::default();
-
         assert!(cache.insert(1223usize, "hello, world", None).is_ok());
         assert!(cache.get(&1223).is_some());
         if let Some(inner) = cache.get(&1223) {
@@ -79,6 +82,35 @@ mod stronghold_test_std {
         }
     }
 
-    #[tokio::test]
-    async fn test_cache_async() {}
+    #[ignore]
+    #[test]
+    fn test_cache_concurrent() {
+        use std::thread::spawn;
+
+        let runs = 10;
+        let cache = Arc::new(Mutex::new(HashMap::new()));
+        let mut threads = Vec::new();
+
+        // writes
+        for key in 0..runs {
+            let cache = cache.clone();
+            threads.push(spawn(move || {
+                let v1 = string(255);
+
+                cache.lock().expect("").insert(key, v1);
+            }));
+        }
+
+        std::thread::sleep(Duration::from_millis(1));
+
+        // reads
+        for key in 0..runs {
+            let cache = cache.clone();
+            threads.push(spawn(move || assert!(cache.lock().expect("").get(&key).is_some())));
+        }
+
+        threads.into_iter().for_each(|t| {
+            t.join().expect("Could not join");
+        });
+    }
 }
