@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use rlu::{RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 use stronghold_rlu as rlu;
 
 #[cfg(test)]
@@ -261,4 +265,85 @@ fn test_concurrent_reads_with_complex_type_with_strategy() {
     [j0, j1, j2].into_iter().for_each(|thread| {
         thread.join().expect("Failed to join");
     });
+}
+
+#[test]
+fn test_concurrent_reads_and_writes_with_complex_type_with_strategy() {
+    use std::thread::spawn;
+
+    let failures = Arc::new(AtomicUsize::new(0));
+    let num_test_runs = 1000;
+    for _ in 0..num_test_runs {
+        let c = RLU::with_strategy(RLUStrategy::Abort);
+        let var = c.create(HashMap::<usize, &str>::new());
+
+        let runs = 8;
+
+        let mut threads = Vec::new();
+
+        // writes
+        for i in 0..runs {
+            let ctrl = c.clone();
+            let var = var.clone();
+
+            let j0 = spawn(move || {
+                ctrl.execute(|mut ctx| {
+                    let mut guard = ctx.get_mut(&var)?;
+
+                    (*guard).insert(i, "hello, world");
+
+                    Ok(())
+                })
+                .expect("Failed to write");
+            });
+
+            threads.push(j0);
+        }
+
+        // reads
+        for i in 0..runs {
+            let ctrl = c.clone();
+            let var = var.clone();
+            let fail = failures.clone();
+
+            let j1 = spawn(move || {
+                let result = ctrl.execute(|ctx| {
+                    let guard = ctx.get(&var);
+
+                    if let Ok(inner) = *guard {
+                        let m = &**inner;
+
+                        match m.contains_key(&i) {
+                            true => return Ok(()),
+                            false => {
+                                std::thread::sleep(Duration::from_millis(1));
+                                return Err(TransactionError::Failed);
+                            }
+                        }
+                    }
+
+                    Err(TransactionError::Failed)
+                });
+
+                if result.is_err() {
+                    // handle error?
+                }
+
+                if !var.get().contains_key(&i) {
+                    fail.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+
+            threads.push(j1);
+        }
+
+        threads.into_iter().for_each(|thread| {
+            thread.join().expect("Failed to join");
+        });
+    }
+
+    println!(
+        "number of failures: {}%",
+        (failures.load(std::sync::atomic::Ordering::SeqCst)) as f64 / num_test_runs as f64 * 100.0
+    );
 }
