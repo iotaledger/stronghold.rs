@@ -3,10 +3,9 @@ use crate::memories::file_memory::FileMemory;
 use crate::crypto_utils::crypto_box::{BoxProvider};
 use crate::locked_memory::{LockedMemory, LockedConfiguration, MemoryType::*, NCMemory::*};
 use crate::locked_memory::MemoryError::{self, *};
-use crate::types::Bytes;
 use crypto::hashes::sha;
 use core::fmt::{self, Debug, Formatter};
-use zeroize::Zeroize;
+use zeroize::{Zeroize};
 
 
 static IMPOSSIBLE_CASE: &'static str = "NonContiguousMemory: this case should not happen if allocated properly";
@@ -16,11 +15,11 @@ const NC_DATA_SIZE: usize = 32;
 
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
-enum MemoryShard<T: Zeroize + Bytes, P: BoxProvider> {
+enum MemoryShard<P: BoxProvider> {
     // EncryptedFileShard(FileMemory<P>),
     // EncryptedRamShard(EncryptedRam<P>),
     FileShard(FileMemory<P>),
-    RamShard(Buffer<T>),
+    RamShard(Buffer<u8>),
 }
 use MemoryShard::*;
 
@@ -28,12 +27,12 @@ use MemoryShard::*;
 /// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to store keys hence the size of the data depends on the chosen box provider
 pub struct NonContiguousMemory<P: BoxProvider>
 {
-    shard1: MemoryShard<u8, P>,
-    shard2: MemoryShard<u8, P>,
+    shard1: MemoryShard<P>,
+    shard2: MemoryShard<P>,
     config: LockedConfiguration<P>,
 }
 
-impl<P: BoxProvider> LockedMemory<u8, P> for NonContiguousMemory<P>
+impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P>
 {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
@@ -66,7 +65,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for NonContiguousMemory<P>
     }
 
     /// Locks the memory and possibly reallocates
-    fn update(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
+    fn update(self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         NonContiguousMemory::alloc(&payload.borrow(), size, config)
     }
 
@@ -172,7 +171,7 @@ impl<P: BoxProvider> Debug for NonContiguousMemory<P> {
 
 
 //##### Zeroize
-impl<T: Zeroize + Bytes, P: BoxProvider> Zeroize for MemoryShard<T, P> {
+impl<P: BoxProvider> Zeroize for MemoryShard<P> {
     fn zeroize(&mut self) {
         match self {
             FileShard(fm) => fm.zeroize(),
@@ -180,6 +179,7 @@ impl<T: Zeroize + Bytes, P: BoxProvider> Zeroize for MemoryShard<T, P> {
         }
     }
 }
+
 
 impl<P: BoxProvider> Zeroize for NonContiguousMemory<P>
 {
@@ -190,11 +190,13 @@ impl<P: BoxProvider> Zeroize for NonContiguousMemory<P>
     }
 }
 
-impl<P: BoxProvider> Drop for NonContiguousMemory<P> {
+impl<P: BoxProvider> Drop for NonContiguousMemory<P>
+{
     fn drop(&mut self) {
-        self.zeroize();
+        self.zeroize()
     }
 }
+
 
 
 #[cfg(test)]

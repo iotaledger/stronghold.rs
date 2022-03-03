@@ -9,9 +9,10 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
+pub trait BoxProvider: 'static + Sized + Ord + PartialOrd + Zeroize {
     type Error: Debug;
 
     /// defines the key length for the [`BoxProvider`].
@@ -79,6 +80,12 @@ impl<T: BoxProvider> Key<T> {
     pub fn bytes(&self) -> Vec<u8> {
         // hacks the guarded type.  Probably not the best solution.
         (*self.key.borrow()).to_vec()
+    }
+}
+
+impl<T: BoxProvider> Zeroize for Key<T> {
+    fn zeroize(&mut self) {
+        self.key.zeroize()
     }
 }
 

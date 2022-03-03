@@ -4,7 +4,7 @@ use core::fmt::{self, Debug, Formatter};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
-use zeroize::{Zeroize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -62,17 +62,13 @@ impl<T: Bytes + Randomized> Buffer<T> {
     }
 }
 
-impl<T: Bytes> Drop for Buffer<T> {
-    fn drop(&mut self) {
-        self.zeroize()
-    }
-}
-
 impl<T: Bytes> Zeroize for Buffer<T> {
     fn zeroize(&mut self) {
         self.boxed.zeroize()
     }
 }
+
+impl<T: Bytes> ZeroizeOnDrop for Buffer<T> {}
 
 impl<T: Bytes + Zeroed> Buffer<T> {
     pub fn zero(len: usize) -> Self {
@@ -354,5 +350,18 @@ mod tests {
         assert_eq!(guard.borrow_mut(), clone.borrow());
         assert_eq!(guard.borrow_mut(), clone.borrow());
         assert_eq!(guard.borrow(), clone.borrow_mut());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_zeroize() {
+        let mut buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
+        buf.zeroize();
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+
+        // Using zeroized buffer should panic
+        let mut v = buf.borrow_mut();
+        v.copy_from_slice(&[7, 1][..]);
     }
 }

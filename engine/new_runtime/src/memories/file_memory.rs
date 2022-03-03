@@ -60,7 +60,7 @@ impl<P: BoxProvider> FileMemory<P> {
     }
 }
 
-impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
+impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             // File without encryption
@@ -75,10 +75,10 @@ impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
             }
 
             // With encryption
-            LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key) } => {
+            LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(ref key) } => {
                 let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
                 P::random_buf(&mut ad).or(Err(EncryptionError))?;
-                let encrypted_payload = P::box_seal(&key, &ad, payload).or(Err(EncryptionError))?;
+                let encrypted_payload = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
                 let fname = FileMemory::<P>::write_to_file(&encrypted_payload).or(Err(FileSystemError))?;
                 // Don't put the actual key value, put random values,
                 // we don't want to store the key
@@ -97,7 +97,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
     }
 
     /// Locks the memory and possibly reallocates
-    fn update(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
+    fn update(self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             // The current choice is to allocate a completely new file and
             // remove the previous one
@@ -126,11 +126,21 @@ impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
         let mut data = self.read_file().or(Err(FileSystemError))?;
 
         // If data is encrypted
-        if let LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key) } = config {
-            data = P::box_open(&key, &self.ad, &data).or(Err(DecryptionError))?;
+        if let LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(ref key) } = config {
+            data = P::box_open(key, &self.ad, &data).or(Err(DecryptionError))?;
         }
 
         Ok(Buffer::alloc(&data, self.size))
+    }
+}
+
+
+impl<P: BoxProvider> Zeroize for FileMemory<P> {
+    fn zeroize(&mut self) {
+        self.clear_and_delete_file();
+        self.fname.zeroize();
+        self.config.zeroize();
+        self.size.zeroize()
     }
 }
 
@@ -140,14 +150,6 @@ impl<P: BoxProvider> Drop for FileMemory<P> {
     }
 }
 
-impl<P: BoxProvider> Zeroize for FileMemory<P> {
-    fn zeroize(&mut self) {
-        self.clear_and_delete_file();
-        self.fname = String::new();
-        self.config.zeroize();
-        self.size = 0;
-    }
-}
 
 impl<P: BoxProvider> Debug for FileMemory<P> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
@@ -192,7 +194,6 @@ mod tests {
 
     #[test]
     fn test_zeroize() {
-        let data = &[1, 2, 3, 4, 5, 6][..];
         let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
         assert!(fm.is_ok());
         let mut fm = fm.unwrap();
@@ -202,6 +203,7 @@ mod tests {
         // Check that file has been removed
         assert!(!std::path::Path::new(&fname).exists());
         assert!(fm.fname.is_empty());
+        assert_eq!(fm.ad, [0; AD_SIZE]);
     }
 
     #[test]

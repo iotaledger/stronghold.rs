@@ -1,8 +1,7 @@
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
 use crate::memories::buffer::Buffer;
-use crate::types::Bytes;
 use core::fmt::Debug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize};
 
 #[derive(Debug)]
 pub enum MemoryError {
@@ -36,10 +35,11 @@ pub struct LockedConfiguration<P: BoxProvider> {
 impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
     fn zeroize(&mut self) {
         if self.encrypted.is_some() {
-            self.encrypted = Some(Key::random())
+            self.encrypted.zeroize()
         }
     }
 }
+
 
 // We implement PartialEq for configuration which contains a key
 // We don't want to include the key in the comparison because when the
@@ -54,15 +54,14 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
 
 impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
-
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Zeroize + Drop + Sized {
+pub trait LockedMemory<P: BoxProvider>: Debug + Zeroize + Drop + Sized {
     /// Writes the payload into a LockedMemory then locks it
-    fn alloc(payload: &[T], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
+    fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Modifies the value and potentially reallocates the data
-    fn update(self, payload: Buffer<T>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
+    fn update(self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Unlocks the memory and returns an unlocked Buffer
-    fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<T>, MemoryError>;
+    fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError>;
 }

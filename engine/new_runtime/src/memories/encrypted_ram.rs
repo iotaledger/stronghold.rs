@@ -28,17 +28,17 @@ pub struct EncryptedRam<P: BoxProvider> {
 }
 
 // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cipher is Buffer<u8>
-impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
+impl<P: BoxProvider> LockedMemory<P> for EncryptedRam<P> {
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             // For encrypted memory we don't store the key itself.
-            LockedConfiguration { mem_type: Ram, encrypted: Some(key) } => {
+            LockedConfiguration { mem_type: Ram, encrypted: Some(ref key) } => {
                 let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
                 P::random_buf(&mut ad).or(Err(EncryptionError))?;
                 Ok(EncryptedRam {
                     // Encrypt the payload before storing it
                     cipher: {
-                        let encrypted_payload = P::box_seal(&key, &ad, payload).or(Err(EncryptionError))?;
+                        let encrypted_payload = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
                         Buffer::alloc(&encrypted_payload, encrypted_payload.len())
                     },
                     // Don't put the actual key value, put random values, we don't want to store the key
@@ -57,7 +57,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
     /// Locks the memory and possibly reallocates
     // Currently we reallocate a new EncryptedRam at each lock
     // This improves security but decreases performance
-    fn update(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
+    fn update(self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             LockedConfiguration { mem_type: Ram, encrypted: Some(_) } => {
                 EncryptedRam::<P>::alloc(&payload.borrow(), size, config)
@@ -68,17 +68,26 @@ impl<P: BoxProvider> LockedMemory<u8, P> for EncryptedRam<P> {
 
     /// Unlocks the memory
     fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError> {
-        // assert_matches!(self.config, EncryptedRamConfig(_,_));
-
         // Decrypt and store the value in a Buffer
         match config {
-            LockedConfiguration { mem_type: Ram, encrypted: Some(key) } => {
+            LockedConfiguration { mem_type: Ram, encrypted: Some(ref key) } => {
                 // Note: data is not in the protected buffer here, change box_open to return a Buffer type?
-                let data = P::box_open(&key, &self.ad, &*self.cipher.borrow()).or(Err(DecryptionError))?;
+                let data = P::box_open(key, &self.ad, &*self.cipher.borrow()).or(Err(DecryptionError))?;
                 Ok(Buffer::alloc(&data, self.size))
             },
             _ => Err(ConfigurationNotAllowed)
         }
+    }
+}
+
+
+
+impl<P: BoxProvider> Zeroize for EncryptedRam<P> {
+    fn zeroize(&mut self) {
+        self.cipher.zeroize();
+        self.config.zeroize(); 
+        self.ad.zeroize();
+        self.size.zeroize();
     }
 }
 
@@ -88,15 +97,6 @@ impl<P: BoxProvider> Drop for EncryptedRam<P> {
     }
 }
 
-
-impl<P: BoxProvider> Zeroize for EncryptedRam<P> {
-    fn zeroize(&mut self) {
-        self.cipher.zeroize();
-        self.config.zeroize(); 
-        self.ad = [0; AD_SIZE];
-        self.size = 0;
-    }
-}
 
 impl<P: BoxProvider> Debug for EncryptedRam<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -197,5 +197,15 @@ mod tests {
         let ram = ram.unwrap();
         let cipher = &ram.cipher;
         assert_ne!(*cipher.borrow(), [1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn test_zeroize() {
+        let key = Key::random();
+        let ram =
+            EncryptedRam::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, LockedConfiguration { mem_type: Ram, encrypted: (Some(key.clone())) });
+        assert!(ram.is_ok());
+        let mut ram = ram.unwrap();
+        ram.zeroize();
     }
 }
