@@ -1,4 +1,4 @@
-name: Check rustdoc links
+name: Check rustdoc
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       matrix:
         project: [engine, engine/runtime, client, products/commandline, derive, utils, p2p]
     env: 
-      RUSTDOCFLAGS: --deny rustdoc::broken_intra_doc_links --deny rustdoc::private_intra_doc_links
+      RUSTDOCFLAGS: -D warnings
 
     steps:
       - uses: actions/checkout@v2
