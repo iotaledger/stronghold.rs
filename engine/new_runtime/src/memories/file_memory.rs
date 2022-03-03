@@ -91,25 +91,23 @@ impl<P: BoxProvider> LockedMemory<u8, P> for FileMemory<P> {
                 })
             }
 
-            // We don't allow any other configurations  
+            // We don't allow any other configurations
             _ => Err(ConfigurationNotAllowed),
         }
     }
 
     /// Locks the memory and possibly reallocates
-    fn lock(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
+    fn update(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         match config {
             // The current choice is to allocate a completely new file and
             // remove the previous one
             LockedConfiguration { mem_type: MemoryType::File, encrypted: None } => {
-                self.dealloc()?;
                 FileMemory::alloc(&payload.borrow(), size, config)
             }
 
             // The current choice is to allocate a completely new file and
             // remove the previous one
             LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(_) } => {
-                self.dealloc()?;
                 FileMemory::alloc(&payload.borrow(), size, config)
             }
 
@@ -172,7 +170,7 @@ mod tests {
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.lock(buf, 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
+        let fm = fm.update(buf, 6, LockedConfiguration { mem_type: MemoryType::File, encrypted: None});
         assert!(fm.is_ok());
     }
 
@@ -187,7 +185,7 @@ mod tests {
         assert!(buf.is_ok());
         let buf = buf.unwrap();
         assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.lock(buf, 6,
+        let fm = fm.update(buf, 6,
                          LockedConfiguration { mem_type: MemoryType::File, encrypted: Some(key.clone())});
         assert!(fm.is_ok());
     }

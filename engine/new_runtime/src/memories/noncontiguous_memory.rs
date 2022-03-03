@@ -66,8 +66,7 @@ impl<P: BoxProvider> LockedMemory<u8, P> for NonContiguousMemory<P>
     }
 
     /// Locks the memory and possibly reallocates
-    fn lock(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
-        self.dealloc()?;
+    fn update(mut self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError> {
         NonContiguousMemory::alloc(&payload.borrow(), size, config)
     }
 
@@ -220,7 +219,7 @@ mod tests {
         // Check locking
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.lock(buf,
+        let ncm = ncm.update(buf,
                            NC_DATA_SIZE,
                            LockedConfiguration { mem_type: NonContiguous(NCRam), encrypted: None});
         assert!(ncm.is_ok());
@@ -248,7 +247,7 @@ mod tests {
         // Check locking
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.lock(buf,
+        let ncm = ncm.update(buf,
                            NC_DATA_SIZE,
                            LockedConfiguration { mem_type: NonContiguous(NCRamFile), encrypted: None});
         assert!(ncm.is_ok());

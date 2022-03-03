@@ -13,35 +13,25 @@ pub enum MemoryError {
     FileSystemError,
 }
 
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NCMemory {
     NCFile,
     NCRam,
-    NCRamFile
+    NCRamFile,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MemoryType {
     Ram,
     File,
-    NonContiguous(NCMemory)
+    NonContiguous(NCMemory),
 }
-
 
 #[derive(Debug, Clone)]
 pub struct LockedConfiguration<P: BoxProvider> {
     pub mem_type: MemoryType,
-    pub encrypted: Option<Key<P>>
+    pub encrypted: Option<Key<P>>,
 }
-
-
-// /// Currently accepted configuration
-// impl<P: BoxProvider> LockedConfiguration<P> {
-//     fn encrypted_ram_config() -> Self {
-//         LockedConfiguration { 
-//     }
-// }
 
 impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
     fn zeroize(&mut self) {
@@ -57,8 +47,8 @@ impl<P: BoxProvider> Zeroize for LockedConfiguration<P> {
 // with random noise to avoid storing sensitive data there
 impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
     fn eq(&self, other: &Self) -> bool {
-        self.mem_type == other.mem_type &&
-            std::mem::discriminant(&self.encrypted) == std::mem::discriminant(&other.encrypted)
+        self.mem_type == other.mem_type
+            && std::mem::discriminant(&self.encrypted) == std::mem::discriminant(&other.encrypted)
     }
 }
 
@@ -66,19 +56,12 @@ impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Sized + Zeroize + Drop {
+pub trait LockedMemory<T: Bytes, P: BoxProvider>: Debug + Zeroize + Drop + Sized {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[T], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
-    /// Cleans up any trace of the memory used
-    /// Shall be called in drop()
-    fn dealloc(&mut self) -> Result<(), MemoryError> {
-        self.zeroize();
-        Ok(())
-    }
-
-    /// Locks the memory and possibly reallocates
-    fn lock(self, payload: Buffer<T>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
+    /// Modifies the value and potentially reallocates the data
+    fn update(self, payload: Buffer<T>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Unlocks the memory and returns an unlocked Buffer
     fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<T>, MemoryError>;
