@@ -64,7 +64,7 @@ pub enum TransactionError {
     #[error("Transaction failed")]
     Failed,
 
-    #[error("Transaction alread running")]
+    #[error("Transaction already running")]
     InProgress,
 
     #[error("Inner error occured ({0})")]
@@ -72,10 +72,6 @@ pub enum TransactionError {
 
     #[error("Operation aborted")]
     Abort,
-
-    /// This is semantically incorrect, but a strategy
-    #[error("Operation retry")]
-    Retry,
 }
 
 /// Conversion trait for all types to be heap allocated
@@ -144,8 +140,8 @@ where
     T: Clone,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        if let a @ 0..=1 = self.clear.swap(usize::MAX, Ordering::Acquire) {
-            self.logs[0].clear()
+        if let 0..=1 = self.clear.swap(usize::MAX, Ordering::Acquire) {
+            self.logs[self.current()].clear()
         }
 
         &mut self.logs[self.current()]
@@ -846,10 +842,14 @@ where
             }
             _ => {}
         }
+        let context = match context {
+            Some(c) => c,
+            None => return ReadGuard::new(Err(TransactionError::Failed), self),
+        };
 
         // check for stealing
-        if self.local_clock.load(Ordering::SeqCst) >= context.unwrap().write_clock.load(Ordering::SeqCst) {
-            if let Some(last) = context.unwrap().log.last() {
+        if self.local_clock.load(Ordering::SeqCst) >= context.write_clock.load(Ordering::SeqCst) {
+            if let Some(last) = context.log.last() {
                 match last {
                     InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => {
                         return ReadGuard::new(Ok(data), self)
@@ -885,11 +885,11 @@ where
                 }
                 Some(id) => {
                     self.abort();
-                    return Err(TransactionError::Retry);
+                    return Err(TransactionError::Failed);
                 }
                 None => {
                     self.abort();
-                    return Err(TransactionError::Retry);
+                    return Err(TransactionError::Failed);
                 }
             },
             InnerVar::Original { data, ctrl, .. } => (data, ctrl),
@@ -1016,19 +1016,44 @@ mod tests {
     #[test]
     fn test_rlu_log() {
         let mut log = RLULog::<usize>::default();
-        assert_eq!(log.current(), 0);
 
+        // 0
+        assert_eq!(log.current(), 0);
         log.push(1);
         log.push(1);
+        assert_eq!(log.len(), 2);
+
+        // 1
         log.next();
-        log.push(1);
-        log.push(1);
         assert_eq!(log.current(), 1);
+        log.push(1);
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.len(), 3);
 
+        // 0
         log.next();
-        log.push(1);
-        log.push(1);
         assert_eq!(log.current(), 0);
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.len(), 2);
+
+        // 1
+        log.next();
+        assert_eq!(log.current(), 1);
+        log.push(1);
+        log.push(1);
+        log.push(1);
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.len(), 5);
+
+        // 0
+        log.next();
+        assert_eq!(log.current(), 0);
+        log.push(1);
+        log.push(1);
+        assert_eq!(log.len(), 2);
     }
 
     #[test]
