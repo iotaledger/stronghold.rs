@@ -20,7 +20,54 @@ fn init_logger() {
 }
 
 #[test]
-fn test_mutliple_readers_single_write() {
+fn test_multiple_readers_single_writer() {
+    const EXPECTED: usize = 15usize;
+
+    let ctrl = RLU::new();
+    let rlu_var: RLUVar<usize> = ctrl.create(6usize);
+
+    let r1 = rlu_var.clone();
+    let c1 = ctrl.clone();
+
+    match c1.execute(|mut context| {
+        let mut data = context.get_mut(&r1)?;
+        let inner = &mut *data;
+        *inner += 9usize;
+
+        Ok(())
+    }) {
+        Err(err) => Err(err),
+        Ok(()) => Ok(()),
+    }
+    .expect("Failed");
+
+    for _ in 0..10000 {
+        let r1 = rlu_var.clone();
+        let c1 = ctrl.clone();
+        let context_fn = |context: RluContext<usize>| {
+            let data = context.get(&r1);
+            match *data {
+                Ok(inner) if **inner == EXPECTED => Ok(()),
+                Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
+                    "Value is not expected: actual {}, expected {}",
+                    **inner, EXPECTED
+                ))),
+                Ok(_) => unreachable!("You shouldn't see this"),
+                Err(_) => Err(TransactionError::Failed),
+            }
+        };
+
+        if c1.execute(context_fn).is_err() {
+            // handle error
+        }
+    }
+
+    let value = rlu_var.get();
+    assert_eq!(value, &15)
+}
+
+#[test]
+fn test_mutliple_readers_single_write_concurrently() {
     const EXPECTED: usize = 15usize;
 
     let ctrl = RLU::new();
@@ -272,12 +319,13 @@ fn test_concurrent_reads_and_writes_with_complex_type_with_strategy() {
     use std::thread::spawn;
 
     let failures = Arc::new(AtomicUsize::new(0));
-    let num_test_runs = 1000;
+    let num_test_runs = 100;
+
     for _ in 0..num_test_runs {
         let c = RLU::with_strategy(RLUStrategy::Abort);
         let var = c.create(HashMap::<usize, &str>::new());
 
-        let runs = 8;
+        let runs = 4;
 
         let mut threads = Vec::new();
 
@@ -342,8 +390,5 @@ fn test_concurrent_reads_and_writes_with_complex_type_with_strategy() {
         });
     }
 
-    println!(
-        "number of failures: {}%",
-        (failures.load(std::sync::atomic::Ordering::SeqCst)) as f64 / num_test_runs as f64 * 100.0
-    );
+    assert_eq!(failures.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
