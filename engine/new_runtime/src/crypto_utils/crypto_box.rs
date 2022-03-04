@@ -12,7 +12,7 @@ use std::{
 use zeroize::Zeroize;
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: 'static + Sized + Ord + PartialOrd + Zeroize {
+pub trait BoxProvider: 'static + Sized + Ord + PartialOrd + Zeroize + Clone {
     type Error: Debug;
 
     /// defines the key length for the [`BoxProvider`].

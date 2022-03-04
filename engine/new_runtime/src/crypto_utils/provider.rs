@@ -9,7 +9,7 @@ use crypto::{
 use crate::crypto_utils::crypto_box::{BoxProvider, Key};
 use zeroize::Zeroize;
 
-#[derive(Ord, PartialEq, Eq, PartialOrd, Zeroize)]
+#[derive(Ord, PartialEq, Eq, PartialOrd, Zeroize, Clone)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;

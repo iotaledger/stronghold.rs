@@ -59,13 +59,13 @@ impl<P: BoxProvider> PartialEq for LockedConfiguration<P> {
 impl<P: BoxProvider> Eq for LockedConfiguration<P> {}
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
-pub trait LockedMemory<P: BoxProvider>: Debug + Zeroize + ZeroizeOnDrop + Sized {
+pub trait LockedMemory<P: BoxProvider>: Debug + Zeroize + ZeroizeOnDrop + Sized + Clone {
     /// Writes the payload into a LockedMemory then locks it
     fn alloc(payload: &[u8], size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
     /// Modifies the value and potentially reallocates the data
     fn update(self, payload: Buffer<u8>, size: usize, config: LockedConfiguration<P>) -> Result<Self, MemoryError>;
 
-    /// Unlocks the memory and returns an unlocked Buffer
+    /// Unlocks the memory and returns a Buffer
     fn unlock(&self, config: LockedConfiguration<P>) -> Result<Buffer<u8>, MemoryError>;
 }

@@ -21,6 +21,7 @@ use serde::{
 const AD_SIZE: usize = 32;
 
 /// Buffer type in which the data is encrypted
+#[derive(Clone)]
 pub struct EncryptedRam<P: BoxProvider> {
     // Visibility within crate is for testing purpose
     // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cipher

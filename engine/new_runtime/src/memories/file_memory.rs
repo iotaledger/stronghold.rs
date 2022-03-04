@@ -154,6 +154,8 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
 }
 
 impl<P: BoxProvider> Zeroize for FileMemory<P> {
+    // Temporary measure, files get deleted multiple times in non contiguous memory,
+    // needs to track usage to improve performance
     #[allow(unused_must_use)]
     fn zeroize(&mut self) {
         self.clear_and_delete_file();
@@ -174,6 +176,20 @@ impl<P: BoxProvider> Drop for FileMemory<P> {
 impl<P: BoxProvider> Debug for FileMemory<P> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         write!(fmt, "{{ config: hidden, fname: hidden }}")
+    }
+}
+
+/// To clone file memory we make a duplicate of the file containing the data
+impl<P: BoxProvider> Clone for FileMemory<P> {
+    fn clone(&self) -> Self {
+        let fname: String = FileMemory::<P>::random_fname();
+        fs::copy(&self.fname, &fname).expect("Error in file copy while cloning file memory");
+        FileMemory {
+            fname,
+            config: self.config.clone(),
+            ad: self.ad,
+            size: self.size,
+        }
     }
 }
 

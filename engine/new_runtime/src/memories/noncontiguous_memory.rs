@@ -22,6 +22,7 @@ const NC_DATA_SIZE: usize = 32;
 
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
+#[derive(Clone)]
 enum MemoryShard<P: BoxProvider> {
     FileShard(FileMemory<P>),
     RamShard(Buffer<u8>),
@@ -30,6 +31,7 @@ use MemoryShard::*;
 
 /// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to
 /// store keys hence the size of the data depends on the chosen box provider
+#[derive(Clone)]
 pub struct NonContiguousMemory<P: BoxProvider> {
     shard1: MemoryShard<P>,
     shard2: MemoryShard<P>,
