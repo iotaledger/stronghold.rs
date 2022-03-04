@@ -47,7 +47,7 @@
 use log::*;
 use std::{
     collections::HashMap,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Index, IndexMut},
     sync::{
         atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
         Arc,
@@ -58,6 +58,9 @@ use crate::BusyBreaker;
 
 /// Global return type
 pub type Result<T> = core::result::Result<T, TransactionError>;
+
+/// The number of entries inside the write log
+const LOG_ENTRY_SIZE: usize = 32;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
@@ -85,13 +88,100 @@ pub trait IntoRaw: Sized {
 
 impl<T> IntoRaw for T {}
 
+// ----------------- Node Impl
+struct Node<T> {
+    alloc: [Option<T>; LOG_ENTRY_SIZE], // the maximum size of log entries
+    index: AtomicUsize,
+}
+
+impl<T> Node<T>
+where
+    T: Clone,
+{
+    /// Selects the next internal log by incrementing the internal index mod the  number of logs
+    pub fn next_idx(&self) {
+        self.index.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Returns the current index  of the log
+    pub fn current_node_index(&self) -> usize {
+        self.index.load(Ordering::SeqCst)
+    }
+
+    pub fn push(&mut self, value: T) {
+        assert!((self.current_node_index() + 1) < self.alloc.len());
+        self.next_idx();
+
+        self.alloc[self.current_node_index()] = Some(value);
+    }
+
+    pub fn clear(&mut self) {
+        self.alloc = match vec![None; LOG_ENTRY_SIZE].try_into() {
+            Ok(array) => array,
+            _ => unreachable!(),
+        };
+        self.index.store(0, Ordering::Release)
+    }
+
+    pub fn len(&self) -> usize {
+        self.alloc.len()
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        self.alloc[self.current_node_index()].as_ref()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Option<T>> {
+        (&self.alloc).iter()
+    }
+}
+
+impl<T> Default for Node<T>
+where
+    T: Clone,
+{
+    fn default() -> Self {
+        Self {
+            alloc: match vec![None; 32].try_into() {
+                Ok(array) => array,
+                _ => unreachable!(),
+            },
+            index: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl<T> Index<usize> for Node<T>
+where
+    T: Clone,
+{
+    type Output = Option<T>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        assert!(index < self.alloc.len());
+        &self.alloc[self.current_node_index()]
+    }
+}
+
+impl<T> IndexMut<usize> for Node<T>
+where
+    T: Clone,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        assert!(index < self.alloc.len());
+        &mut self.alloc[self.current_node_index()]
+    }
+}
+
+// ----------------- End Node Impl
+
 struct RLULog<T>
 where
     T: Clone,
 {
     clear: AtomicUsize,
     current_log_index: AtomicUsize,
-    logs: [Vec<T>; 2],
+    logs: [Node<T>; 2], // [Vec<T>; 2],
 }
 
 impl<T> Default for RLULog<T>
@@ -102,7 +192,7 @@ where
         Self {
             clear: AtomicUsize::new(usize::MAX),
             current_log_index: AtomicUsize::new(0),
-            logs: [Vec::new(), Vec::new()],
+            logs: [Node::default(), Node::default()], // unsafe { MaybeUninit::uninit().assume_init() },
         }
     }
 }
@@ -114,13 +204,13 @@ where
     /// Selects the next internal log by incrementing the internal index mod the  number of logs
     pub fn next(&self) {
         let next = (self.current() + 1) % self.logs.len();
-        self.clear.store(self.current(), Ordering::Release);
-        self.current_log_index.store(next, Ordering::Release);
+        self.clear.store(self.current(), Ordering::SeqCst);
+        self.current_log_index.store(next, Ordering::SeqCst);
     }
 
     /// Returns the current index  of the log
     pub fn current(&self) -> usize {
-        self.current_log_index.load(Ordering::Acquire)
+        self.current_log_index.load(Ordering::SeqCst)
     }
 }
 
@@ -128,7 +218,7 @@ impl<T> Deref for RLULog<T>
 where
     T: Clone,
 {
-    type Target = Vec<T>;
+    type Target = Node<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.logs[self.current()]
@@ -140,7 +230,7 @@ where
     T: Clone,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        if let 0..=1 = self.clear.swap(usize::MAX, Ordering::Acquire) {
+        if let 0..=1 = self.clear.swap(usize::MAX, Ordering::SeqCst) {
             self.logs[self.current()].clear()
         }
 
@@ -176,7 +266,7 @@ where
     /// This function is unsafe as it tries to dereference a raw pointer which must be allocated
     /// in accordance to the memory layout of a Box type.
     pub unsafe fn swap(&self, value: &mut T) -> T {
-        let old = Box::from_raw(self.inner.swap(value, Ordering::Release));
+        let old = Box::from_raw(self.inner.swap(value, Ordering::SeqCst));
         *old
     }
 }
@@ -188,7 +278,7 @@ where
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        unsafe { &*self.inner.load(Ordering::Acquire) }
+        unsafe { &*self.inner.load(Ordering::SeqCst) }
     }
 }
 
@@ -197,7 +287,7 @@ where
     T: Clone,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.inner.load(Ordering::Acquire) }
+        unsafe { &mut *self.inner.load(Ordering::SeqCst) }
     }
 }
 
@@ -219,7 +309,7 @@ where
     /// This creates and returns a copy of the pointer to the inner value, not a copy of the value itself
     fn clone(&self) -> Self {
         Self {
-            inner: AtomicPtr::new(self.inner.load(Ordering::Acquire)),
+            inner: AtomicPtr::new(self.inner.load(Ordering::SeqCst)),
         }
     }
 }
@@ -399,7 +489,7 @@ where
 {
     /// This function returns the inner value.
     pub fn get(&self) -> &T {
-        match unsafe { &*self.inner.load(Ordering::Acquire) } {
+        match unsafe { &*self.inner.load(Ordering::SeqCst) } {
             InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
         }
     }
@@ -494,10 +584,10 @@ where
                 ctrl: ctrl.clone(),
                 data: data.clone(),
                 locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
-                    Some(inner) => inner.load(Ordering::Acquire),
+                    Some(inner) => inner.load(Ordering::SeqCst),
                     None => 0,
                 })),
-                original: AtomicPtr::new(unsafe { &mut *original.load(Ordering::Acquire) }),
+                original: AtomicPtr::new(unsafe { &mut *original.load(Ordering::SeqCst) }),
             },
             Self::Original {
                 copy,
@@ -507,11 +597,11 @@ where
             } => Self::Original {
                 copy: copy
                     .as_ref()
-                    .map(|inner| AtomicPtr::new(unsafe { &mut *inner.load(Ordering::Acquire) })),
+                    .map(|inner| AtomicPtr::new(unsafe { &mut *inner.load(Ordering::SeqCst) })),
                 ctrl: ctrl.clone(),
                 data: data.clone(),
                 locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
-                    Some(inner) => inner.load(Ordering::Acquire),
+                    Some(inner) => inner.load(Ordering::SeqCst),
                     None => 0,
                 })),
             },
@@ -558,7 +648,10 @@ where
 {
     global_count: Arc<AtomicUsize>,
     next_thread_id: Arc<AtomicUsize>,
+
+    // a map (should be array) of threads / contexts
     contexts: Arc<AtomicPtr<HashMap<usize, RluContext<T>>>>,
+
     strategy: RLUStrategy,
 }
 
@@ -641,7 +734,7 @@ where
         self.next_thread_id.fetch_add(1, Ordering::SeqCst);
 
         RluContext {
-            id: AtomicUsize::new(self.next_thread_id.load(Ordering::Acquire)),
+            id: AtomicUsize::new(self.next_thread_id.load(Ordering::SeqCst)),
             log: RLULog::default(),
             local_clock: AtomicUsize::new(0),
             write_clock: AtomicUsize::new(0),
@@ -809,8 +902,8 @@ where
 
         let (context, locked_thread_id) = match (contexts, locked_thread_id) {
             (Some(ctx), Some(id)) => {
-                let contexts = unsafe { &*ctx.contexts.load(Ordering::Acquire) };
-                (contexts.get(&id.load(Ordering::Acquire)), id)
+                let contexts = unsafe { &*ctx.contexts.load(Ordering::SeqCst) };
+                (contexts.get(&id.load(Ordering::SeqCst)), id)
             }
             (Some(ctx), None) => {
                 return ReadGuard::new(Err(TransactionError::Failed), self);
@@ -823,7 +916,7 @@ where
         // if this copy is locked by us, return the copy
         match var.deref() {
             InnerVar::Original { copy, .. }
-                if locked_thread_id.load(Ordering::Acquire) == self.id.load(Ordering::Acquire) =>
+                if locked_thread_id.load(Ordering::SeqCst) == self.id.load(Ordering::SeqCst) =>
             {
                 let data = match copy {
                     Some(copy_data) => {
@@ -832,7 +925,7 @@ where
                             original,
                             data,
                             ctrl,
-                        } = unsafe { &*copy_data.load(Ordering::Acquire) }
+                        } = unsafe { &*copy_data.load(Ordering::SeqCst) }
                         {
                             return ReadGuard::new(Ok(data), self);
                         }
@@ -871,15 +964,15 @@ where
     fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
         self.write_lock();
 
-        let self_id = self.id.load(Ordering::Acquire);
+        let self_id = self.id.load(Ordering::SeqCst);
 
-        let inner = unsafe { &mut *var.inner.load(Ordering::Acquire) };
+        let inner = unsafe { &mut *var.inner.load(Ordering::SeqCst) };
 
         let (original, ctrl) = match inner {
             InnerVar::Copy {
                 locked_thread_id, data, ..
             } => match locked_thread_id {
-                Some(id) if id.load(Ordering::Acquire) != self_id => {
+                Some(id) if id.load(Ordering::SeqCst) != self_id => {
                     // changed to unequal
                     return Ok(WriteGuard::new(WriteGuardInner::Ref(data), self));
                 }
@@ -900,7 +993,7 @@ where
                 data: original.clone(),
                 ctrl: ctrl.clone(),
                 locked_thread_id: Some(AtomicUsize::new(self_id)),
-                original: AtomicPtr::new(var.inner.load(Ordering::Acquire)),
+                original: AtomicPtr::new(var.inner.load(Ordering::SeqCst)),
             }),
             self,
         ))
@@ -926,24 +1019,24 @@ where
     }
 
     fn write_lock(&self) {
-        self.is_writer.store(true, Ordering::Release);
+        self.is_writer.store(true, Ordering::SeqCst);
     }
 
     fn write_unlock(&self) {
-        self.is_writer.store(false, Ordering::Release);
+        self.is_writer.store(false, Ordering::SeqCst);
     }
 
     fn synchronize(&self) {
-        let contexts = unsafe { &*self.ctrl.contexts.load(Ordering::Acquire) };
-        let sync_count = unsafe { &mut *self.sync_count.load(Ordering::Acquire) };
+        let contexts = unsafe { &*self.ctrl.contexts.load(Ordering::SeqCst) };
+        let sync_count = unsafe { &mut *self.sync_count.load(Ordering::SeqCst) };
 
         // sychronize with other contexts, collect their run stats
         for (id, ctx) in contexts {
-            let id = ctx.id.load(Ordering::Acquire);
-            if id == self.id.load(Ordering::Acquire) {
+            let id = ctx.id.load(Ordering::SeqCst);
+            if id == self.id.load(Ordering::SeqCst) {
                 continue;
             }
-            let run_count = ctx.run_count.load(Ordering::Acquire);
+            let run_count = ctx.run_count.load(Ordering::SeqCst);
 
             sync_count.insert(id, run_count);
         }
@@ -955,12 +1048,12 @@ where
                     // is inactive
                     break;
                 }
-                if sync_count[id] != ctx.run_count.load(Ordering::Acquire) {
+                if sync_count[id] != ctx.run_count.load(Ordering::SeqCst) {
                     // has progressed
                     break;
                 }
 
-                if self.write_clock.load(Ordering::Acquire) <= ctx.local_clock.load(Ordering::Acquire) {
+                if self.write_clock.load(Ordering::SeqCst) <= ctx.local_clock.load(Ordering::SeqCst) {
                     // started after this context
                     break;
                 }
@@ -970,20 +1063,21 @@ where
 
     fn commit_log(&self, var: &Atomic<T>) {
         self.write_clock
-            .store(self.ctrl.global_count.load(Ordering::Acquire) + 1, Ordering::Release);
+            .store(self.ctrl.global_count.load(Ordering::SeqCst) + 1, Ordering::SeqCst);
         self.ctrl.global_count.fetch_add(1, Ordering::SeqCst);
         self.synchronize();
 
         unsafe {
-            for inner in &*self.log {
-                if let InnerVar::Copy { data, .. } = inner {
-                    let update = (**data).clone();
-                    var.swap(&mut Box::from(update));
+            for log_item in self.log.iter().flatten() {
+                if let InnerVar::Copy { data, .. } = log_item {
+                    let update = data;
+                    var.swap(&mut Box::from(update.clone()));
+                    // CLONE!
                 }
             }
         };
 
-        self.write_clock.store(usize::MAX, Ordering::Release);
+        self.write_clock.store(usize::MAX, Ordering::SeqCst);
         self.swap_logs();
     }
 
@@ -1021,7 +1115,7 @@ mod tests {
         assert_eq!(log.current(), 0);
         log.push(1);
         log.push(1);
-        assert_eq!(log.len(), 2);
+        assert_eq!(log.current_node_index(), 2);
 
         // 1
         log.next();
@@ -1029,14 +1123,14 @@ mod tests {
         log.push(1);
         log.push(1);
         log.push(1);
-        assert_eq!(log.len(), 3);
+        assert_eq!(log.current_node_index(), 3);
 
         // 0
         log.next();
         assert_eq!(log.current(), 0);
         log.push(1);
         log.push(1);
-        assert_eq!(log.len(), 2);
+        assert_eq!(log.current_node_index(), 2);
 
         // 1
         log.next();
@@ -1046,14 +1140,14 @@ mod tests {
         log.push(1);
         log.push(1);
         log.push(1);
-        assert_eq!(log.len(), 5);
+        assert_eq!(log.current_node_index(), 5);
 
         // 0
         log.next();
         assert_eq!(log.current(), 0);
         log.push(1);
         log.push(1);
-        assert_eq!(log.len(), 2);
+        assert_eq!(log.current_node_index(), 2);
     }
 
     #[test]
