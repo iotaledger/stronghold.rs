@@ -185,30 +185,6 @@ mod tests {
     use crate::crypto_utils::provider::Provider;
 
     #[test]
-    fn test_lock_unlock() {
-        let key = Key::random();
-        let ram = RamMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key.clone()));
-        assert!(ram.is_ok());
-        let ram = ram.unwrap();
-        let buf = ram.unlock(Encryption(key.clone()));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let ram = ram.update(buf, 6, Encryption(key));
-        assert!(ram.is_ok());
-    }
-
-    #[test]
-    fn test_crypto() {
-        let key = Key::random();
-        let ram = RamMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key));
-        assert!(ram.is_ok());
-        let ram = ram.unwrap();
-        let buf = &ram.buf;
-        assert_ne!(*buf.borrow(), [1, 2, 3, 4, 5, 6]);
-    }
-
-    #[test]
     fn test_zeroize() {
         let key = Key::random();
         let ram = RamMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key));

@@ -163,35 +163,6 @@ mod tests {
     use crate::crypto_utils::provider::Provider;
 
     #[test]
-    fn test_functionality() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Plain);
-        assert!(fm.is_ok());
-        let fm = fm.unwrap();
-        assert!(std::path::Path::new(&fm.fname).exists());
-        let buf = fm.unlock(Plain);
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.update(buf, 6, Plain);
-        assert!(fm.is_ok());
-    }
-
-    #[test]
-    fn test_functionality_encryption() {
-        let key = Key::random();
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key.clone()));
-        assert!(fm.is_ok());
-        let fm = fm.unwrap();
-        assert!(std::path::Path::new(&fm.fname).exists());
-        let buf = fm.unlock(Encryption(key.clone()));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
-        let fm = fm.update(buf, 6, Encryption(key));
-        assert!(fm.is_ok());
-    }
-
-    #[test]
     fn test_zeroize() {
         let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Plain);
         assert!(fm.is_ok());

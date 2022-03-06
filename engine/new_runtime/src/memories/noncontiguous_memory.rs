@@ -18,7 +18,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
 
 // Currently we only support data of 32 bytes in noncontiguous memory
-const NC_DATA_SIZE: usize = 32;
+pub const NC_DATA_SIZE: usize = 32;
 
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
@@ -190,54 +190,6 @@ impl<P: BoxProvider> Drop for NonContiguousMemory<P> {
 mod tests {
     use super::*;
     use crate::crypto_utils::provider::Provider;
-
-    #[test]
-    fn test_functionality_full_ram() {
-        // Check alloc
-        let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data, NC_DATA_SIZE, NonContiguous(NCRam));
-        assert!(ncm.is_ok());
-        let ncm = ncm.unwrap();
-        let buf = ncm.unlock(NonContiguous(NCRam));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((&*buf.borrow()), &data);
-
-        // Check locking
-        let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.update(buf, NC_DATA_SIZE, NonContiguous(NCRam));
-        assert!(ncm.is_ok());
-        let ncm = ncm.unwrap();
-        let buf = ncm.unlock(NonContiguous(NCRam));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((&*buf.borrow()), &data);
-    }
-
-    #[test]
-    fn test_functionality_ram_file() {
-        // Check alloc
-        let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let ncm = NonContiguousMemory::<Provider>::alloc(&data, NC_DATA_SIZE, NonContiguous(NCRamFile));
-        assert!(ncm.is_ok());
-        let ncm = ncm.unwrap();
-        let buf = ncm.unlock(NonContiguous(NCRamFile));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((&*buf.borrow()), &data);
-
-        // Check locking
-        let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let buf = Buffer::alloc(&data, NC_DATA_SIZE);
-        let ncm = ncm.update(buf, NC_DATA_SIZE, NonContiguous(NCRamFile));
-        assert!(ncm.is_ok());
-        let ncm = ncm.unwrap();
-        let buf = ncm.unlock(NonContiguous(NCRamFile));
-        assert!(buf.is_ok());
-        let buf = buf.unwrap();
-        assert_eq!((&*buf.borrow()), &data);
-    }
 
     #[test]
     fn test_refresh() {

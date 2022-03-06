@@ -5,7 +5,7 @@
 // #![no_std]
 
 mod boxed;
-mod crypto_utils;
+pub mod crypto_utils;
 pub mod locked_memory;
 pub mod memories;
 mod types;
