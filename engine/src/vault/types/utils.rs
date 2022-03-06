@@ -6,7 +6,6 @@ use crate::vault::{base64::Base64Encodable, crypto_box::BoxProvider};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
@@ -43,7 +42,7 @@ pub struct ChainId([u8; 24]);
 #[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Id([u8; 24]);
 
-/// A blob identifier used to refer to a [`SealedBlob`]
+/// A blob identifier used to refer to a `SealedBlob`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BlobId([u8; 24]);

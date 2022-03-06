@@ -16,7 +16,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 use smallvec::SmallVec;
-use std::{collections::HashMap, convert::TryFrom};
+use std::collections::HashMap;
 
 use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule, RuleDirection};
 

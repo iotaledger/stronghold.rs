@@ -18,7 +18,7 @@ use libp2p::{
     swarm::{ConnectionLimit, DialError, PendingConnectionError},
     Multiaddr, PeerId, TransportError,
 };
-use std::{convert::TryFrom, io};
+use std::io;
 use thiserror::Error;
 
 /// Error on dialing a peer and establishing a connection.

@@ -14,7 +14,6 @@ use p2p::{
     firewall::RuleDirection, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest,
     RelayNotSupported,
 };
-use std::convert::{TryFrom, TryInto};
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {

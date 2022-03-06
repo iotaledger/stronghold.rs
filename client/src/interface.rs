@@ -29,7 +29,7 @@ use engine::vault::{ClientId, RecordHint, RecordId};
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryInto, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use thiserror::Error as DeriveError;
 use zeroize::Zeroize;
 

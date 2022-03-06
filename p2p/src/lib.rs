@@ -3,7 +3,7 @@
 
 //! # Stronghold-P2p
 //!
-//! This crate implements a secure P2P-communication layer for [`Stronghold`][iota_stronghold::Stronghold],
+//! This crate implements a secure P2P-communication layer for [`Stronghold`][<https://docs.rs/iota_stronghold/>],
 //! which enables permissioned use of remote strongholds for creating services like remote signing.
 //! However, while being significantly influenced by Stronghold's use-case, it is not dependent on the Stronghold crate
 //! itself and may be used independently.
