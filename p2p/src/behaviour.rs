@@ -135,7 +135,7 @@ impl Default for NetBehaviourConfig {
 /// Protocol for customization for the [`Swarm`][libp2p::Swarm].
 ///
 /// The protocol is based on the [`RequestResponse`][<https://docs.rs/libp2p-request-response>] protocol from libp2p
-/// and optionally integrates the libp2p [`Relay`][libp2p::relay::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
+/// and optionally integrates the libp2p [`Relay`][libp2p::relay::v1::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
 /// the configuration of a firewall to set permissions individually for different peers and request types.
