@@ -192,7 +192,7 @@ mod tests {
     use crate::crypto_utils::provider::Provider;
 
     #[test]
-    fn test_refresh() {
+    fn noncontiguous_refresh() {
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let ncm = NonContiguousMemory::<Provider>::alloc(&data, NC_DATA_SIZE, NonContiguous(NCRamFile));
 
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     // Checking that the shards don't contain the data
-    fn test_boojum_security() {
+    fn boojum_security() {
         // With full Ram
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let ncm = NonContiguousMemory::<Provider>::alloc(&data, NC_DATA_SIZE, NonContiguous(NCRam));
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn test_zeroize() {
+    fn noncontiguous_zeroize() {
         // Check alloc
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let ncm = NonContiguousMemory::<Provider>::alloc(&data, NC_DATA_SIZE, NonContiguous(NCRamFile));
@@ -274,14 +274,11 @@ mod tests {
         ncm.zeroize();
 
         if let RamShard(ram1) = &ncm.shard1 {
-            let buf = ram1.unlock(Plain).unwrap();
-            assert_eq!(*buf.borrow(), []);
+            assert!(ram1.unlock(Plain).is_err());
         }
 
         if let FileShard(fm) = &ncm.shard2 {
-            let buf = fm.unlock(Plain);
-            // We can't unlock a zeroized filememory
-            assert!(buf.is_err());
+            assert!(fm.unlock(Plain).is_err());
         }
     }
 }

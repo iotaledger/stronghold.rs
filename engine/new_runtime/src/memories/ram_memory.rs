@@ -34,6 +34,9 @@ pub struct RamMemory<P: BoxProvider> {
 
 impl<P: BoxProvider> LockedMemory<P> for RamMemory<P> {
     fn alloc(payload: &[u8], size: usize, lock: Lock<P>) -> Result<Self, MemoryError> {
+        if size == 0 {
+            return Err(ZeroSizedNotAllowed);
+        }
         let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
         P::random_buf(&mut ad).or(Err(EncryptionError))?;
 
@@ -73,6 +76,9 @@ impl<P: BoxProvider> LockedMemory<P> for RamMemory<P> {
 
     /// Unlocks the memory
     fn unlock(&self, lock: Lock<P>) -> Result<Buffer<u8>, MemoryError> {
+        if self.size == 0 {
+            return Err(ZeroSizedNotAllowed);
+        }
         if std::mem::discriminant(&lock) != std::mem::discriminant(&self.lock) {
             return Err(LockNotAvailable);
         }
@@ -185,11 +191,24 @@ mod tests {
     use crate::crypto_utils::provider::Provider;
 
     #[test]
-    fn test_zeroize() {
+    fn ram_zeroize() {
         let key = Key::random();
-        let ram = RamMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key));
+        let ram = RamMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Encryption(key.clone()));
         assert!(ram.is_ok());
         let mut ram = ram.unwrap();
         ram.zeroize();
+
+        // Check that the fields are zeroed
+        assert_eq!(ram.ad, [0u8; AD_SIZE]);
+        assert_eq!(ram.size, 0);
+        if let Encryption(zeroed_key) = &ram.lock {
+            assert_eq!(zeroed_key.bytes().len(), 0);
+        }
+        assert!((*ram.buf.borrow()).is_empty());
+        assert!(ram.unlock(Encryption(key)).is_err());
     }
+
+    // Check that we can't read value in RamMemory directly without unlocking
+    #[test]
+    fn ram_security() {}
 }

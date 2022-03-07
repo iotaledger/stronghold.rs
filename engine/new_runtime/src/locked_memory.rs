@@ -15,6 +15,7 @@ pub enum MemoryError {
     NCSizeNotAllowed,
     LockNotAvailable,
     FileSystemError,
+    ZeroSizedNotAllowed,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

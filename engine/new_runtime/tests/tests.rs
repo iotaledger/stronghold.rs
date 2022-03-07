@@ -66,7 +66,6 @@ fn ram_memory() {
     check_illegal_lock!(RamMemory, Lock::NonContiguous(NCRamFile));
 }
 
-
 #[test]
 fn noncontiguous_memory() {
     init_and_test_unlock_update!(NonContiguousMemory, Lock::NonContiguous(NCRam));
@@ -76,7 +75,6 @@ fn noncontiguous_memory() {
     check_illegal_lock!(NonContiguousMemory, Lock::Plain);
     check_illegal_lock!(NonContiguousMemory, Lock::Encryption(Key::random()));
 }
-
 
 // We test that the locked data corresponds to the origin data
 // Then we update the locked data and check that it matches
@@ -127,7 +125,7 @@ fn test_clone(lm: impl LockedMemory<Provider>, size: usize, lock: Lock<Provider>
 
     // Check that the two locked memories have different values
     let buf = lm.unlock(lock.clone());
-    let buf_clone = lm_clone.unlock(lock.clone());
+    let buf_clone = lm_clone.unlock(lock);
     assert!(buf.is_ok());
     assert!(buf_clone.is_ok());
     let buf = buf.unwrap();
