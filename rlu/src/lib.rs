@@ -27,14 +27,8 @@
 //!
 //! ## Features
 //! ---
-//! [x] - multiple readers / writers
-//! [x] - lock free
-//!
-//! ## Examples
-//! ---
-//! ```no_run
-//! // no example yet
-//! ```
+//! [X] - multiple readers / writers
+//! [X] - lock free
 //!
 //! # Sources
 //! - [notes](https://chaomai.github.io/2015/2015-09-26-notes-of-rlu/)
