@@ -13,10 +13,6 @@ use std::{
 /// # RLUVar &lt;T&gt;
 /// This type represents an rlu managed type. The type is is not being constructed directly
 /// but with the help of [`RLU`].
-///
-/// # Examples
-/// ```no_run
-/// ```
 pub struct RLUVar<T>
 where
     T: Clone,
