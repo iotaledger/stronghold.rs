@@ -48,11 +48,13 @@ pub mod breaker;
 pub mod guard;
 pub mod rlog;
 pub mod rlu;
+pub mod types;
 pub mod var;
 
 // public re-exports
 pub use breaker::BusyBreaker;
-pub use rlu::{RLUObject, RLUStrategy, Read, Result, RluContext, TransactionError, Write, RLU};
+pub use rlu::{RLUObject, RLUStrategy, Result, RluContext, TransactionError, RLU};
+pub use types::{Read, Write};
 pub use var::{InnerVar, RLUVar};
 
 // crate re-exports
