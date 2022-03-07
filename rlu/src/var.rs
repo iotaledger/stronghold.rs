@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{Atomic, IntoRaw, RLU};
-
 use std::{
     ops::{Deref, DerefMut},
     sync::{
@@ -84,16 +83,18 @@ where
 {
     Original {
         locked_thread_id: Option<AtomicUsize>,
-        copy: Option<AtomicPtr<Self>>,
-        data: Atomic<T>,
         ctrl: Option<RLU<T>>,
+        data: Atomic<T>,
+
+        copy: Option<AtomicPtr<Self>>,
     },
 
     Copy {
         locked_thread_id: Option<AtomicUsize>,
-        original: AtomicPtr<Self>,
-        data: Atomic<T>,
         ctrl: Option<RLU<T>>,
+        data: Atomic<T>,
+
+        original: AtomicPtr<Self>,
     },
 }
 
@@ -103,7 +104,7 @@ where
 {
     fn from(value: T) -> Self {
         Self::Original {
-            data: value.into(),
+            data: Atomic::from(value),
             locked_thread_id: None,
             copy: None,
             ctrl: None,
@@ -142,6 +143,7 @@ where
                     .map(|inner| AtomicPtr::new(unsafe { &mut *inner.load(Ordering::SeqCst) })),
                 ctrl: ctrl.clone(),
                 data: data.clone(),
+
                 locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
                     Some(inner) => inner.load(Ordering::SeqCst),
                     None => 0,

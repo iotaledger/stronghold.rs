@@ -115,7 +115,5 @@ where
         if let WriteGuardInner::Copy(inner) = &self.inner {
             self.context.inner_log().push(inner.clone())
         }
-
-        self.context.write_unlock();
     }
 }

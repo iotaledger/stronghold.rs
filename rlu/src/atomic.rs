@@ -10,19 +10,12 @@ use std::{
 /// # Atomic &lt;T&gt;
 ///
 /// Wrapper type for [`AtomicPtr`], but with extra heap allocation for the inner type.
-///
-/// ## Example
-/// ```
-/// use stronghold_rlu::rlu::Atomic;
-/// let expected = 1024usize;
-/// let atomic_usize = Atomic::from(expected);
-/// assert_eq!(expected, *atomic_usize);
-/// ```
 pub struct Atomic<T>
 where
     T: Clone,
 {
-    inner: AtomicPtr<T>,
+    /// The inner data as pointer
+    pub(crate) inner: AtomicPtr<T>,
 }
 
 impl<T> Atomic<T>
@@ -35,8 +28,7 @@ where
     /// This function is unsafe as it tries to dereference a raw pointer which must be allocated
     /// in accordance to the memory layout of a Box type.
     pub unsafe fn swap(&self, value: &mut T) -> T {
-        let old = Box::from_raw(self.inner.swap(value, Ordering::SeqCst));
-        *old
+        *Box::from_raw(self.inner.swap(value, Ordering::SeqCst))
     }
 }
 

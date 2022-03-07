@@ -3,7 +3,6 @@
 
 #![allow(dead_code, unused_variables)]
 
-use log::*;
 use std::{
     collections::HashMap,
     ops::Deref,
@@ -162,7 +161,7 @@ where
         RLUVar {
             inner: Arc::new(AtomicPtr::new(
                 InnerVar::Original {
-                    data: data.into(),
+                    data: Atomic::from(data),
                     ctrl: Some(self.clone()),
                     locked_thread_id: None,
                     copy: None,
@@ -262,7 +261,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use stronghold_rlu::rlu::*;
+    /// use stronghold_rlu::*;
     ///
     /// // create simple value, that should be managed by RLU
     /// let value = 6usize;
@@ -305,7 +304,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use stronghold_rlu::rlu::*;
+    /// use stronghold_rlu::*;
     ///
     /// // create simple value, that should be managed by RLU
     /// let value = 6usize;
@@ -491,9 +490,9 @@ where
         self.is_writer.store(true, Ordering::SeqCst);
     }
 
-    pub(crate) fn write_unlock(&self) {
-        self.is_writer.store(false, Ordering::SeqCst);
-    }
+    // pub(crate) fn write_unlock(&self) {
+    //     self.is_writer.store(false, Ordering::SeqCst);
+    // }
 
     pub(crate) fn inner_log(&mut self) -> &mut RLULog<InnerVar<T>> {
         &mut self.log
@@ -543,8 +542,9 @@ where
         unsafe {
             for log_item in self.log.iter().flatten() {
                 if let InnerVar::Copy { data, .. } = log_item {
-                    let update = data;
-                    var.swap(&mut Box::from(update.clone()));
+                    let update = &mut *data.inner.load(Ordering::SeqCst);
+
+                    var.swap(&mut Box::from(update));
                     // CLONE!
                 }
             }
