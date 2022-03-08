@@ -57,7 +57,7 @@ where
     Ref(&'a mut T),
 
     /// a copy, that needs to be written back into the log
-    Copy(InnerVar<T>),
+    Copy(*mut InnerVar<T>),
 }
 
 pub struct WriteGuard<'a, T>
@@ -76,7 +76,8 @@ where
 
     fn deref(&self) -> &Self::Target {
         match &self.inner {
-            WriteGuardInner::Copy(copy) => match copy {
+            WriteGuardInner::Copy(copy, ..) => match unsafe { &**copy } {
+                // because box
                 InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
             },
             WriteGuardInner::Ref(reference) => reference,
@@ -90,7 +91,7 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.inner {
-            WriteGuardInner::Copy(copy) => match copy {
+            WriteGuardInner::Copy(copy, ..) => match unsafe { &mut **copy } {
                 InnerVar::Copy { ref mut data, .. } | InnerVar::Original { ref mut data, .. } => data,
             },
             WriteGuardInner::Ref(reference) => *reference,
@@ -112,8 +113,11 @@ where
     T: Clone,
 {
     fn drop(&mut self) {
-        if let WriteGuardInner::Copy(inner) = &self.inner {
-            self.context.inner_log().push(inner.clone())
+        if let WriteGuardInner::Copy(inner) = &mut self.inner {
+            self.context.inner_log().push(unsafe { &**inner }.clone());
+
+            // swap inner variable to point to copy
+            // unsafe { reference.swap(self.context.inner_log().last().unwrap() as *const _ as *mut _) }
         }
     }
 }

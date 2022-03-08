@@ -54,6 +54,10 @@ where
     pub fn iter(&self) -> impl Iterator<Item = &Option<T>> {
         (&self.alloc).iter()
     }
+
+    pub fn drain(&mut self) -> impl Iterator<Item = Option<T>> + '_ {
+        (&mut self.alloc).iter_mut().map(|n| n.take())
+    }
 }
 
 impl<T> Default for Node<T>
