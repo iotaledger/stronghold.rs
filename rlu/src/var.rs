@@ -30,6 +30,14 @@ where
             InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
         }
     }
+    /// Swaps the inner variable with another
+    ///
+    /// # Safety
+    /// This method is unsafe, as the pointer might be changed somewhere else and might not get tracked
+    /// properly
+    pub unsafe fn swap(&self, other: *mut InnerVar<T>) {
+        self.inner.swap(other, Ordering::SeqCst);
+    }
 }
 
 impl<T> Deref for RLUVar<T>
@@ -92,6 +100,32 @@ where
 
         original: AtomicPtr<Self>,
     },
+}
+
+impl<T> InnerVar<T>
+where
+    T: Clone,
+{
+    /// Returns true, if this object is an original and references a copy
+    pub(crate) fn is_locked(&self) -> bool {
+        if let Self::Original { copy, .. } = self {
+            return copy.is_some();
+        }
+        false
+    }
+
+    /// Returns true, if this object is an original and does not references a copy
+    pub(crate) fn is_unlocked(&self) -> bool {
+        if let Self::Original { copy, .. } = self {
+            return copy.is_none();
+        }
+        false
+    }
+
+    /// Returns true, if this is a copy
+    pub(crate) fn is_copy(&self) -> bool {
+        matches!(self, Self::Copy { .. })
+    }
 }
 
 impl<T> From<T> for InnerVar<T>
