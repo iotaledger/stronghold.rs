@@ -265,16 +265,6 @@ where
             return ReadGuard::new(Ok(&inner.data), self);
         }
 
-        // return the copy, if the original has one
-        // if var.is_copy() {
-        //     if let InnerVar::Original { copy, .. } = inner {
-        //         let inner = match unsafe { &*copy.as_ref().unwrap().load(Ordering::SeqCst) } {
-        //             InnerVar::Copy { data, .. } => return ReadGuard::new(Ok(data), self),
-        //             _ => return ReadGuard::new(Err(TransactionError::Failed), self),
-        //         };
-        //     }
-        // }
-
         let copy = match &inner.copy {
             Some(copy_ptr) => {
                 let ptr = copy_ptr.load(Ordering::SeqCst);
@@ -396,22 +386,6 @@ where
             // TODO: return copy here
         }
 
-        // let (original, ctrl) = match inner {
-        //     InnerVar::Copy {
-        //         locked_thread_id, data, ..
-        //     } => match locked_thread_id {
-        //         Some(id) if id.load(Ordering::SeqCst) != self_id => {
-        //             // return mutable reference to the copy
-        //             return Ok(WriteGuard::new(WriteGuardInner::Ref(data), self));
-        //         }
-        //         Some(_) | None => {
-        //             self.abort();
-        //             return Err(TransactionError::Failed);
-        //         }
-        //     },
-        //     InnerVar::Original { data, ctrl, .. } => (data, ctrl),
-        // };
-
         let (original, ctrl) = (&inner.data, &inner.ctrl);
 
         // create copied var
@@ -422,16 +396,7 @@ where
         }
         .into_raw();
 
-        // set reference to copy
-        // if let InnerVar::Original {
-        //     locked_thread_id,
-        //     ctrl,
-        //     data,
-        //     copy,
-        // } = inner
-        // {
         inner.copy.replace(AtomicPtr::new(inner_copy));
-        // }
 
         Ok(WriteGuard::new(WriteGuardInner::Copy(inner_copy), self))
     }
@@ -459,9 +424,64 @@ where
         self.is_writer.store(true, Ordering::SeqCst);
     }
 
-    // pub fn dereference(&self, var: &RLUVar<T>) -> &mut T {
-    //     todo!()
-    // }
+    pub fn dereference<'a>(&self, var: &'a RLUVar<T>) -> Option<&'a T> {
+        // get inner var
+        let inner = var.deref();
+
+        // if object is unlocked, it has no copy. return the original
+        if var.is_unlocked() {
+            return Some(&inner.data);
+        }
+
+        // the paper describes to check, if var already references a copy
+        // but we explicitly split (inner) var and it's copy.
+        // if this is required, we would need to rebuild the underlying structure
+
+        let copy = match &inner.copy {
+            Some(copy_ptr) => {
+                let ptr = copy_ptr.load(Ordering::SeqCst);
+                assert!(!ptr.is_null());
+
+                unsafe { &mut *ptr }
+            }
+            None => return None,
+        };
+
+        let self_id = self.id.load(Ordering::SeqCst);
+        let copy_lock_id = match &copy.locked_thread_id {
+            Some(id) => id.load(Ordering::SeqCst),
+            None => 0,
+        };
+
+        if self_id == copy_lock_id {
+            return Some(&copy.data);
+        }
+
+        // get other context, that locks the copy
+        match &var.ctrl {
+            Some(control) => {
+                let ptr = control.contexts.load(Ordering::SeqCst);
+                assert!(!ptr.is_null());
+
+                let all_contexts = unsafe { &*ptr };
+                let locking_context = match all_contexts.get(&copy_lock_id) {
+                    Some(ctx) => ctx,
+                    None => return None,
+                };
+
+                let write_clock = locking_context.write_clock.load(Ordering::SeqCst);
+                let local_clock = self.local_clock.load(Ordering::SeqCst);
+
+                if write_clock <= local_clock {
+                    // copy is most recent
+                    return Some(&copy.data);
+                }
+            }
+            None => return None,
+        }
+
+        Some(&inner.data)
+    }
 
     pub(crate) fn inner_log(&mut self) -> &mut RLULog<InnerVarCopy<T>> {
         &mut self.log

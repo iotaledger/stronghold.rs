@@ -30,5 +30,5 @@ Stronghold employs actix as actor framework to manage concurrent operations insi
 # Open Issues / Todo
 
 - Feature gated secured memory 
-- RLU is global context and must be mutabily accessible from many threads, 
+- RLU is global context and must be accessible as mutable from many threads, 
   as new context can be spawned any time
