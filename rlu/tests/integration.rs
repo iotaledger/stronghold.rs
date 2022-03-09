@@ -47,15 +47,17 @@ fn test_multiple_readers_single_writer() {
         let context_fn = |context: RluContext<usize>| {
             let data = context.get(&r1);
             match *data {
-                Ok(inner) if **inner == EXPECTED => Ok(()),
+                Ok(inner) if **inner == EXPECTED => {
+                    // we would require to call unlock at the end of each successful try
+                    context.read_unlock(inner);
+
+                    Ok(())
+                }
                 Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
                     "Value is not expected: actual {}, expected {}",
                     **inner, EXPECTED
                 ))),
-                Ok(_inner) => {
-                    println!("weird state reached");
-                    Ok(())
-                }
+                Ok(_inner) => Ok(()),
                 Err(_) => Err(TransactionError::Failed),
             }
         };
@@ -66,7 +68,7 @@ fn test_multiple_readers_single_writer() {
     }
 
     let value = rlu_var.get();
-    assert_eq!(value, &15)
+    assert_eq!(value, Some(&15))
 }
 #[ignore]
 #[test]
@@ -127,7 +129,7 @@ fn test_concurrent_mutliple_readers_single_write() {
     }
 
     let value = rlu_var.get();
-    assert_eq!(value, &15)
+    assert_eq!(value, Some(&15))
 }
 #[ignore]
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -183,7 +185,7 @@ async fn test_mutliple_readers_single_write_async() {
     }
 
     let value = rlu_var.get();
-    assert_eq!(value, &15)
+    assert_eq!(value, Some(&15))
 }
 #[ignore]
 #[test]
@@ -402,7 +404,7 @@ fn test_concurrent_reads_and_writes_with_complex_type_with_strategy() {
                     // handle error?
                 }
 
-                if !var.get().contains_key(&i) {
+                if !var.get().unwrap().contains_key(&i) {
                     fail.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
             });
@@ -416,4 +418,17 @@ fn test_concurrent_reads_and_writes_with_complex_type_with_strategy() {
     }
 
     assert_eq!(failures.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn reference_impl() {
+    let rlu = RLU::default();
+    let _rlu_var = rlu.create(HashMap::<usize, usize>::new());
+
+    assert!(rlu
+        .execute(|ctx| {
+            ctx.read_lock();
+            Ok(())
+        })
+        .is_ok());
 }

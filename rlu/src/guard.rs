@@ -7,7 +7,7 @@
 //! types follow the RAII pattern. Dropping the guards will affect the referenced object by either
 //! signaling an end of read, or signaling the start of memory commit depending on the type of guard.
 
-use crate::{Atomic, InnerVar, Result, RluContext};
+use crate::{var::InnerVarCopy, Atomic, Result, RluContext};
 use std::ops::{Deref, DerefMut};
 
 pub struct ReadGuard<'a, T>
@@ -57,7 +57,7 @@ where
     Ref(&'a mut T),
 
     /// a copy, that needs to be written back into the log
-    Copy(*mut InnerVar<T>),
+    Copy(*mut InnerVarCopy<T>),
 }
 
 pub struct WriteGuard<'a, T>
@@ -76,10 +76,12 @@ where
 
     fn deref(&self) -> &Self::Target {
         match &self.inner {
-            WriteGuardInner::Copy(copy, ..) => match unsafe { &**copy } {
-                // because box
-                InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
-            },
+            WriteGuardInner::Copy(copy, ..) => {
+                assert!(!copy.is_null());
+
+                let ptr = unsafe { &**copy };
+                &ptr.data
+            }
             WriteGuardInner::Ref(reference) => reference,
         }
     }
@@ -91,9 +93,12 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.inner {
-            WriteGuardInner::Copy(copy, ..) => match unsafe { &mut **copy } {
-                InnerVar::Copy { ref mut data, .. } | InnerVar::Original { ref mut data, .. } => data,
-            },
+            WriteGuardInner::Copy(copy, ..) => {
+                assert!(!copy.is_null());
+
+                let ptr = unsafe { &mut **copy };
+                &mut ptr.data
+            }
             WriteGuardInner::Ref(reference) => *reference,
         }
     }
