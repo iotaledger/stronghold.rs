@@ -176,9 +176,9 @@ impl Handler<SetFirewallRule> for Network {
 }
 
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
-    let listeners = network.get_listeners().await;
+    let listeners = network.listeners().await;
     let local_peer_id = network.peer_id();
-    let connections = network.get_connections().await;
+    let connections = network.established_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });
 

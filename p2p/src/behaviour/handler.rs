@@ -30,10 +30,7 @@ use std::{
     collections::VecDeque,
     io,
     marker::PhantomData,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicU64, Arc},
     task::{Context, Poll},
     time::Duration,
 };
@@ -176,7 +173,7 @@ where
     // This is set according to timeout configuration and pending requests.
     keep_alive: KeepAlive,
     // Request id assigned to the next inbound request.
-    inbound_request_id: Arc<AtomicU64>,
+    next_request_id: Arc<AtomicU64>,
 
     // Fatal error in connection.
     pending_error: Option<ConnectionHandlerUpgrErr<io::Error>>,
@@ -199,7 +196,7 @@ where
         protocol_support: ProtocolSupport,
         keep_alive_timeout: Duration,
         request_timeout: Duration,
-        inbound_request_id: Arc<AtomicU64>,
+        next_request_id: Arc<AtomicU64>,
     ) -> Self {
         Self {
             supported_protocols,
@@ -207,7 +204,7 @@ where
             request_timeout,
             keep_alive_timeout,
             keep_alive: KeepAlive::Yes,
-            inbound_request_id,
+            next_request_id,
             pending_error: None,
             pending_events: VecDeque::new(),
             pending_out_req: VecDeque::new(),
@@ -237,7 +234,7 @@ where
     // Create a new [`ResponseProtocol`] for an inbound request.
     fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Rq, Rs>, RequestId> {
         // Assign a new request id to the expected request.
-        let request_id = RequestId::new(self.inbound_request_id.fetch_add(1, Ordering::Relaxed));
+        let request_id = RequestId::next(&self.next_request_id);
 
         // Channel for the [`ResponseProtocol`] to forward the inbound request.
         let (request_tx, request_rx) = oneshot::channel();

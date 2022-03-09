@@ -2,23 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{RequestDirection, RequestId};
-use libp2p::core::{connection::ConnectionId, ConnectedPoint, PeerId};
+use libp2p::core::PeerId;
+pub use libp2p::core::{connection::ConnectionId, ConnectedPoint};
 use std::collections::{hash_map::HashMap, HashSet};
 use wasm_timer::Instant;
 
-// Sent requests that have not yet received a response.
+/// Sent requests that have not yet received a response.
 #[derive(Debug, Default)]
 pub struct PendingResponses {
-    // Outbound request sent to remote, waiting for an inbound response.
+    /// Outbound request sent to remote, waiting for an inbound response.
     pub outbound_requests: HashSet<RequestId>,
-    // Inbound requests received from remote, waiting for an outbound response.
+    /// Inbound requests received from remote, waiting for an outbound response.
     pub inbound_requests: HashSet<RequestId>,
 }
 
 /// Information about the connection with a remote peer as maintained in the ConnectionManager.
 #[derive(Clone, Debug)]
 pub struct EstablishedConnections {
+    /// Instant since which we are connected to the remote.
     pub start: Instant,
+    /// List of connections and their connected point
     pub connections: HashMap<ConnectionId, ConnectedPoint>,
 }
 
@@ -54,12 +57,12 @@ impl PeerConnectionManager {
     }
 
     // List of peers to which at least one connection is currently established.
-    pub fn get_connected_peers(&self) -> Vec<PeerId> {
+    pub fn connected_peers(&self) -> Vec<PeerId> {
         self.established.keys().copied().collect()
     }
 
     // Get the ids of the active connections for the peer.
-    pub fn get_connections(&self, peer: &PeerId) -> Vec<ConnectionId> {
+    pub fn peer_connections(&self, peer: &PeerId) -> Vec<ConnectionId> {
         self.established
             .get(peer)
             .map(|est| est.connections.keys().into_iter().cloned().collect())
@@ -67,7 +70,7 @@ impl PeerConnectionManager {
     }
 
     // Get the ids of the active connections.
-    pub fn get_all_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+    pub fn all_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
         self.established.iter().map(|(p, c)| (*p, c.clone())).collect()
     }
 
@@ -89,6 +92,16 @@ impl PeerConnectionManager {
             self.established.remove(&peer);
         }
         self.pending_responses.remove(connection)
+    }
+
+    // Update the connected point of a connection.
+    pub fn update_point(&mut self, peer: PeerId, id: ConnectionId, new: ConnectedPoint) {
+        self.established
+            .entry(peer)
+            .or_default()
+            .connections
+            .entry(id)
+            .and_modify(|e| *e = new);
     }
 
     // New request that has been sent/ received, but with no response yet.

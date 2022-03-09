@@ -44,6 +44,22 @@ use std::{io, time::Duration};
 ///
 /// Refer to [`StrongholdP2pBuilder`] for more information on the default configuration.
 ///
+/// ## Firewall configuration
+///
+/// The firewall allows the user to set default-, and peer-specific firewall rules which are used
+/// to approve each inbound and outbound request. Apart from static rules, the firewall-channel
+/// may be used for asynchronous rules:
+/// 1. If no firewall rules are set for a peer and a request occurs, a [`FirewallRequest::PeerSpecificRule`]
+///    is sent through the channel. The responded rules are then set as firewall rules  for this peer.
+///    If the user does not response in time or the receiving side of the channel was dropped, the request is rejected.
+/// 2. If [`Rule::Ask`] has been set, a [`FirewallRequest::RequestApproval`] is sent on each request for
+///    individual approval. If the user does not response in time or the receiving side of the channel was dropped, the
+/// request is rejected.
+///
+///
+///
+/// ## Example
+///
 /// ```
 /// # use serde::{Serialize, Deserialize};
 /// # use p2p::{firewall::{FirewallConfiguration, FwRequest}, ChannelSinkConfig, EventChannel, StrongholdP2p};
@@ -57,11 +73,10 @@ use std::{io, time::Duration};
 /// }
 ///
 /// // Trimmed version of the request that is used for validation in the firewall.
-/// // In case of `Rule::Ask` this is the message that is bubbled up through the
+/// // In case of a [`FirewallRequest::RequestApproval`], this is the message that is bubbled up through the
 /// // firewall channel.
 /// //
-/// // This type is optional but may be needed because e.g. the actual request can not
-/// // be cloned, or shouldn't expose details to the receiving side of the firewall-channel.
+/// // This type is optional but may be needed because e.g. no details the actual request should be exposed to the receiving side of the firewall-channel.
 /// #[derive(Debug, Clone)]
 /// enum RequestType {
 ///     Ping,
@@ -84,11 +99,7 @@ use std::{io, time::Duration};
 ///     Message(String),
 /// }
 ///
-/// // Channel used for dynamic firewall rules:
-/// // - If a peer connected for which no rules are present (no default & not peer-specific):
-/// //   Allows the user to send back the rules that should be set for this peer.
-/// // - If the firewall `Rule` is set to `Rule::Ask`:
-/// //   Asks for individual approval for this specific request.
+/// // Channel used for asynchronous firewall rules.
 /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
 ///
 /// // Channel trough which inbound requests are forwarded.
@@ -131,7 +142,7 @@ where
     TRq: FwRequest<Rq>,
 {
     /// Create a new [`StrongholdP2p`] instance with the default configuration.
-    /// Refer to [`StrongholdP2pBuilder::new`] and [`StrongholdP2pBuilder::build`] for detailed information.
+    /// Refer to [`StrongholdP2pBuilder::new`] and [`StrongholdP2pBuilder::build`] for more information.
     #[cfg(feature = "tcp-transport")]
     pub async fn new(
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
@@ -170,7 +181,7 @@ where
     ///
     /// **Note**: Depending on the used transport, this may produce multiple listening addresses.
     /// This method only returns the first reported listening address for the new listener.
-    /// All active listening addresses for each listener can be obtained from [`StrongholdP2p::get_listeners`]
+    /// All active listening addresses for each listener can be obtained from [`StrongholdP2p::listeners`]
     pub async fn start_listening(&mut self, address: Multiaddr) -> Result<Multiaddr, ListenErr> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::StartListening { address, tx_yield };
@@ -197,7 +208,7 @@ where
     }
 
     //// Currently active listeners.
-    pub async fn get_listeners(&mut self) -> Vec<Listener> {
+    pub async fn listeners(&mut self) -> Vec<Listener> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetListeners { tx_yield };
         self.send_command(command).await;
@@ -428,7 +439,7 @@ where
     }
 
     // Get currently established connections.
-    pub async fn get_connections(&mut self) -> Vec<(PeerId, EstablishedConnections)> {
+    pub async fn established_connections(&mut self) -> Vec<(PeerId, EstablishedConnections)> {
         let (tx_yield, rx_yield) = oneshot::channel();
         let command = SwarmOperation::GetConnections { tx_yield };
         self.send_command(command).await;
@@ -462,8 +473,8 @@ pub enum InitKeypair {
 ///
 /// Default behaviour:
 /// - A new keypair is created and used, from which the [`PeerId`] of the local peer is derived.
-/// - No limit for simultaneous connections.
-/// - Request-timeout and Connection-timeout are 10s.
+/// - Max 5 connections to the same peer (per protocol only 1 is needed).
+/// - Request-timeout, connection-timeout and firewall-timeout are 10s.
 /// - [`Mdns`][`libp2p::mdns`] protocol is enabled. **Note**: This also broadcasts our own address and id to the local
 ///   network.
 /// - [`Relay`][`libp2p::relay`] protocol is supported. *Note:* This also means that other peers can use our peer as
@@ -571,6 +582,14 @@ where
 
     /// Set the timeout for a idle connection to a remote peer.
     pub fn with_connection_timeout(mut self, t: Duration) -> Self {
+        self.behaviour_config.connection_timeout = t;
+        self
+    }
+
+    /// Set timeout for [`FirewallRequest`]s send through the firewall-channel.
+    ///
+    /// See [`StrongholdP2p`] docs for more info.
+    pub fn with_firewall_timeout(mut self, t: Duration) -> Self {
         self.behaviour_config.connection_timeout = t;
         self
     }

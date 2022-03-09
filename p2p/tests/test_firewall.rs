@@ -5,7 +5,7 @@ use futures::{
     channel::{mpsc, oneshot},
     future::{join, poll_fn},
     prelude::*,
-    FutureExt,
+    select, FutureExt,
 };
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
@@ -415,7 +415,8 @@ impl<'a> AskTestConfig<'a> {
         };
 
         let mut peer_a = self.peer_a.clone();
-        let (tx_res, mut rx_res) = oneshot::channel();
+        let (tx_res, rx_res) = oneshot::channel();
+        let mut rx_res = rx_res.fuse();
 
         let operation_future = async {
             let res = peer_a.send_request(peer_b_id, Request::Ping).await;
@@ -423,7 +424,10 @@ impl<'a> AskTestConfig<'a> {
         };
 
         let resolved = async {
-            self.firewall_handle_next(Peer::A).await;
+            select! {
+                _ = self.firewall_handle_next(Peer::A).fuse() => {},
+                res = rx_res => panic!("Unexpected res {:?}; config {}", res, self)
+            }
 
             if !is_allowed(&self.a_rule, &self.a_approval) {
                 let res = rx_res
@@ -440,7 +444,10 @@ impl<'a> AskTestConfig<'a> {
                 return;
             }
 
-            self.firewall_handle_next(Peer::B).await;
+            select! {
+                _ = self.firewall_handle_next(Peer::B).fuse() => {},
+                res = rx_res => panic!("Unexpected res {:?}; config {}", res, self)
+            }
 
             if !is_allowed(&self.b_rule, &self.b_approval) {
                 let res = poll_fn(|cx| {

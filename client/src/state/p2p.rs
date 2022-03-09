@@ -124,7 +124,7 @@ impl Network {
 /// Config for the new network.
 ///
 /// Note: [`Default`] is implemented for [`NetworkConfig`] as [`NetworkConfig::new`] with [`Permissions::allow_none()`].
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
@@ -140,10 +140,32 @@ pub struct NetworkConfig {
     permissions_default: Permissions,
 }
 
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        let connection_limits = ConnectionLimits::default()
+            .with_max_established_incoming(Some(10))
+            .with_max_pending_incoming(Some(5))
+            .with_max_established_per_peer(Some(5));
+        NetworkConfig {
+            request_timeout: Some(Duration::from_secs(30)),
+            connection_timeout: Some(Duration::from_secs(30)),
+            connections_limit: Some(connection_limits),
+            enable_mdns: false,
+            enable_relay: false,
+            addresses: None,
+            peer_client_mapping: HashMap::new(),
+            client_mapping_default: None,
+            peer_permissions: HashMap::new(),
+            permissions_default: Permissions::allow_none(),
+        }
+    }
+}
+
 impl NetworkConfig {
     /// Create new network config with the given permission and default config:
-    /// - No limit for simultaneous connections.
     /// - Request-timeout and Connection-timeout are 10s.
+    /// - For incoming connections: max 5 pending, max 10 established.
+    /// - Max 5 connections to the same peer (per protocol only 1 is needed).
     /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id
     ///   to the local network.
     /// - [`Relay`][`libp2p::relay`] functionality is disabled.

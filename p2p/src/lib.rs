@@ -23,7 +23,8 @@ mod libp2p_reexport {
 mod interface;
 
 pub use behaviour::{
-    assemble_relayed_addr, firewall, AddressInfo, EstablishedConnections, MessageProtocol, RelayNotSupported,
+    assemble_relayed_addr, firewall, AddressInfo, ConnectedPoint, ConnectionId, EstablishedConnections,
+    MessageProtocol, PeerAddress, RelayNotSupported,
 };
 pub use interface::*;
 pub use libp2p_reexport::*;

@@ -22,7 +22,14 @@ use libp2p::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{fmt, io, num::NonZeroU32};
+use std::{
+    fmt, io,
+    num::NonZeroU32,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 /// Trait for the generic request and response messages.
 pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}
@@ -34,17 +41,13 @@ impl<TRq: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static> RqR
 pub struct RequestId(u64);
 
 impl RequestId {
-    pub(crate) fn new(id: u64) -> Self {
-        RequestId(id)
+    // Adds to the given value, returning the previous value as RequestId.
+    pub(crate) fn next(value: &Arc<AtomicU64>) -> Self {
+        RequestId(value.fetch_add(1, Ordering::Relaxed))
     }
 
     pub(crate) fn value(&self) -> u64 {
         self.0
-    }
-
-    pub(crate) fn inc(&mut self) -> &Self {
-        self.0 += 1;
-        self
     }
 }
 
@@ -292,7 +295,7 @@ impl fmt::Display for InboundFailure {
 
 impl std::error::Error for OutboundFailure {}
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionLimits {
     max_pending_incoming: Option<u32>,
     max_pending_outgoing: Option<u32>,
@@ -300,6 +303,19 @@ pub struct ConnectionLimits {
     max_established_outgoing: Option<u32>,
     max_established_per_peer: Option<u32>,
     max_established_total: Option<u32>,
+}
+
+impl Default for ConnectionLimits {
+    fn default() -> Self {
+        ConnectionLimits {
+            max_pending_incoming: None,
+            max_pending_outgoing: None,
+            max_established_incoming: None,
+            max_established_outgoing: None,
+            max_established_per_peer: Some(5),
+            max_established_total: None,
+        }
+    }
 }
 
 impl From<ConnectionLimits> for Libp2pConnectionLimits {

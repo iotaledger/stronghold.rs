@@ -21,7 +21,7 @@ mod handler;
 #[doc(hidden)]
 mod request_manager;
 use self::firewall::FwRequest;
-pub use self::request_manager::EstablishedConnections;
+pub use self::request_manager::connections::{ConnectedPoint, ConnectionId, EstablishedConnections};
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
 use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
@@ -31,6 +31,7 @@ use futures::{
         oneshot,
     },
     future::{poll_fn, BoxFuture},
+    select_biased,
     stream::FuturesUnordered,
     task::{Context, Poll},
     FutureExt, StreamExt, TryFutureExt,
@@ -38,11 +39,7 @@ use futures::{
 pub use handler::MessageProtocol;
 use handler::{Handler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
 use libp2p::{
-    core::{
-        connection::{ConnectionId, ListenerId},
-        either::EitherOutput,
-        ConnectedPoint, Multiaddr, PeerId,
-    },
+    core::{connection::ListenerId, either::EitherOutput, Multiaddr, PeerId},
     mdns::Mdns,
     relay::v1::Relay,
     swarm::{
@@ -55,9 +52,11 @@ use libp2p::{
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
 use smallvec::{smallvec, SmallVec};
 use std::{
+    collections::HashMap,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
+use wasm_timer::Delay;
 
 type ProtoHandler<Rq, Rs> = IntoConnectionHandlerSelect<
     Handler<Rq, Rs>,
@@ -120,6 +119,10 @@ pub struct NetBehaviourConfig {
     pub request_timeout: Duration,
     /// Keep-alive timeout of idle connections.
     pub connection_timeout: Duration,
+    /// Timeout for [`FirewallRequest`]s send through the firewall-channel.
+    ///
+    /// See [`StrongholdP2p`][super::StrongholdP2p] docs for more info.
+    pub firewall_timeout: Duration,
 }
 
 impl Default for NetBehaviourConfig {
@@ -128,6 +131,7 @@ impl Default for NetBehaviourConfig {
             supported_protocols: smallvec![MessageProtocol::new_version(1, 0, 0)],
             connection_timeout: Duration::from_secs(10),
             request_timeout: Duration::from_secs(10),
+            firewall_timeout: Duration::from_secs(10),
         }
     }
 }
@@ -145,23 +149,17 @@ where
     Rs: RqRsMessage,
     TRq: FwRequest<Rq>,
 {
-    // integrate Mdns protocol
+    // Integrate Mdns protocol.
     mdns: Toggle<Mdns>,
 
-    // integrate Relay protocol
+    // Integrate Relay protocol.
     relay: Toggle<Relay>,
 
-    // List of supported protocol versions.
-    supported_protocols: SmallVec<[MessageProtocol; 2]>,
-    // Timeout for inbound and outbound requests.
-    request_timeout: Duration,
-    // Keep-alive timeout of idle connections.
-    connection_timeout: Duration,
+    // Timeout and protocol configurations.
+    config: NetBehaviourConfig,
 
-    // ID assigned to the next outbound request.
-    next_request_id: RequestId,
-    // ID assigned to the next inbound request.
-    next_inbound_id: Arc<AtomicU64>,
+    // ID assigned to the next request.
+    next_request_id: Arc<AtomicU64>,
 
     // Manager for pending requests, their state and necessary actions.
     request_manager: RequestManager<Rq, Rs>,
@@ -180,6 +178,12 @@ where
     pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest<TRq>>,
     // Futures for pending responses to sent [`FirewallRequest::RequestApproval`]s.
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
+
+    // Handles to pending firewall rule request. If the handle is dropped, the future is aborted.
+    rule_rq_handles: HashMap<PeerId, oneshot::Sender<()>>,
+
+    // Handles to pending approval requests. If the handle is dropped, the future is aborted.
+    approval_rq_handles: HashMap<RequestId, oneshot::Sender<()>>,
 }
 
 impl<Rq, Rs, TRq> NetBehaviour<Rq, Rs, TRq>
@@ -189,7 +193,6 @@ where
     TRq: FwRequest<Rq>,
 {
     /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
-    ///
     /// ```
     /// # use std::error::Error;
     /// use p2p::behaviour::{
@@ -244,23 +247,22 @@ where
         NetBehaviour {
             mdns: mdns.into(),
             relay: relay.into(),
-            supported_protocols: config.supported_protocols,
-            request_timeout: config.request_timeout,
-            connection_timeout: config.connection_timeout,
-            next_request_id: RequestId::new(1),
-            next_inbound_id: Arc::new(AtomicU64::new(1)),
+            config,
+            next_request_id: Arc::new(AtomicU64::new(1)),
             request_manager: RequestManager::new(),
             addresses: address_info.unwrap_or_default(),
             firewall,
             permission_req_channel,
             pending_rule_rqs: FuturesUnordered::default(),
+            rule_rq_handles: HashMap::new(),
             pending_approval_rqs: FuturesUnordered::default(),
+            approval_rq_handles: HashMap::new(),
         }
     }
 
     /// Send a new request to a remote peer.
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> RequestId {
-        let request_id = self.next_request_id();
+        let request_id = RequestId::next(&self.next_request_id);
         let approval_status = self.check_approval_status(peer, request_id, &request, RequestDirection::Outbound);
         self.request_manager
             .on_new_out_request(peer, request_id, request, approval_status);
@@ -341,8 +343,8 @@ where
     }
 
     // Get currently established connections.
-    pub fn get_established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
-        self.request_manager.get_established_connections()
+    pub fn established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+        self.request_manager.established_connections()
     }
 
     // Whether the relay protocol is enabled.
@@ -397,10 +399,6 @@ where
         }
         Ok(self.addresses.use_relay(target, relay, is_exclusive))
     }
-    /// [`RequestId`] for the next outbound request.
-    fn next_request_id(&mut self) -> RequestId {
-        *self.next_request_id.inc()
-    }
 
     // Check the approval status of the request and add queries to the firewall if necessary.
     fn check_approval_status(
@@ -447,11 +445,11 @@ where
         // Use full protocol support on init.
         // Once the connection is established, this will be updated with the effective rules for the remote peer.
         Handler::new(
-            self.supported_protocols.clone(),
+            self.config.supported_protocols.clone(),
             protocol_support,
-            self.connection_timeout,
-            self.request_timeout,
-            self.next_inbound_id.clone(),
+            self.config.connection_timeout,
+            self.config.request_timeout,
+            self.next_request_id.clone(),
         )
     }
 
@@ -484,20 +482,28 @@ where
                 self.request_manager.on_res_for_outbound(peer, request_id, Ok(response));
             }
             HandlerOutEvent::OutboundTimeout(request_id) => {
+                // Abort firewall request for approval.
+                let _ = self.approval_rq_handles.remove(&request_id);
                 self.request_manager
                     .on_res_for_outbound(peer, request_id, Err(OutboundFailure::Timeout));
             }
             HandlerOutEvent::OutboundUnsupportedProtocols(request_id) => {
+                // Abort firewall request for approval.
+                let _ = self.approval_rq_handles.remove(&request_id);
                 self.request_manager
                     .on_res_for_outbound(peer, request_id, Err(OutboundFailure::UnsupportedProtocols));
             }
             HandlerOutEvent::InboundTimeout(request_id) => {
+                // Abort firewall request for approval.
+                let _ = self.approval_rq_handles.remove(&request_id);
                 let err = InboundFailure::Timeout;
                 self.request_manager.on_res_for_inbound(peer, request_id, Err(err));
             }
             HandlerOutEvent::InboundUnsupportedProtocols(request_id)
             | HandlerOutEvent::SendResponseOmission(request_id)
             | HandlerOutEvent::SentResponse(request_id) => {
+                // Abort firewall request for approval.
+                let _ = self.approval_rq_handles.remove(&request_id);
                 self.request_manager.on_res_for_inbound(peer, request_id, Ok(()));
             }
         }
@@ -510,21 +516,39 @@ where
             return;
         }
         let (rule_tx, rule_rx) = oneshot::channel();
+        let (abort_handle_tx, abort_handle_rx) = oneshot::channel();
+        let timeout = Delay::new(self.config.firewall_timeout);
+
         let firewall_req = FirewallRequest::<TRq>::PeerSpecificRule { peer, rule_tx };
         // Send request through the firewall channel, add to pending rule requests.
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
+
         let future = send_firewall
-            .and_then(move |()| rule_rx.map_err(|_| ()))
+            .and_then(move |()| async {
+                select_biased! {
+                    res = rule_rx.fuse() => res.map_err(|_| ()),
+                    _ = timeout.fuse() => Err(()),
+                    _ = abort_handle_rx.fuse() => Err(())
+
+                }
+            })
             .map_ok_or_else(move |()| (peer, None), move |rules| (peer, Some(rules)))
             .boxed();
         self.pending_rule_rqs.push(future);
+        self.rule_rq_handles.insert(peer, abort_handle_tx);
         self.request_manager.add_pending_rule_request(peer);
     }
 
     // Query for individual approval of a requests.
     // This is necessary if the firewall is configured with [`Rule::Ask`].
+    //
+    // A clone of the response-sender is handed. It is polled while a response from the firewall
+    // is awaited
     fn query_request_approval(&mut self, peer: PeerId, request_id: RequestId, rq: TRq, direction: RequestDirection) {
         let (approval_tx, approval_rx) = oneshot::channel();
+        let (abort_handle_tx, abort_handle_rx) = oneshot::channel();
+        let timeout = Delay::new(self.config.firewall_timeout);
+
         let firewall_req = FirewallRequest::RequestApproval {
             peer,
             direction,
@@ -533,11 +557,19 @@ where
         };
         let send_firewall = Self::send_firewall(self.permission_req_channel.clone(), firewall_req).map_err(|_| ());
         let future = send_firewall
-            .and_then(move |()| approval_rx.map_err(|_| ()))
+            .and_then(move |()| async {
+                select_biased! {
+                    res = approval_rx.fuse() => res.map_err(|_| ()),
+                    _ = timeout.fuse() => Err(()),
+                    _ = abort_handle_rx.fuse() => Err(())
+
+                }
+            })
             .map_ok_or_else(move |()| (request_id, false), move |b| (request_id, b))
             .boxed();
 
         self.pending_approval_rqs.push(future);
+        self.approval_rq_handles.insert(request_id, abort_handle_tx);
     }
 
     // Send a request through the firewall channel.
@@ -781,6 +813,10 @@ where
         remaining_established: usize,
     ) {
         self.request_manager.on_connection_closed(*peer, connection);
+        // Abort pending requests for firewall rules, if the peer completely disconnected.
+        if remaining_established == 0 {
+            let _ = self.rule_rq_handles.remove(peer);
+        }
         let (_, select) = _handler.into_inner();
         let (mdns_handler, relay_handler) = select.into_inner();
         self.mdns
@@ -791,17 +827,18 @@ where
 
     fn inject_address_change(
         &mut self,
-        _peer: &PeerId,
-        _connection: &ConnectionId,
+        peer: &PeerId,
+        connection: &ConnectionId,
         _old: &ConnectedPoint,
-        _new: &ConnectedPoint,
+        new: &ConnectedPoint,
     ) {
+        self.request_manager.on_address_change(*peer, *connection, new.clone());
         if let Some(relay) = self.relay.as_mut() {
-            relay.inject_address_change(_peer, _connection, _old, _new);
+            relay.inject_address_change(peer, connection, _old, new);
         }
 
         if let Some(mdns) = self.mdns.as_mut() {
-            mdns.inject_address_change(_peer, _connection, _old, _new);
+            mdns.inject_address_change(peer, connection, _old, new);
         }
     }
 

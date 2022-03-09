@@ -382,7 +382,7 @@ where
                 let _ = tx_yield.send(is_connected);
             }
             SwarmOperation::GetConnections { tx_yield } => {
-                let connections = self.swarm.behaviour().get_established_connections();
+                let connections = self.swarm.behaviour().established_connections();
                 let _ = tx_yield.send(connections);
             }
             SwarmOperation::StartListening { address, tx_yield } => self.start_listening(address, tx_yield),
