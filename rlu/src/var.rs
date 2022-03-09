@@ -24,10 +24,14 @@ impl<T> RLUVar<T>
 where
     T: Clone,
 {
-    /// This function returns the inner value.
-    pub fn get(&self) -> &T {
-        match unsafe { &*self.inner.load(Ordering::SeqCst) } {
-            InnerVar::Copy { data, .. } | InnerVar::Original { data, .. } => data,
+    /// This function returns the inner value, or None if the pointer is null
+    pub fn get(&self) -> Option<&T> {
+        match self.inner.load(Ordering::SeqCst) {
+            ptr if ptr.is_null() => None,
+            ptr => {
+                let inner = unsafe { &*ptr };
+                Some(&inner.data)
+            }
         }
     }
     /// Swaps the inner variable with another
@@ -81,25 +85,40 @@ where
     }
 }
 
-pub enum InnerVar<T>
+pub struct InnerVarCopy<T>
 where
     T: Clone,
 {
-    Original {
-        locked_thread_id: Option<AtomicUsize>,
-        ctrl: Option<RLU<T>>,
-        data: Atomic<T>,
+    pub locked_thread_id: Option<AtomicUsize>,
+    pub data: Atomic<T>,
+    pub original: AtomicPtr<InnerVar<T>>,
+}
 
-        copy: Option<AtomicPtr<Self>>,
-    },
+impl<T> Clone for InnerVarCopy<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            locked_thread_id: self
+                .locked_thread_id
+                .as_ref()
+                .map(|thread_id| AtomicUsize::new(thread_id.load(Ordering::SeqCst))),
+            data: self.data.clone(),
+            original: AtomicPtr::new(self.original.load(Ordering::SeqCst)),
+        }
+    }
+}
 
-    Copy {
-        locked_thread_id: Option<AtomicUsize>,
-        ctrl: Option<RLU<T>>,
-        data: Atomic<T>,
+pub struct InnerVar<T>
+where
+    T: Clone,
+{
+    pub locked_thread_id: Option<AtomicUsize>,
+    pub ctrl: Option<RLU<T>>,
+    pub(crate) data: Atomic<T>,
 
-        original: AtomicPtr<Self>,
-    },
+    pub copy: Option<AtomicPtr<InnerVarCopy<T>>>,
 }
 
 impl<T> InnerVar<T>
@@ -108,23 +127,12 @@ where
 {
     /// Returns true, if this object is an original and references a copy
     pub(crate) fn is_locked(&self) -> bool {
-        if let Self::Original { copy, .. } = self {
-            return copy.is_some();
-        }
-        false
+        self.copy.is_some()
     }
 
     /// Returns true, if this object is an original and does not references a copy
     pub(crate) fn is_unlocked(&self) -> bool {
-        if let Self::Original { copy, .. } = self {
-            return copy.is_none();
-        }
-        false
-    }
-
-    /// Returns true, if this is a copy
-    pub(crate) fn is_copy(&self) -> bool {
-        matches!(self, Self::Copy { .. })
+        self.copy.is_none()
     }
 }
 
@@ -133,7 +141,7 @@ where
     T: Clone,
 {
     fn from(value: T) -> Self {
-        Self::Original {
+        Self {
             data: Atomic::from(value),
             locked_thread_id: None,
             copy: None,
@@ -147,38 +155,14 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        match self {
-            Self::Copy {
-                ctrl,
-                data,
-                locked_thread_id,
-                original,
-            } => Self::Copy {
-                ctrl: ctrl.clone(),
-                data: data.clone(),
-                locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
-                    Some(inner) => inner.load(Ordering::SeqCst),
-                    None => 0,
-                })),
-                original: AtomicPtr::new(unsafe { &mut *original.load(Ordering::SeqCst) }),
-            },
-            Self::Original {
-                copy,
-                ctrl,
-                data,
-                locked_thread_id,
-            } => Self::Original {
-                copy: copy
-                    .as_ref()
-                    .map(|inner| AtomicPtr::new(unsafe { &mut *inner.load(Ordering::SeqCst) })),
-                ctrl: ctrl.clone(),
-                data: data.clone(),
-
-                locked_thread_id: Some(AtomicUsize::new(match locked_thread_id {
-                    Some(inner) => inner.load(Ordering::SeqCst),
-                    None => 0,
-                })),
-            },
+        Self {
+            ctrl: self.ctrl.clone(),
+            data: self.data.clone(),
+            locked_thread_id: Some(AtomicUsize::new(match &self.locked_thread_id {
+                Some(inner) => inner.load(Ordering::SeqCst),
+                None => 0,
+            })),
+            copy: None,
         }
     }
 }
