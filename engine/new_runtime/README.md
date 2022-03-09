@@ -39,7 +39,7 @@ Data is stored in disk memory and can be encrypted.
 
 Security measures to protect the files:
 - Access control of the files (os-dependent)
-- Data is mixed with noise (TODO)
+- Data is mixed with noise 
 - File is zeroed and removed when dropped
 
 Note: usually disk memory is more vulnerable than ram memory but we believe that using diverse types of memories increases the data security.
