@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto_utils::crypto_box::{BoxProvider, Key},
+    crypto_utils::{
+        crypto_box::{BoxProvider, Key},
+        utils::*,
+    },
     locked_memory::{Lock::*, MemoryError::*, *},
     memories::buffer::Buffer,
     types::ContiguousBytes,
@@ -26,7 +29,9 @@ pub struct FileMemory<P: BoxProvider> {
     // Filename are random string of 16 characters
     fname: String,
     lock: Lock<P>,
-    // Nonce for encrypted memory
+    // Noise data to xor with data in file
+    noise: Vec<u8>,
+    // Salt for encryption
     ad: [u8; AD_SIZE],
     // Size of the decrypted data
     size: usize,
@@ -124,19 +129,24 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
         if size == 0 {
             return Err(ZeroSizedNotAllowed);
         }
-        let mut ad: [u8; AD_SIZE] = [0u8; AD_SIZE];
+
+        // We actually don't want to have plain data in file
+        // therefore we noise it
+        let noise = P::random_vec(size).or(Err(EncryptionError))?;
+        let xored_data = xor(payload, &noise, size);
+
+        let mut ad = [0u8; AD_SIZE];
         P::random_buf(&mut ad).or(Err(EncryptionError))?;
-        let encrypted: Vec<u8>;
         let (locked_data, _locked_size, lock) = match lock {
-            Plain => (payload, size, lock),
+            Plain => (xored_data, size, lock),
 
             // Encryption of data
             // We return a lock with random data rather than the actual key
             Encryption(ref key) => {
-                encrypted = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
+                let encrypted = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
                 let size = encrypted.len();
                 let lock = Encryption(Key::random());
-                (encrypted.as_slice(), size, lock)
+                (encrypted, size, lock)
             }
 
             _ => return Err(LockNotAvailable),
@@ -146,7 +156,13 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
 
         let fname: String = FileMemory::<P>::random_fname();
         write_to_file(locked_data.as_bytes(), &fname).or(Err(FileSystemError))?;
-        Ok(FileMemory { fname, lock, ad, size })
+        Ok(FileMemory {
+            fname,
+            lock,
+            noise,
+            ad,
+            size,
+        })
     }
 
     /// Locks the memory and possibly reallocates
@@ -172,7 +188,7 @@ impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
 
         let data = read_file(&self.fname).or(Err(FileSystemError))?;
         let data = match lock {
-            Plain => data,
+            Plain => xor(&data, &self.noise, self.size),
             Encryption(ref key) => P::box_open(key, &self.ad, &data).or(Err(DecryptionError))?,
             _ => unreachable!("This should not happened if FileMemory has been allocated properly"),
         };
@@ -220,6 +236,7 @@ impl<P: BoxProvider> Clone for FileMemory<P> {
             fname,
             lock: self.lock.clone(),
             ad: self.ad,
+            noise: self.noise.clone(),
             size: self.size,
         }
     }
@@ -241,14 +258,16 @@ mod tests {
         // Check that file has been removed
         assert!(!std::path::Path::new(&fname).exists());
         assert!(fm.fname.is_empty());
-        assert_eq!(fm.ad, [0; AD_SIZE]);
+        assert_eq!(fm.ad, [0u8; AD_SIZE]);
         assert!(fm.unlock(Plain).is_err());
+        assert_eq!(fm.size, 0);
     }
 
     #[test]
     // Check that file content cannot be accessed directly
     fn file_security() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Plain);
+        let data = [1, 2, 3, 4, 5, 6];
+        let fm = FileMemory::<Provider>::alloc(&data, 6, Plain);
         assert!(fm.is_ok());
         let fm = fm.unwrap();
 
@@ -257,5 +276,11 @@ mod tests {
         let try_write = File::create(&fm.fname).expect_err("Test failed shall gives an Err");
         assert_eq!(try_read.kind(), std::io::ErrorKind::PermissionDenied);
         assert_eq!(try_write.kind(), std::io::ErrorKind::PermissionDenied);
+
+        // Check that content of the file has effectively been xored
+        assert!(set_read_only(&fm.fname).is_ok());
+        let content = fs::read(&fm.fname).expect("Fail to read file");
+        assert_ne!(content, data);
+        assert_eq!(xor(&content, &fm.noise, fm.size), data);
     }
 }

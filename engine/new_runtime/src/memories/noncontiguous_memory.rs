@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto_utils::crypto_box::BoxProvider,
+    crypto_utils::{crypto_box::BoxProvider, utils::*},
     locked_memory::{
         Lock::{self, *},
         LockedMemory,
@@ -46,9 +46,8 @@ impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P> {
         };
         let random = P::random_vec(NC_DATA_SIZE).expect("Failed to generate random vec");
         let mut digest = [0u8; NC_DATA_SIZE];
-
         sha::SHA256(&random, &mut digest);
-        digest = xor(&digest, payload);
+        let digest = xor(&digest, payload, NC_DATA_SIZE);
 
         let ram1 = RamMemory::alloc(&random, NC_DATA_SIZE, Plain)?;
         let shard1 = RamShard(ram1);
@@ -83,12 +82,12 @@ impl<P: BoxProvider> LockedMemory<P> for NonContiguousMemory<P> {
         let data = match &self.shard2 {
             RamShard(ram2) => {
                 let buf = ram2.unlock(Plain)?;
-                let x = xor(&data1, &buf.borrow());
+                let x = xor(&data1, &buf.borrow(), NC_DATA_SIZE);
                 x
             }
             FileShard(fm) => {
                 let buf = fm.unlock(Plain)?;
-                let x = xor(&data1, &buf.borrow());
+                let x = xor(&data1, &buf.borrow(), NC_DATA_SIZE);
                 x
             }
         };
@@ -113,7 +112,7 @@ impl<P: BoxProvider> NonContiguousMemory<P> {
         // Refresh shard1
         let buf_of_old_shard1 = self.get_buffer_from_shard1();
         let data_of_old_shard1 = &buf_of_old_shard1.borrow();
-        let new_data1 = xor(data_of_old_shard1, &random);
+        let new_data1 = xor(data_of_old_shard1, &random, NC_DATA_SIZE);
         let new_shard1 = RamShard(RamMemory::alloc(&new_data1, NC_DATA_SIZE, Plain)?);
 
         let new_shard2;
@@ -125,14 +124,14 @@ impl<P: BoxProvider> NonContiguousMemory<P> {
         match &self.shard2 {
             RamShard(ram2) => {
                 let buf = ram2.unlock(Plain)?;
-                let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1);
-                let new_data2 = xor(&new_data2, &hash_of_new_shard1);
+                let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1, NC_DATA_SIZE);
+                let new_data2 = xor(&new_data2, &hash_of_new_shard1, NC_DATA_SIZE);
                 new_shard2 = RamShard(RamMemory::alloc(&new_data2, NC_DATA_SIZE, Plain)?);
             }
             FileShard(fm) => {
                 let buf = fm.unlock(Plain)?;
-                let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1);
-                let new_data2 = xor(&new_data2, &hash_of_new_shard1);
+                let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1, NC_DATA_SIZE);
+                let new_data2 = xor(&new_data2, &hash_of_new_shard1, NC_DATA_SIZE);
                 let new_fm = FileMemory::alloc(&new_data2, NC_DATA_SIZE, Plain)?;
                 new_shard2 = FileShard(new_fm);
             }
@@ -144,14 +143,6 @@ impl<P: BoxProvider> NonContiguousMemory<P> {
             lock: self.lock.clone(),
         })
     }
-}
-
-fn xor(a: &[u8], b: &[u8]) -> [u8; NC_DATA_SIZE] {
-    let mut ouput = [0u8; NC_DATA_SIZE];
-    for i in 0..NC_DATA_SIZE {
-        ouput[i] = a[i] ^ b[i]
-    }
-    ouput
 }
 
 impl<P: BoxProvider> Debug for NonContiguousMemory<P> {
