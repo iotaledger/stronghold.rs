@@ -326,6 +326,21 @@ mod test {
     use libsodium_sys::randombytes_buf;
 
     #[test]
+    fn boxed_zeroize() {
+        let mut boxed = Boxed::<u8>::random(4);
+        let ptr = unsafe { core::slice::from_raw_parts(boxed.ptr.as_ptr(), 4) };
+        boxed.unlock();
+        assert_ne!(ptr, [0u8; 4]);
+        boxed.lock();
+
+        boxed.zeroize();
+
+        boxed.unlock();
+        assert_eq!(ptr, [0u8; 4]);
+        boxed.lock();
+    }
+
+    #[test]
     fn test_init_with_garbage() {
         let boxed = Boxed::<u8>::new(4, |_| {});
         let unboxed = boxed.unlock().as_slice();
