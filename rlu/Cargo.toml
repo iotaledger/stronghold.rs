@@ -2,7 +2,7 @@
 name        = "stronghold-rlu"
 version     = "0.1.0"
 edition     = "2021"
-authors     = ["Matthias Kandora <matthias.kandora@iota.org>"]
+authors     = ["IOTA Stiftung","Matthias Kandora <matthias.kandora@iota.org>"]
 
 [lib]
 path        = "src/lib.rs"
@@ -18,6 +18,7 @@ log         = "0.4.14"
 zeroize     = { version = "1.5.0", features = ["zeroize_derive"] }
 guardmem    = { package = "stronghold_engine", path = "../engine", optional = true}
 lazy_static = { version = "1.4.0" }
+atom        = { version = "0.4.0" }
 
 [dev-dependencies]
 tokio       = { version = "1.15.0", features = ["full"] }

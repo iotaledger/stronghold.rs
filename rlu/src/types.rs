@@ -50,7 +50,7 @@ where
     ///     Ok(())
     /// });
     /// ```
-    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T>;
+    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> Result<ReadGuard<'a, T>>;
 }
 
 /// [`Write<T>`] gives mutable access to synchronized value via the current managing
@@ -91,5 +91,5 @@ where
     ///
     /// assert_eq!(*rlu_var.get(), 16);
     /// ```
-    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>>;
+    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>>;
 }

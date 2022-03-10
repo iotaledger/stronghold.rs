@@ -51,6 +51,10 @@ where
         self.alloc[self.current_node_index()].as_ref()
     }
 
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.alloc[self.current_node_index()].as_mut()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Option<T>> {
         (&self.alloc).iter()
     }

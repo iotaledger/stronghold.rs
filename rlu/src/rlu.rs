@@ -6,17 +6,14 @@
 use log::*;
 use std::{
     collections::HashMap,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
-        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
     },
 };
 
-use crate::{
-    var::InnerVarCopy, Atomic, BusyBreaker, InnerVar, IntoRaw, RLULog, RLUVar, Read, ReadGuard, Write, WriteGuard,
-    WriteGuardInner,
-};
+use crate::{var::InnerVarCopy, BusyBreaker, InnerVar, RLULog, RLUVar, Read, ReadGuard, Write, WriteGuard};
 
 /// Global return type
 pub type Result<T> = core::result::Result<T, TransactionError>;
@@ -34,6 +31,9 @@ pub enum TransactionError {
 
     #[error("Operation aborted")]
     Abort,
+
+    #[error("No copy present")]
+    NoCopyPresent,
 }
 
 pub struct RLUObject<T>
@@ -86,10 +86,10 @@ where
 /// an unlimited number of times, or [`crate::RLUConfig::RetryWithBreaker`] with a busy breaker.
 #[derive(Clone)]
 pub enum RLUStrategy {
-    /// Abort exeuction on failure
+    /// Abort execution on failure
     Abort,
 
-    /// Retry endlessly executing the calling function until
+    /// Retry executing the calling function repeatedly until
     /// it succeeds. A possible used case for this might be to
     /// check for a record again and again, until the corresponding
     /// write has occured. The number of internal retries should be
@@ -122,7 +122,7 @@ where
     next_thread_id: Arc<AtomicUsize>,
 
     // a map (should be array) of threads / contexts
-    contexts: Arc<AtomicPtr<HashMap<usize, RluContext<T>>>>,
+    contexts: Arc<Mutex<HashMap<usize, Arc<RluContext<T>>>>>,
 
     strategy: RLUStrategy,
 }
@@ -138,7 +138,7 @@ where
 
 impl<T> RLU<T>
 where
-    T: Clone + IntoRaw,
+    T: Clone,
 {
     /// Creates a new [`RLU`] with a [`RLUStrategy::Retry`] strategy.
     pub fn new() -> Self {
@@ -149,36 +149,30 @@ where
     /// transactional functions.
     pub fn with_strategy(strategy: RLUStrategy) -> Self {
         // store the context resolver on the heap
-        let contexts_ptr = Box::into_raw(Box::new(HashMap::new()));
 
         Self {
             global_count: Arc::new(AtomicUsize::new(0)),
             next_thread_id: Arc::new(AtomicUsize::new(0)),
-            contexts: Arc::new(AtomicPtr::new(contexts_ptr)),
+            contexts: Arc::new(Mutex::new(HashMap::new())),
             strategy,
         }
     }
 
     pub fn create(&self, data: T) -> RLUVar<T> {
-        // the moved data variable will live on the heap
-
         RLUVar {
-            inner: Arc::new(AtomicPtr::new(
-                InnerVar {
-                    data: Atomic::from(data),
-                    ctrl: Some(self.clone()),
-                    locked_thread_id: None,
-                    copy: None,
-                }
-                .into_raw(),
-            )),
+            inner: Arc::new(InnerVar {
+                data: Arc::new(Mutex::new(data)),
+                ctrl: Some(self.clone()),
+                locked_thread_id: None,
+                copy: None,
+            }),
         }
     }
 
     /// executes a series of reads and writes
-    pub fn execute<F>(&self, func: F) -> Result<()>
+    pub fn execute<F>(&mut self, func: F) -> Result<()>
     where
-        F: Fn(RluContext<T>) -> Result<()>,
+        F: Fn(Arc<RluContext<T>>) -> Result<()>,
     {
         let breaker = BusyBreaker::default();
 
@@ -202,19 +196,24 @@ where
         }
     }
 
-    fn context(&self) -> RluContext<T> {
-        self.next_thread_id.fetch_add(1, Ordering::SeqCst);
+    fn context(&mut self) -> Arc<RluContext<T>> {
+        let id = self.next_thread_id.fetch_add(1, Ordering::SeqCst);
 
-        RluContext {
-            id: AtomicUsize::new(self.next_thread_id.load(Ordering::SeqCst)),
-            log: RLULog::default(),
+        let context = Arc::new(RluContext {
+            id: AtomicUsize::new(id),
+            log: Arc::new(Mutex::new(RLULog::default())),
             local_clock: AtomicUsize::new(0),
             write_clock: AtomicUsize::new(0),
             run_count: AtomicUsize::new(0),
-            sync_count: AtomicPtr::new(&mut HashMap::new()),
+            sync_count: Arc::new(Mutex::new(HashMap::default())),
             is_writer: AtomicBool::new(false),
             ctrl: Arc::new(self.clone()),
-        }
+        });
+
+        let mut lock = self.contexts.lock().expect("Could not get lock");
+        lock.deref_mut().insert(id, context.clone());
+
+        context
     }
 }
 
@@ -239,12 +238,12 @@ where
     T: Clone,
 {
     id: AtomicUsize,
-    log: RLULog<InnerVarCopy<T>>,
+    pub(crate) log: Arc<Mutex<RLULog<Arc<InnerVarCopy<T>>>>>,
     local_clock: AtomicUsize,
     write_clock: AtomicUsize,
     is_writer: AtomicBool,
     run_count: AtomicUsize,
-    sync_count: AtomicPtr<HashMap<usize, usize>>,
+    sync_count: Arc<Mutex<HashMap<usize, usize>>>,
 
     ctrl: Arc<RLU<T>>,
 }
@@ -253,90 +252,9 @@ impl<T> Read<T> for RluContext<T>
 where
     T: Clone,
 {
-    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> ReadGuard<T> {
-        // prepare read lock
+    fn get<'a>(&'a self, var: &'a RLUVar<T>) -> Result<ReadGuard<'a, T>> {
         self.read_lock();
-
-        // get inner var
-        let inner = var.deref();
-
-        // if object is unlocked, it has no copy. return the original
-        if var.is_unlocked() {
-            return ReadGuard::new(Ok(&inner.data), self);
-        }
-
-        let copy = match &inner.copy {
-            Some(copy_ptr) => {
-                let ptr = copy_ptr.load(Ordering::SeqCst);
-                if ptr.is_null() {
-                    return ReadGuard::new(Err(TransactionError::Inner("Copy is null reference".to_string())), self);
-                }
-                unsafe { &mut *ptr }
-            }
-            None => return ReadGuard::new(Err(TransactionError::Inner("Copy is null reference".to_string())), self),
-        };
-
-        // get the modifying context of the var
-        let (ctrl, id) = (&inner.ctrl, &inner.locked_thread_id);
-
-        // check, if context and id are present
-        let (ctx, id) = match (ctrl, id) {
-            (Some(ctx), Some(id)) => {
-                let contexts = unsafe { &*ctx.contexts.load(Ordering::SeqCst) };
-                (contexts.get(&id.load(Ordering::SeqCst)), id)
-            }
-            _ => {
-                return ReadGuard::new(Err(TransactionError::Failed), self);
-            }
-        };
-
-        let copy_lock_id = match &copy.locked_thread_id {
-            Some(atomic_id) => atomic_id.load(Ordering::SeqCst),
-            None => return ReadGuard::new(Err(TransactionError::Inner("No locked thread".to_string())), self),
-        };
-
-        // unpack context ids
-        let (var_id, self_id) = (copy_lock_id, self.id.load(Ordering::SeqCst));
-
-        if var_id == self_id {
-            return ReadGuard::new(Ok(&copy.data), self);
-        }
-
-        // // if this copy is locked by us, return the copy
-        // match inner {
-        //     InnerVar::Original {
-        //         copy: Some(copy_data), ..
-        //     } if var_id == self_id => {
-        //         if let InnerVar::Copy {
-        //             locked_thread_id,
-        //             original,
-        //             data,
-        //             ctrl,
-        //         } = unsafe { &*copy_data.load(Ordering::SeqCst) }
-        //         {
-        //             return ReadGuard::new(Ok(data), self);
-        //         }
-        //     }
-        //     _ => {}
-        // }
-
-        // no context is an error
-        if ctx.is_none() {
-            return ReadGuard::new(Err(TransactionError::Failed), self);
-        }
-
-        // unwrap context
-        let context = &ctx.unwrap();
-
-        // check for stealing
-        if self.local_clock.load(Ordering::SeqCst) >= context.write_clock.load(Ordering::SeqCst) {
-            if let Some(last) = context.log.last() {
-                return ReadGuard::new(Ok(&last.data), self);
-            }
-        }
-
-        // no steal, return object
-        ReadGuard::new(Ok(&inner.data), self)
+        self.dereference(var)
     }
 }
 
@@ -344,61 +262,58 @@ impl<T> Write<T> for RluContext<T>
 where
     T: Clone,
 {
-    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<T>> {
+    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>> {
         self.set_writer();
 
-        // load mutable pointer
-        let inner_ptr = var.inner.load(Ordering::SeqCst);
+        // // load mutable pointer
+        // let inner_ptr = var.inner.load(Ordering::SeqCst);
+        // assert!(!inner_ptr.is_null());
 
-        // check pointer for null
-        if inner_ptr.is_null() {
-            return Err(TransactionError::Inner("Null reference".to_string()));
-        }
+        // if var.is_unlocked() {
+        //     // TODO: return obj
+        // }
 
-        if var.is_unlocked() {
-            // TODO: return obj
-        }
+        // // deref pointer
+        // let inner = unsafe { &mut *inner_ptr };
 
-        // deref pointer
-        let inner = unsafe { &mut *inner_ptr };
+        // // get current id of self
+        // let self_id = self.id.load(Ordering::SeqCst);
 
-        // get current id of self
-        let self_id = self.id.load(Ordering::SeqCst);
+        // let copy = match &inner.copy {
+        //     Some(copy_ptr) => {
+        //         let ptr = copy_ptr.load(Ordering::SeqCst);
+        //         if ptr.is_null() {
+        //             return Err(TransactionError::Inner("Copy is null reference".to_string()));
+        //         }
+        //         unsafe { &mut *ptr }
+        //     }
+        //     None => return Err(TransactionError::Inner("Copy is null reference".to_string())),
+        // };
 
-        let copy = match &inner.copy {
-            Some(copy_ptr) => {
-                let ptr = copy_ptr.load(Ordering::SeqCst);
-                if ptr.is_null() {
-                    return Err(TransactionError::Inner("Copy is null reference".to_string()));
-                }
-                unsafe { &mut *ptr }
-            }
-            None => return Err(TransactionError::Inner("Copy is null reference".to_string())),
-        };
+        // // get locked id
+        // let copy_lock_id = match &copy.locked_thread_id {
+        //     Some(atomic_id) => atomic_id.load(Ordering::SeqCst),
+        //     None => return Err(TransactionError::Inner("No locked thread".to_string())),
+        // };
 
-        // get locked id
-        let copy_lock_id = match &copy.locked_thread_id {
-            Some(atomic_id) => atomic_id.load(Ordering::SeqCst),
-            None => return Err(TransactionError::Inner("No locked thread".to_string())),
-        };
+        // if self_id == copy_lock_id {
+        //     // TODO: return copy here
+        // }
 
-        if self_id == copy_lock_id {
-            // TODO: return copy here
-        }
+        // let (original, ctrl) = (&inner.data, &inner.ctrl);
 
-        let (original, ctrl) = (&inner.data, &inner.ctrl);
+        // // create copied var
+        // let inner_copy = InnerVarCopy {
+        //     data: original.clone(),
+        //     locked_thread_id: Some(AtomicUsize::new(self_id)),
+        //     original: AtomicPtr::new(var.inner.load(Ordering::SeqCst)),
+        // }
+        // .into_raw();
 
-        // create copied var
-        let inner_copy = InnerVarCopy {
-            data: original.clone(),
-            locked_thread_id: Some(AtomicUsize::new(self_id)),
-            original: AtomicPtr::new(var.inner.load(Ordering::SeqCst)),
-        }
-        .into_raw();
+        // inner.copy.replace(AtomicPtr::new(inner_copy));
 
-        inner.copy.replace(AtomicPtr::new(inner_copy));
-
-        Ok(WriteGuard::new(WriteGuardInner::Copy(inner_copy), self))
+        // Ok(WriteGuard::new(WriteGuardInner::Copy(inner_copy), self))
+        todo!()
     }
 }
 
@@ -412,11 +327,11 @@ where
         self.run_count.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn read_unlock(&self, var: &Atomic<T>) {
+    pub fn read_unlock(&self) {
         self.run_count.fetch_add(1, Ordering::SeqCst);
 
         if self.is_writer.load(Ordering::SeqCst) {
-            self.commit_log(var)
+            self.commit_log()
         }
     }
 
@@ -424,86 +339,168 @@ where
         self.is_writer.store(true, Ordering::SeqCst);
     }
 
-    pub fn dereference<'a>(&self, var: &'a RLUVar<T>) -> Option<&'a T> {
+    #[inline]
+    pub fn dereference<'a>(&'a self, var: &'a RLUVar<T>) -> Result<ReadGuard<'a, T>> {
         // get inner var
-        let inner = var.deref();
+        let inner_data = var.deref_data()?;
 
         // if object is unlocked, it has no copy. return the original
         if var.is_unlocked() {
-            return Some(&inner.data);
+            return Ok(ReadGuard::from_baseguard(inner_data, self));
         }
 
         // the paper describes to check, if var already references a copy
         // but we explicitly split (inner) var and it's copy.
         // if this is required, we would need to rebuild the underlying structure
 
-        let copy = match &inner.copy {
-            Some(copy_ptr) => {
-                let ptr = copy_ptr.load(Ordering::SeqCst);
-                assert!(!ptr.is_null());
+        let inner_copy = &var.inner.copy;
 
-                unsafe { &mut *ptr }
-            }
-            None => return None,
+        let copy_lock_id = match &inner_copy {
+            Some(guard) => match guard.lock() {
+                Ok(inner_copy) => match &inner_copy.locked_thread_id {
+                    Some(id) => id.load(Ordering::SeqCst),
+                    None => 0,
+                },
+                Err(e) => return Err(TransactionError::Inner(e.to_string())),
+            },
+            None => return Err(TransactionError::NoCopyPresent), // ?
         };
 
         let self_id = self.id.load(Ordering::SeqCst);
-        let copy_lock_id = match &copy.locked_thread_id {
-            Some(id) => id.load(Ordering::SeqCst),
-            None => 0,
-        };
 
         if self_id == copy_lock_id {
-            return Some(&copy.data);
+
+            // todo
+            // return match copy.data.lock() {
+            //     Ok(guard) => todo!(), // Ok(ReadGuard::from_guard(guard, self)),
+            //     Err(e) => Err(TransactionError::Inner(e.to_string())),
+            // };
         }
 
-        // get other context, that locks the copy
-        match &var.ctrl {
+        // get other context that locks the copy
+        match &var.deref().ctrl {
             Some(control) => {
-                let ptr = control.contexts.load(Ordering::SeqCst);
-                assert!(!ptr.is_null());
-
-                let all_contexts = unsafe { &*ptr };
+                let all_contexts = control.contexts.lock().expect("");
                 let locking_context = match all_contexts.get(&copy_lock_id) {
                     Some(ctx) => ctx,
-                    None => return None,
+                    None => return Err(TransactionError::Inner("No context for locked copy found".to_string())),
                 };
 
                 let write_clock = locking_context.write_clock.load(Ordering::SeqCst);
                 let local_clock = self.local_clock.load(Ordering::SeqCst);
 
+                // check for stealing
                 if write_clock <= local_clock {
+                    match &inner_copy {
+                        Some(guard) => {
+                            let inner = guard.lock().expect("");
+
+                            let copied = inner.data.lock().expect("").clone();
+
+                            return Ok(ReadGuard::from_copied(copied, self));
+
+                            // Ok(copy) => match copy.deref().data {
+                            //     Ok(guard) => return Ok(ReadGuard::from_guard(guard, self)),
+                            //     Err(e) => return Err(TransactionError::Inner(e.to_string())),
+                            // },
+                            // Err(e) => return Err(TransactionError::Inner(e.to_string())),
+                        }
+                        None => return Err(TransactionError::NoCopyPresent), // ?
+                    };
+
+                    // return match var.inner.copy.data.lock() {
+                    //     Ok(guard) => Ok(ReadGuard::from_guard(guard, self)),
+                    //     Err(e) => Err(TransactionError::Inner(e.to_string())),
+                    // };
+
                     // copy is most recent
-                    return Some(&copy.data);
+                    // return Some(&copy.data.lock().expect("msg").deref());
+                    // todo
                 }
             }
-            None => return None,
+            None => return Err(TransactionError::Inner("No inner controller present".to_string())),
         }
 
-        Some(&inner.data)
+        Ok(ReadGuard::from_baseguard(inner_data, self))
     }
 
-    pub(crate) fn inner_log(&mut self) -> &mut RLULog<InnerVarCopy<T>> {
-        &mut self.log
+    /// tries to lock current variable
+    pub fn try_lock<'a>(&'a self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>> {
+        self.set_writer();
+
+        // get actual object
+        let inner = var.deref();
+
+        // get self id
+        let self_id = self.id.load(Ordering::SeqCst);
+
+        let copy = match &inner.deref().copy {
+            Some(copy_ptr) => copy_ptr.deref(),
+            None => return Err(TransactionError::Failed),
+        };
+
+        if var.is_locked() {
+            let copy_thread_id = match &copy.lock().expect("msg").locked_thread_id {
+                Some(thread_id) => thread_id.load(Ordering::SeqCst),
+                None => return Err(TransactionError::Failed),
+            };
+
+            if copy_thread_id == self_id {
+                let copy = match &inner.copy {
+                    Some(guard) => {
+                        let guard = guard.lock().expect("");
+                        let copied = guard.data.lock().expect("msg").deref_mut().clone();
+
+                        return Ok(WriteGuard::from_guard_copy(
+                            guard,
+                            copied,
+                            self,
+                            Some(var.inner.clone()),
+                        ));
+                    }
+                    None => return Err(TransactionError::NoCopyPresent), // ?
+                };
+            }
+
+            self.abort();
+            // this should indicate a retry of the rlu section
+            return Err(TransactionError::Abort);
+        }
+
+        let copy = InnerVarCopy {
+            data: inner.deref().data.clone(),
+            locked_thread_id: Some(AtomicUsize::new(self_id)),
+            original: var.inner.clone(),
+        };
+
+        // WriteGuard::
+
+        // inner.deref_mut().copy = Some(copy.clone());
+
+        // let mut log_guard = self.log.lock().expect("Could not release lock on log");
+        // log_guard.deref_mut().push(copy);
+
+        // Ok(log.last_mut().unwrap().get_mut())
+        todo!()
     }
 
     fn synchronize(&self) {
-        let contexts = unsafe { &*self.ctrl.contexts.load(Ordering::SeqCst) };
-        let sync_count = unsafe { &mut *self.sync_count.load(Ordering::SeqCst) };
+        let contexts = self.ctrl.contexts.lock().expect(""); // unsafe { &*self.ctrl.contexts.load(Ordering::SeqCst) };
+        let mut sync_count = self.sync_count.lock().expect("Could not release lock on sync_count");
 
         // sychronize with other contexts, collect their run stats
-        for (id, ctx) in contexts {
+        for (id, ctx) in contexts.deref() {
             let id = ctx.id.load(Ordering::SeqCst);
             if id == self.id.load(Ordering::SeqCst) {
                 continue;
             }
             let run_count = ctx.run_count.load(Ordering::SeqCst);
 
-            sync_count.insert(id, run_count);
+            sync_count.deref_mut().insert(id, run_count);
         }
 
         // wait for other contexts
-        for (id, ctx) in contexts {
+        for (id, ctx) in contexts.deref() {
             loop {
                 if sync_count[id] & 0x1 == 0 {
                     // is inactive
@@ -518,35 +515,40 @@ where
                     // started after this context
                     break;
                 }
+
+                // put cpu hint to tell system scheduler make efficient use of idle time
+                core::hint::spin_loop();
             }
         }
     }
 
-    fn commit_log(&self, var: &Atomic<T>) {
+    fn commit_log(&self) {
         self.write_clock
             .store(self.ctrl.global_count.load(Ordering::SeqCst) + 1, Ordering::SeqCst);
         self.ctrl.global_count.fetch_add(1, Ordering::SeqCst);
         self.synchronize();
-
-        // unsafe {
-        for item in self.log.iter().flatten() {
-            // let update = data.inner.load(Ordering::SeqCst);
-
-            // WE have to swap it, but comment it out until we find a solution for mutablity
-            // var.swap(&mut item.data);
-        }
-        // };
-
+        self.write_back_log();
         self.write_clock.store(usize::MAX, Ordering::SeqCst);
         self.swap_logs();
     }
 
+    fn write_back_log(&self) {
+        let mut guard = self.log.lock().expect("Could not release lock on log");
+        for item in guard.deref_mut().drain().flatten() {
+            item.write_back();
+        }
+    }
+
     fn abort(&self) {
         self.run_count.fetch_add(1, Ordering::SeqCst);
+        if self.is_writer.load(Ordering::SeqCst) {
+            self.is_writer.store(false, Ordering::SeqCst)
+        }
     }
 
     /// Swaps the logs internally
     fn swap_logs(&self) {
-        self.log.next();
+        let guard = self.log.lock().expect("Could not release lock on log");
+        guard.deref().next();
     }
 }

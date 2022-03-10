@@ -37,7 +37,6 @@
 //! - [rcu presentation](https://www.cs.unc.edu/~porter/courses/cse506/f11/slides/rcu.pdf)
 #![allow(unused_variables, dead_code, clippy::type_complexity)]
 
-pub mod atomic;
 pub mod breaker;
 pub mod guard;
 pub mod rlog;
@@ -52,18 +51,5 @@ pub use types::{Read, Write};
 pub use var::{InnerVar, RLUVar};
 
 // crate re-exports
-pub(crate) use atomic::Atomic;
-pub(crate) use guard::{ReadGuard, WriteGuard, WriteGuardInner};
+pub(crate) use guard::{ReadGuard, WriteGuard};
 pub(crate) use rlog::RLULog;
-
-/// Conversion trait for all types to be heap allocated
-/// and returned as raw mutable pointer
-pub trait IntoRaw: Sized {
-    /// Takes `self`, allocates heap space and retuns it as a raw mutable pointer
-    fn into_raw(self) -> *mut Self {
-        Box::into_raw(Box::new(self))
-    }
-}
-
-/// Blanket impl for [`IntoRaw`]
-impl<T> IntoRaw for T {}
