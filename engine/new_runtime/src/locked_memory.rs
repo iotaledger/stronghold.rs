@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    MemoryError,
     crypto_utils::crypto_box::{BoxProvider, Key},
     memories::buffer::Buffer,
 };
 use core::fmt::{self, Debug, Formatter};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Debug)]
-pub enum MemoryError {
-    EncryptionError,
-    DecryptionError,
-    NCSizeNotAllowed,
-    LockNotAvailable,
-    FileSystemError,
-    ZeroSizedNotAllowed,
-}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NCMemory {

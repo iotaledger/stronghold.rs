@@ -3,8 +3,9 @@
 
 use crate::{
     crypto_utils::crypto_box::{BoxProvider, Key},
-    locked_memory::{Lock::*, MemoryError::*, *},
+    locked_memory::{Lock::*, *},
     memories::buffer::Buffer,
+    MemoryError::{self, *},
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -207,8 +208,4 @@ mod tests {
         assert!((*ram.buf.borrow()).is_empty());
         assert!(ram.unlock(Encryption(key)).is_err());
     }
-
-    // Check that we can't read value in RamMemory directly without unlocking
-    #[test]
-    fn ram_security() {}
 }

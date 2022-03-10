@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    MemoryError::{self, *},
     crypto_utils::{
         crypto_box::{BoxProvider, Key},
         utils::*,
     },
-    locked_memory::{Lock::*, MemoryError::*, *},
+    locked_memory::{Lock::*, *},
     memories::buffer::Buffer,
     types::ContiguousBytes,
 };

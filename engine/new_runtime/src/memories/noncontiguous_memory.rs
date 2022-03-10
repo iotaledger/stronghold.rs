@@ -6,10 +6,10 @@ use crate::{
     locked_memory::{
         Lock::{self, *},
         LockedMemory,
-        MemoryError::{self, *},
         NCMemory::{NCRam, NCRamFile},
     },
     memories::{buffer::Buffer, file_memory::FileMemory, ram_memory::RamMemory},
+    MemoryError::{self, *},
 };
 use core::fmt::{self, Debug, Formatter};
 use crypto::hashes::sha;

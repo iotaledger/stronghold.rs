@@ -382,4 +382,12 @@ mod tests {
         let mut v = buf.borrow_mut();
         v.copy_from_slice(&[7, 1][..]);
     }
+
+    // We should not be able to access memory without borrow/borrow_mut
+    #[test]
+    #[should_panic]
+    fn test_security() {
+        let buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
+        println!("{:?}", buf.boxed.as_slice());
+    }
 }

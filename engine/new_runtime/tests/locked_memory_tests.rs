@@ -13,30 +13,46 @@ use new_runtime::{
         noncontiguous_memory::{NonContiguousMemory, NC_DATA_SIZE},
         ram_memory::RamMemory,
     },
+    DEBUG_MSG,
 };
 
-macro_rules! init_and_test_unlock_update {
-    ($type:ident,$lock:expr) => {
+macro_rules! init {
+    ($type:ident,$lock:expr) => {{
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
         let lock = $lock;
         let lm = $type::<Provider>::alloc(&data, NC_DATA_SIZE, lock.clone());
         assert!(lm.is_ok());
         let lm = lm.unwrap();
-        test_unlock_and_update(lm, &data, NC_DATA_SIZE, lock);
+        (lm, data, NC_DATA_SIZE, lock)
+    }};
+}
+
+macro_rules! init_and_test_unlock_update {
+    ($type:ident,$lock:expr) => {
+        let (lm, data, size, lock) = init!($type, $lock);
+        test_unlock_and_update(lm, &data, size, lock);
     };
 }
 
 macro_rules! init_and_test_clone {
     ($type:ident,$lock:expr) => {
-        let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
-        let lock = $lock;
-        let lm = $type::<Provider>::alloc(&data, NC_DATA_SIZE, lock.clone());
-        assert!(lm.is_ok());
-        let lm = lm.unwrap();
-        test_clone(lm, NC_DATA_SIZE, lock);
+        let (lm, _, size, lock) = init!($type, $lock);
+        test_clone(lm, size, lock);
     };
 }
 
+macro_rules! init_and_test_debug {
+    ($type:ident,$lock:expr) => {
+        let (lm, _, _, _) = init!($type, $lock);
+        assert_eq!(format!("{:?}", lm), DEBUG_MSG);
+    };
+}
+
+// Check that certain memory types are not compatible with certain
+// locks. For example:
+// - RamMemory with NC lock
+// - FileMemory with NC lock
+// - NonContiguousMemory with anything else than NC lock
 macro_rules! check_illegal_lock {
     ($type:ident,$lock:expr) => {
         let data = Provider::random_vec(NC_DATA_SIZE).unwrap();
@@ -52,6 +68,8 @@ fn file_memory() {
     init_and_test_unlock_update!(FileMemory, Lock::Encryption(Key::random()));
     init_and_test_clone!(FileMemory, Lock::Plain);
     init_and_test_clone!(FileMemory, Lock::Encryption(Key::random()));
+    init_and_test_debug!(FileMemory, Lock::Plain);
+    init_and_test_debug!(FileMemory, Lock::Encryption(Key::random()));
     check_illegal_lock!(FileMemory, Lock::NonContiguous(NCRam));
     check_illegal_lock!(FileMemory, Lock::NonContiguous(NCRamFile));
 }
@@ -62,6 +80,8 @@ fn ram_memory() {
     init_and_test_unlock_update!(RamMemory, Lock::Encryption(Key::random()));
     init_and_test_clone!(RamMemory, Lock::Plain);
     init_and_test_clone!(RamMemory, Lock::Encryption(Key::random()));
+    init_and_test_debug!(RamMemory, Lock::Plain);
+    init_and_test_debug!(RamMemory, Lock::Encryption(Key::random()));
     check_illegal_lock!(RamMemory, Lock::NonContiguous(NCRam));
     check_illegal_lock!(RamMemory, Lock::NonContiguous(NCRamFile));
 }
@@ -72,6 +92,8 @@ fn noncontiguous_memory() {
     init_and_test_unlock_update!(NonContiguousMemory, Lock::NonContiguous(NCRamFile));
     init_and_test_clone!(NonContiguousMemory, Lock::NonContiguous(NCRam));
     init_and_test_clone!(NonContiguousMemory, Lock::NonContiguous(NCRamFile));
+    init_and_test_debug!(NonContiguousMemory, Lock::NonContiguous(NCRam));
+    init_and_test_debug!(NonContiguousMemory, Lock::NonContiguous(NCRamFile));
     check_illegal_lock!(NonContiguousMemory, Lock::Plain);
     check_illegal_lock!(NonContiguousMemory, Lock::Encryption(Key::random()));
 }
