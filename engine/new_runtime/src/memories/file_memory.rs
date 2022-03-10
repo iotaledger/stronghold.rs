@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    MemoryError::{self, *},
     crypto_utils::{
         crypto_box::{BoxProvider, Key},
         utils::*,
@@ -10,6 +9,8 @@ use crate::{
     locked_memory::{Lock::*, *},
     memories::buffer::Buffer,
     types::ContiguousBytes,
+    MemoryError::{self, *},
+    DEBUG_MSG,
 };
 use core::fmt::{self, Debug, Formatter};
 use dirs::{data_local_dir, home_dir};
@@ -244,7 +245,7 @@ impl<P: BoxProvider> Drop for FileMemory<P> {
 
 impl<P: BoxProvider> Debug for FileMemory<P> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{{ lock: hidden, fname: hidden }}")
+        write!(fmt, "{}", DEBUG_MSG)
     }
 }
 

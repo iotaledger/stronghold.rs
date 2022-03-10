@@ -13,7 +13,7 @@ mod types;
 pub use types::Bytes;
 
 /// The memory types of this crate shall return this message when trying to debug them
-pub const DEBUG_MSG: &'static str = "Content of Locked Memory is hidden";
+pub const DEBUG_MSG: &str = "Content of Locked Memory is hidden";
 
 /// The different types of Error that may be encountered while using this crate
 #[derive(Debug)]
@@ -25,4 +25,3 @@ pub enum MemoryError {
     FileSystemError,
     ZeroSizedNotAllowed,
 }
-

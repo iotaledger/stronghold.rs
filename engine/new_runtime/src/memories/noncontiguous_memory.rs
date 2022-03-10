@@ -10,6 +10,7 @@ use crate::{
     },
     memories::{buffer::Buffer, file_memory::FileMemory, ram_memory::RamMemory},
     MemoryError::{self, *},
+    DEBUG_MSG,
 };
 use core::fmt::{self, Debug, Formatter};
 use crypto::hashes::sha;
@@ -147,7 +148,7 @@ impl<P: BoxProvider> NonContiguousMemory<P> {
 
 impl<P: BoxProvider> Debug for NonContiguousMemory<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "hidden")
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 

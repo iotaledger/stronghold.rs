@@ -6,6 +6,7 @@ use crate::{
     locked_memory::{Lock::*, *},
     memories::buffer::Buffer,
     MemoryError::{self, *},
+    DEBUG_MSG,
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -118,7 +119,7 @@ impl<P: BoxProvider> Drop for RamMemory<P> {
 
 impl<P: BoxProvider> Debug for RamMemory<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.buf.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 

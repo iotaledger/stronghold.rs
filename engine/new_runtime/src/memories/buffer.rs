@@ -4,6 +4,7 @@
 use crate::{
     boxed::Boxed,
     types::{Bytes, ConstEq, Randomized, Zeroed},
+    DEBUG_MSG,
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -104,7 +105,7 @@ impl<T: Bytes + Zeroed> From<&mut [T]> for Buffer<T> {
 
 impl<T: Bytes> Debug for Buffer<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -144,7 +145,7 @@ impl<T: Bytes> Deref for Ref<'_, T> {
 
 impl<T: Bytes> Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -192,7 +193,7 @@ impl<T: Bytes> DerefMut for RefMut<'_, T> {
 
 impl<T: Bytes> Debug for RefMut<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -285,16 +286,14 @@ mod tests {
     extern crate alloc;
     use super::*;
 
-    use alloc::format;
-
     #[test]
-    fn test_init() {
+    fn buffer_init() {
         let buf = Buffer::<u64>::alloc(&[1, 2, 3, 4, 5, 6][..], 6);
         assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
-    fn test_borrow() {
+    fn buffer_borrow() {
         let vec = Buffer::<u64>::zero(2);
         let v = vec.borrow();
 
@@ -312,28 +311,14 @@ mod tests {
     }
 
     #[test]
-    fn test_properties() {
+    fn buffer_properties() {
         let vec = Buffer::<[u64; 4]>::zero(64);
         assert_eq!(vec.len(), 64);
         assert_eq!(vec.size(), 2048);
     }
 
     #[test]
-    fn test_guard() {
-        let mut guard = Buffer::<u64>::random(32);
-
-        assert_eq!(format!("{{ size: {}, hidden }}", 256), format!("{:?}", guard),);
-
-        assert_eq!(format!("{{ size: {}, hidden }}", 256), format!("{:?}", guard.borrow()),);
-
-        assert_eq!(
-            format!("{{ size: {}, hidden }}", 256),
-            format!("{:?}", guard.borrow_mut()),
-        );
-    }
-
-    #[test]
-    fn test_moving_and_cloning() {
+    fn buffer_moving_and_cloning() {
         let guard = Buffer::<u8>::zero(1);
 
         let moved = guard;
@@ -349,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_comparisons() {
+    fn buffer_comparisons() {
         let guard = Buffer::<u8>::from(&mut [1, 2, 3][..]);
 
         let clone = guard.clone();
@@ -372,7 +357,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_zeroize() {
+    fn buffer_zeroize() {
         let mut buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
         buf.zeroize();
         assert_eq!(buf.len(), 0);
@@ -386,7 +371,7 @@ mod tests {
     // We should not be able to access memory without borrow/borrow_mut
     #[test]
     #[should_panic]
-    fn test_security() {
+    fn buffer_security() {
         let buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
         println!("{:?}", buf.boxed.as_slice());
     }
