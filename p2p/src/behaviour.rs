@@ -21,7 +21,7 @@ mod handler;
 #[doc(hidden)]
 mod request_manager;
 use self::firewall::FwRequest;
-pub use self::request_manager::connections::{ConnectedPoint, ConnectionId, EstablishedConnections};
+pub use self::request_manager::{ConnectedPoint, ConnectionId, EstablishedConnections};
 use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
 use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
@@ -812,7 +812,8 @@ where
         _handler: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
         remaining_established: usize,
     ) {
-        self.request_manager.on_connection_closed(*peer, connection);
+        self.request_manager
+            .on_connection_closed(*peer, connection, remaining_established);
         // Abort pending requests for firewall rules, if the peer completely disconnected.
         if remaining_established == 0 {
             let _ = self.rule_rq_handles.remove(peer);

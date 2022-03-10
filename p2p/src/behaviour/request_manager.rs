@@ -4,15 +4,15 @@
 use super::{ProtocolSupport, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::{
     firewall::{FirewallRules, FwRequest, Rule, RuleDirection},
-    unwrap_or_return, EstablishedConnections, InboundFailure, OutboundFailure, RequestDirection, RequestId,
+    unwrap_or_return, InboundFailure, OutboundFailure, RequestDirection, RequestId,
 };
-pub mod connections;
-use connections::{ConnectedPoint, ConnectionId, PeerConnectionManager};
 
 use futures::channel::oneshot;
+pub use libp2p::core::{connection::ConnectionId, ConnectedPoint};
 use libp2p::PeerId;
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
+use wasm_timer::Instant;
 
 // Actions for the behaviour to handle i.g. the behaviour emits the appropriate `NetworkBehaviourAction`.
 pub enum BehaviourAction<Rq, Rs> {
@@ -80,14 +80,20 @@ pub enum ApprovalStatus {
 //
 // Stores pending requests, manages rule, approval and connection changes, and queues required [`BehaviourActions`] for
 // the `NetBehaviour` to handle.
+#[derive(Default)]
 pub struct RequestManager<Rq, Rs> {
+    // Currently active connections for each peer.
+    established_connections: HashMap<PeerId, EstablishedConnections>,
+
     // Cache of inbound requests that have not been approved yet.
-    pending_inbound_requests: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
+    inbound_requests_cache: HashMap<RequestId, (PeerId, Rq, oneshot::Sender<Rs>)>,
     // Cache of outbound requests that have not been approved, or where the target peer is not connected yet.
-    pending_outbound_requests: HashMap<RequestId, (PeerId, Rq)>,
-    // Currently established connections and the requests that have been send/received on the connection, but with no
-    // response yet.
-    connections: PeerConnectionManager,
+    outbound_requests_cache: HashMap<RequestId, (PeerId, Rq)>,
+
+    /// Inbound requests received from remote, waiting for an outbound response.
+    pending_responses_for_inbound: HashMap<ConnectionId, Vec<RequestId>>,
+    /// Outbound request sent to remote, waiting for an inbound response.
+    pending_responses_for_outbound: HashMap<ConnectionId, Vec<RequestId>>,
 
     // Approved outbound requests for peers that are currently not connected, but a BehaviourAction::RequireDialAttempt
     // has been issued.
@@ -106,9 +112,11 @@ pub struct RequestManager<Rq, Rs> {
 impl<Rq, Rs> RequestManager<Rq, Rs> {
     pub fn new() -> Self {
         RequestManager {
-            pending_inbound_requests: HashMap::new(),
-            pending_outbound_requests: HashMap::new(),
-            connections: PeerConnectionManager::new(),
+            inbound_requests_cache: HashMap::new(),
+            outbound_requests_cache: HashMap::new(),
+            established_connections: HashMap::new(),
+            pending_responses_for_inbound: HashMap::new(),
+            pending_responses_for_outbound: HashMap::new(),
             awaiting_connection: HashMap::new(),
             awaiting_peer_rule: HashMap::new(),
             awaiting_approval: SmallVec::new(),
@@ -118,12 +126,15 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
 
     // List of peers to which at least one connection is currently established.
     pub fn connected_peers(&self) -> Vec<PeerId> {
-        self.connections.connected_peers()
+        self.established_connections.keys().copied().collect()
     }
 
     // Currently established connections.
     pub fn established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
-        self.connections.all_connections()
+        self.established_connections
+            .iter()
+            .map(|(p, c)| (*p, c.clone()))
+            .collect()
     }
 
     // New outbound request that should be sent.
@@ -139,7 +150,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         match approval_status {
             ApprovalStatus::MissingRule => {
                 // Add request to the list of requests that are awaiting a rule for that peer.
-                self.pending_outbound_requests.insert(request_id, (peer, request));
+                self.outbound_requests_cache.insert(request_id, (peer, request));
                 let await_rule = self.awaiting_peer_rule.entry(peer).or_default();
                 await_rule
                     .entry(RequestDirection::Outbound)
@@ -148,16 +159,13 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
             }
             ApprovalStatus::MissingApproval => {
                 // Add request to the list of requests that are awaiting individual approval.
-                self.pending_outbound_requests.insert(request_id, (peer, request));
+                self.outbound_requests_cache.insert(request_id, (peer, request));
                 self.awaiting_approval.push((request_id, RequestDirection::Outbound));
             }
             ApprovalStatus::Approved => {
                 // Request is ready to be send if a connection exists.
                 // If no connection to the peer exists, add dial attempt.
-                if let Some(connection) =
-                    self.connections
-                        .add_request(&peer, request_id, None, &RequestDirection::Outbound)
-                {
+                if let Some(connection) = self.add_request(&peer, request_id, None, &RequestDirection::Outbound) {
                     // Request is approved and assigned to an existing connection.
                     let action = BehaviourAction::OutboundOk {
                         request_id,
@@ -167,7 +175,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
                     };
                     self.actions.push_back(action)
                 } else {
-                    self.pending_outbound_requests.insert(request_id, (peer, request));
+                    self.outbound_requests_cache.insert(request_id, (peer, request));
                     self.add_dial_attempt(peer, request_id);
                 }
             }
@@ -197,9 +205,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         if !matches!(approval_status, ApprovalStatus::Rejected) {
             // Add request to the requests of the associated connection.
             // Return if the connection closed.
-            let conn = self
-                .connections
-                .add_request(&peer, request_id, Some(connection), &RequestDirection::Inbound);
+            let conn = self.add_request(&peer, request_id, Some(connection), &RequestDirection::Inbound);
             if conn.is_none() {
                 let action = BehaviourAction::InboundFailure {
                     request_id,
@@ -213,7 +219,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         match approval_status {
             ApprovalStatus::MissingRule => {
                 // Add request to the list of requests that are awaiting a rule for that peer.
-                self.pending_inbound_requests
+                self.inbound_requests_cache
                     .insert(request_id, (peer, request, response_tx));
                 let await_rule = self.awaiting_peer_rule.entry(peer).or_default();
                 await_rule
@@ -223,7 +229,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
             }
             ApprovalStatus::MissingApproval => {
                 // Add request to the list of requests that are awaiting individual approval.
-                self.pending_inbound_requests
+                self.inbound_requests_cache
                     .insert(request_id, (peer, request, response_tx));
                 self.awaiting_approval.push((request_id, RequestDirection::Inbound));
             }
@@ -249,8 +255,16 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
 
     // Handle a new connection to a remote peer.
     pub fn on_connection_established(&mut self, peer: PeerId, id: ConnectionId, point: ConnectedPoint) {
-        let is_first_connection = !self.connections.is_connected(&peer);
-        self.connections.add_connection(peer, id, point);
+        let is_first_connection = self
+            .established_connections
+            .get(&peer)
+            .map(|established| established.connections.is_empty())
+            .unwrap_or(true);
+        self.established_connections
+            .entry(peer)
+            .or_default()
+            .connections
+            .insert(id, point);
         if !is_first_connection {
             return;
         }
@@ -258,9 +272,8 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         // Assign pending request to a connection and mark them as ready.
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
-                let (peer, request) = unwrap_or_return!(self.pending_outbound_requests.remove(&request_id));
+                let (peer, request) = unwrap_or_return!(self.outbound_requests_cache.remove(&request_id));
                 let connection = self
-                    .connections
                     .add_request(&peer, request_id, None, &RequestDirection::Outbound)
                     .expect("Peer is connected");
                 let action = BehaviourAction::OutboundOk {
@@ -276,33 +289,46 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
 
     // Handle an individual connection closing.
     // Emit failures for the pending responses on that connection.
-    pub fn on_connection_closed(&mut self, peer: PeerId, connection: &ConnectionId) {
-        let pending_res = self.connections.remove_connection(peer, connection);
-        if let Some(pending_res) = pending_res {
-            for request_id in pending_res.outbound_requests {
-                self.actions.push_back(BehaviourAction::OutboundFailure {
-                    request_id,
-                    peer,
-                    failure: OutboundFailure::ConnectionClosed,
-                })
+    pub fn on_connection_closed(&mut self, peer: PeerId, connection: &ConnectionId, remaining_established: usize) {
+        if remaining_established == 0 {
+            self.established_connections.remove(&peer);
+        } else {
+            self.established_connections
+                .entry(peer)
+                .and_modify(|established| established.connections.retain(|id, _| id != connection));
+        }
+
+        for request_id in self
+            .pending_responses_for_outbound
+            .remove(connection)
+            .unwrap_or_default()
+        {
+            self.actions.push_back(BehaviourAction::OutboundFailure {
+                request_id,
+                peer,
+                failure: OutboundFailure::ConnectionClosed,
+            })
+        }
+
+        for request_id in self
+            .pending_responses_for_inbound
+            .remove(connection)
+            .unwrap_or_default()
+        {
+            // Remove request from all queues and lists.
+            self.awaiting_approval.retain(|(r, _)| r != &request_id);
+            if let Some(requests) = self
+                .awaiting_peer_rule
+                .get_mut(&peer)
+                .and_then(|r| r.get_mut(&RequestDirection::Inbound))
+            {
+                requests.retain(|r| r != &request_id)
             }
-            for request_id in pending_res.inbound_requests {
-                // Remove request from all queues and lists.
-                self.awaiting_approval.retain(|(r, _)| r != &request_id);
-                if let Some(requests) = self
-                    .awaiting_peer_rule
-                    .get_mut(&peer)
-                    .and_then(|r| r.get_mut(&RequestDirection::Inbound))
-                {
-                    requests.retain(|r| r != &request_id)
-                }
-                self.pending_inbound_requests.remove(&request_id);
-                self.actions.push_back(BehaviourAction::InboundFailure {
-                    request_id,
-                    peer,
-                    failure: InboundFailure::ConnectionClosed,
-                })
-            }
+            self.actions.push_back(BehaviourAction::InboundFailure {
+                request_id,
+                peer,
+                failure: InboundFailure::ConnectionClosed,
+            })
         }
     }
 
@@ -311,7 +337,7 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
     pub fn on_dial_failure(&mut self, peer: PeerId) {
         if let Some(requests) = self.awaiting_connection.remove(&peer) {
             requests.into_iter().for_each(|request_id| {
-                unwrap_or_return!(self.pending_outbound_requests.remove(&request_id));
+                unwrap_or_return!(self.outbound_requests_cache.remove(&request_id));
                 let action = BehaviourAction::OutboundFailure {
                     request_id,
                     peer,
@@ -324,7 +350,12 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
 
     // Update the endpoint of a connection.
     pub fn on_address_change(&mut self, peer: PeerId, connection: ConnectionId, new: ConnectedPoint) {
-        self.connections.update_point(peer, connection, new)
+        self.established_connections
+            .entry(peer)
+            .or_default()
+            .connections
+            .entry(connection)
+            .and_modify(|e| *e = new);
     }
 
     // Handle pending requests for a newly received rule.
@@ -408,7 +439,10 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
     // Handle response / failure for a previously received request.
     // Remove the request from the list of pending responses, add failure if there is one.
     pub fn on_res_for_inbound(&mut self, peer: PeerId, request_id: RequestId, result: Result<(), InboundFailure>) {
-        self.connections.remove_request(&request_id, &RequestDirection::Inbound);
+        self.pending_responses_for_inbound
+            .values_mut()
+            .for_each(|pending| pending.retain(|id| id != &request_id));
+
         if let Err(failure) = result {
             let action = BehaviourAction::InboundFailure {
                 peer,
@@ -422,8 +456,10 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
     // Handle response / failure for a previously sent request.
     // Remove the request from the list of pending responses.
     pub fn on_res_for_outbound(&mut self, peer: PeerId, request_id: RequestId, result: Result<Rs, OutboundFailure>) {
-        self.connections
-            .remove_request(&request_id, &RequestDirection::Outbound);
+        self.pending_responses_for_outbound
+            .values_mut()
+            .for_each(|pending| pending.retain(|id| id != &request_id));
+
         let action = match result {
             Ok(response) => BehaviourAction::OutboundReceivedRes {
                 request_id,
@@ -459,7 +495,12 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
     ) {
         let connections = connection
             .map(|c| vec![c])
-            .unwrap_or_else(|| self.connections.peer_connections(&peer));
+            .or_else(|| {
+                self.established_connections
+                    .get(&peer)
+                    .map(|est| est.connections.keys().into_iter().cloned().collect())
+            })
+            .unwrap_or_default();
         for conn in connections {
             self.actions.push_back(BehaviourAction::SetProtocolSupport {
                 peer,
@@ -495,9 +536,13 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
         self.awaiting_approval.retain(|(r, _)| r != &request_id);
         let action = match direction {
             RequestDirection::Inbound => {
-                let (peer, request, response_tx) = self.pending_inbound_requests.remove(&request_id)?;
+                let (peer, request, response_tx) = self.inbound_requests_cache.remove(&request_id)?;
                 if !is_allowed {
-                    self.connections.remove_request(&request_id, direction);
+                    let pending = match direction {
+                        RequestDirection::Inbound => self.pending_responses_for_inbound.values_mut(),
+                        RequestDirection::Outbound => self.pending_responses_for_outbound.values_mut(),
+                    };
+                    pending.for_each(|p| p.retain(|id| id != &request_id));
                     BehaviourAction::InboundFailure {
                         request_id,
                         peer,
@@ -513,19 +558,17 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
                 }
             }
             RequestDirection::Outbound => {
-                let peer = self.pending_outbound_requests.get(&request_id).map(|(p, _)| *p)?;
+                let peer = self.outbound_requests_cache.get(&request_id).map(|(p, _)| *p)?;
                 if !is_allowed {
-                    self.pending_outbound_requests.remove(&request_id)?;
+                    self.outbound_requests_cache.remove(&request_id)?;
                     BehaviourAction::OutboundFailure {
                         request_id,
                         peer,
                         failure: OutboundFailure::NotPermitted,
                     }
-                } else if let Some(connection) =
-                    self.connections
-                        .add_request(&peer, request_id, None, &RequestDirection::Outbound)
+                } else if let Some(connection) = self.add_request(&peer, request_id, None, &RequestDirection::Outbound)
                 {
-                    let (peer, request) = self.pending_outbound_requests.remove(&request_id)?;
+                    let (peer, request) = self.outbound_requests_cache.remove(&request_id)?;
                     BehaviourAction::OutboundOk {
                         request_id,
                         peer,
@@ -545,9 +588,59 @@ impl<Rq, Rs> RequestManager<Rq, Rs> {
     // Get the request type of a store request.
     fn get_request_value_ref<TRq: FwRequest<Rq>>(&self, request_id: &RequestId, dir: &RequestDirection) -> Option<TRq> {
         let request = match dir {
-            RequestDirection::Inbound => self.pending_inbound_requests.get(request_id).map(|(_, rq, _)| rq),
-            RequestDirection::Outbound => self.pending_outbound_requests.get(request_id).map(|(_, rq)| rq),
+            RequestDirection::Inbound => self.inbound_requests_cache.get(request_id).map(|(_, rq, _)| rq),
+            RequestDirection::Outbound => self.outbound_requests_cache.get(request_id).map(|(_, rq)| rq),
         };
         request.map(|rq| TRq::from_request(rq))
+    }
+
+    // New request that has been sent/ received, but with no response yet.
+    // Assign the request to the provided connection or else to a random established one.
+    // Return [`None`] if there are no connections.
+    fn add_request(
+        &mut self,
+        peer: &PeerId,
+        request_id: RequestId,
+        connection: Option<ConnectionId>,
+        direction: &RequestDirection,
+    ) -> Option<ConnectionId> {
+        let connections = self.established_connections.get(peer)?.connections.keys();
+        let conn = match connection {
+            Some(conn) => {
+                // Check if the provided connection is active.
+                connections.into_iter().find(|&c| c == &conn)?;
+                conn
+            }
+            None => {
+                // Assign request to a rather random connection.
+                let index = (request_id.value() as usize) % connections.len();
+                #[allow(clippy::iter_skip_next)]
+                connections.skip(index).next().cloned()?
+            }
+        };
+        let map = match direction {
+            RequestDirection::Inbound => &mut self.pending_responses_for_inbound,
+            RequestDirection::Outbound => &mut self.pending_responses_for_outbound,
+        };
+        map.entry(conn).or_default().push(request_id);
+        Some(conn)
+    }
+}
+
+/// Information about the connection with a remote peer as maintained in the ConnectionManager.
+#[derive(Clone, Debug)]
+pub struct EstablishedConnections {
+    /// Instant since which we are connected to the remote.
+    pub start: Instant,
+    /// List of connections and their connected point
+    pub connections: HashMap<ConnectionId, ConnectedPoint>,
+}
+
+impl Default for EstablishedConnections {
+    fn default() -> Self {
+        EstablishedConnections {
+            start: Instant::now(),
+            connections: HashMap::new(),
+        }
     }
 }
