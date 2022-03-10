@@ -45,7 +45,7 @@ use crate::{
         GetNetwork, InsertNetwork, RemoveNetwork,
     },
     procedures::FatalProcedureError,
-    state::p2p::{Network, NetworkConfig, Permissions, WriteToRemoteVault},
+    state::p2p::{FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -507,17 +507,24 @@ impl Stronghold {
     /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
     /// The `key` parameter species the location in which in the config is stored, i.g.
     /// the key that was set on [`Stronghold::stop_p2p`].
+    ///
+    /// Optionally pass a [`FirewallChannelSender`] for asynchronous firewall interaction.
+    /// See [`NetworkConfig::with_async_firewall`] for more info.
     pub async fn spawn_p2p_load_config(
         &mut self,
         key: Vec<u8>,
         keypair: Option<Location>,
+        firewall_sender: Option<FirewallChannelSender>,
     ) -> Result<(), SpawnNetworkError> {
         let config_bytes = self
             .read_from_store(key.clone())
             .await?
             .ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", key)))?;
-        let config = bincode::deserialize(&config_bytes)
+        let mut config: NetworkConfig = bincode::deserialize(&config_bytes)
             .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e)))?;
+        if let Some(tx) = firewall_sender {
+            config = config.with_async_firewall(tx);
+        }
         self.spawn_p2p(config, keypair).await
     }
 

@@ -14,14 +14,21 @@ use crate::{
     Location, RecordHint, RecordId,
 };
 use actix::prelude::*;
-use futures::channel::mpsc;
+use futures::{
+    channel::{
+        mpsc::{self, TryRecvError},
+        oneshot,
+    },
+    task::{Context, Poll},
+};
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRules, FwRequest, Rule},
+    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule},
     AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest, StrongholdP2p,
     StrongholdP2pBuilder,
 };
+use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, io, marker::PhantomData, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
 
 #[cfg(test)]
 use crate::actors::secure_testing::ReadFromVault;
@@ -69,10 +76,18 @@ impl Network {
         mut network_config: NetworkConfig,
         keypair: Option<InitKeypair>,
     ) -> Result<Self, io::Error> {
-        let (firewall_tx, _) = mpsc::channel(0);
+        // If a firewall channel was given ignore the default rules and use this channel, else use a dummy
+        // firewall-channel and set the default rules.
+        let (firewall_tx, firewall_inbound) = match network_config.firewall_tx.clone() {
+            Some(tx) => (tx, None),
+            None => (
+                mpsc::channel(0).0,
+                Some(network_config.permissions_default.clone().into_rule()),
+            ),
+        };
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
         let firewall_default = FirewallRules {
-            inbound: Some(network_config.permissions_default.clone().into_rule()),
+            inbound: firewall_inbound,
             outbound: Some(Rule::AllowAll),
         };
         let peer_permissions = network_config
@@ -123,8 +138,11 @@ impl Network {
 
 /// Config for the new network.
 ///
-/// Note: [`Default`] is implemented for [`NetworkConfig`] as [`NetworkConfig::new`] with [`Permissions::allow_none()`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// [`Default`] is implemented for [`NetworkConfig`] as [`NetworkConfig::new`] with [`Permissions::allow_none()`].
+// Note: The firewall channel can not be serialized and deserialized. Therefore, the channel set via
+// [`NetworkConfig::with_async_firewall`] is dropped on serialization, and a new channel has to be provided on
+// deserialization. If none is set, the default-permissions will be used to directly approve/ reject requests.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     request_timeout: Option<Duration>,
     connection_timeout: Option<Duration>,
@@ -138,6 +156,27 @@ pub struct NetworkConfig {
 
     peer_permissions: HashMap<PeerId, Permissions>,
     permissions_default: Permissions,
+
+    #[serde(skip)]
+    firewall_tx: Option<mpsc::Sender<FirewallRequest<AccessRequest>>>,
+}
+
+impl fmt::Debug for NetworkConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("NetworkConfig")
+            .field("request_timeout", &self.request_timeout)
+            .field("connection_timeout", &self.connection_timeout)
+            .field("connections_limit", &self.connections_limit)
+            .field("enable_mdns", &self.enable_mdns)
+            .field("enable_relay", &self.enable_relay)
+            .field("addresses", &self.addresses)
+            .field("peer_client_mapping", &self.peer_client_mapping)
+            .field("client_mapping_default", &self.client_mapping_default)
+            .field("peer_permissions", &self.peer_permissions)
+            .field("permissions_default", &self.permissions_default)
+            .field("firewall_tx", &"")
+            .finish()
+    }
 }
 
 impl Default for NetworkConfig {
@@ -157,6 +196,7 @@ impl Default for NetworkConfig {
             client_mapping_default: None,
             peer_permissions: HashMap::new(),
             permissions_default: Permissions::allow_none(),
+            firewall_tx: None,
         }
     }
 }
@@ -169,6 +209,10 @@ impl NetworkConfig {
     /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id
     ///   to the local network.
     /// - [`Relay`][`libp2p::relay`] functionality is disabled.
+    ///
+    /// Note: If async firewall rules are enabled through `NetworkConfig::with_async_firewall`, the
+    /// `default_permissions` will be ignored. In this case, they only serve as fallback once the channel
+    /// gets dropped if the config is written to the stronghold store on [`Stronghold::stop_p2p`].
     pub fn new(default_permissions: Permissions) -> Self {
         NetworkConfig {
             permissions_default: default_permissions,
@@ -217,6 +261,23 @@ impl NetworkConfig {
         self
     }
 
+    /// Interact with the firewall in an asynchronous manner.
+    /// Ignore default rules in the firewall. Instead, when a remote peer sends an inbound request and no explicit
+    /// permissions have been set for this peers, a [`PermissionsRequest`] is sent through this channel to
+    /// query for the firewall rules that should be applied.
+    pub fn with_async_firewall(mut self, firewall_sender: FirewallChannelSender) -> Self {
+        self.firewall_tx = Some(firewall_sender.0);
+        self
+    }
+
+    /// Set default permissions for peers without a peer_specific rule.
+    ///
+    /// If
+    pub fn with_default_permissions(mut self, permissions: Permissions) -> Self {
+        self.permissions_default = permissions;
+        self
+    }
+
     /// Extend the peer-specific permissions.
     pub fn with_peer_permission(mut self, permissions: HashMap<PeerId, Permissions>) -> Self {
         self.peer_permissions.extend(permissions);
@@ -258,7 +319,102 @@ impl NetworkConfig {
     }
 }
 
-/// Permissions for remote peers to operate on the local vault or store of a client.
+/// Request to the user to set firewall permissions for a remote peer.
+///
+/// While this request is pending, inbound requests will be cached and only forwarded or
+/// dropped once rules have been set through [`PermissionsRequest::set_permissions`].
+pub struct PermissionsRequest {
+    peer: PeerId,
+    inner_tx: oneshot::Sender<FirewallRules<AccessRequest>>,
+}
+
+impl PermissionsRequest {
+    /// The peer for which the permissions should be set.
+    pub fn peer(&self) -> PeerId {
+        self.peer
+    }
+
+    /// Set firewall permissions for this peer, which will be used to approve pending and future
+    /// requests.
+    pub fn set_permissions(self, permissions: Permissions) -> Result<(), Permissions> {
+        let rules = FirewallRules {
+            inbound: Some(permissions.clone().into_rule()),
+            outbound: None,
+        };
+        self.inner_tx.send(rules).map_err(|_| permissions)
+    }
+}
+
+/// Sending side of a [`FirewallChannel`] created via [`FirewallChannel::new`].
+/// To be passed to the Network on init via [`NetworkConfig::with_async_firewall`].
+pub struct FirewallChannelSender(mpsc::Sender<FirewallRequest<AccessRequest>>);
+
+/// Firewall channel for asynchronous firewall interaction.
+/// For inbound requests from peers without an explicit firewall rule, this channel is used
+/// on the very first inbound request to query for permissions for this peer.
+/// If the [`FirewallChannel`] was dropped or not response is sent in time, the inbound requests will be rejected.
+#[pin_project]
+pub struct FirewallChannel {
+    #[pin]
+    inner_rx: mpsc::Receiver<FirewallRequest<AccessRequest>>,
+}
+
+impl FirewallChannel {
+    /// Create a new [`FirewallChannel`] and [`FirewallChannelSender`] pair.
+    ///
+    /// The `FirewallChannelSender` shall be passed to the `Network` on init via
+    /// [`NetworkConfig::with_async_firewall`] on init.
+    pub fn new() -> (Self, FirewallChannelSender) {
+        let (tx, rx) = mpsc::channel(10);
+        (FirewallChannel { inner_rx: rx }, FirewallChannelSender(tx))
+    }
+
+    /// Close the channel.
+    ///
+    /// See [`mpsc::Receiver::close`] for more info.
+    pub fn close(&mut self) {
+        self.inner_rx.close()
+    }
+
+    /// Tries to receive the next message.
+    ///
+    /// See [`mpsc::Receiver::try_next`] for more info.
+    pub fn try_next(&mut self) -> Result<Option<PermissionsRequest>, TryRecvError> {
+        let request = match self.inner_rx.try_next()? {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+        Ok(Some(Self::map_request(request)))
+    }
+
+    fn map_request(request: FirewallRequest<AccessRequest>) -> PermissionsRequest {
+        match request {
+            FirewallRequest::PeerSpecificRule { peer, rule_tx } => PermissionsRequest {
+                peer,
+                inner_tx: rule_tx,
+            },
+            _ => unreachable!("Rule::Ask will never be set."),
+        }
+    }
+}
+
+impl Stream for FirewallChannel {
+    type Item = PermissionsRequest;
+
+    fn poll_next(self: Pin<&mut FirewallChannel>, cx: &mut Context<'_>) -> Poll<Option<PermissionsRequest>> {
+        match self.project().inner_rx.poll_next(cx) {
+            Poll::Ready(Some(r)) => Poll::Ready(Some(Self::map_request(r))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner_rx.size_hint()
+    }
+}
+
+/// Permissions for remote peer to operate on the local vault or store of a client.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Permissions {
     default: Option<ClientPermissions>,

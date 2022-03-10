@@ -282,7 +282,10 @@ async fn test_p2p_config() {
     }
 
     // Spawn p2p again and load the config. Use the same keypair to keep the same peer-id.
-    match local_stronghold.spawn_p2p_load_config(store, Some(keys_location)).await {
+    match local_stronghold
+        .spawn_p2p_load_config(store, Some(keys_location), None)
+        .await
+    {
         Ok(()) => {}
         Err(e) => panic!("Unexpected error {}", e),
     }
