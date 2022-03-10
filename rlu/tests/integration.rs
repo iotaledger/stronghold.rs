@@ -5,20 +5,39 @@
 use lazy_static::__Deref;
 use rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use std::{
+    cell::RefCell,
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc},
 };
 use stronghold_rlu as rlu;
 
+/// This function will run before any of the tests
 #[cfg(test)]
 #[ctor::ctor]
-/// This function will be run before any of the tests
 fn init_logger() {
     let _ = env_logger::builder()
         .is_test(true)
         .filter_level(log::LevelFilter::Debug)
         .try_init();
 }
+
+#[test]
+fn reference_impl() {
+    let mut map = HashMap::new();
+    map.insert(1234567, "hello, world");
+    let mut rlu = RLU::default();
+    let rlu_var = rlu.create(map);
+
+    assert!(rlu
+        .execute(|ctx| {
+            let read = ctx.get(&rlu_var)?;
+            assert!(read.contains_key(&1234567));
+
+            Ok(())
+        })
+        .is_ok());
+}
+
 // #[ignore]
 // #[test]
 // fn test_multiple_readers_single_writer() {
@@ -420,11 +439,3 @@ fn init_logger() {
 
 //     assert_eq!(failures.load(std::sync::atomic::Ordering::SeqCst), 0);
 // }
-
-#[test]
-fn reference_impl() {
-    let rlu = RLU::default();
-    let _rlu_var = rlu.create(HashMap::<usize, usize>::new());
-
-    assert!(rlu.execute(|_ctx| { Ok(()) }).is_ok());
-}

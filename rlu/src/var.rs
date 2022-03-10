@@ -1,12 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Atomic, IntoRaw, RLU};
+use crate::{guard::BaseGuard, Result, TransactionError, RLU};
 use std::{
-    ops::{Deref, DerefMut},
+    ops::Deref,
     sync::{
-        atomic::{AtomicPtr, AtomicUsize, Ordering},
-        Arc,
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
     },
 };
 
@@ -17,7 +17,7 @@ pub struct RLUVar<T>
 where
     T: Clone,
 {
-    pub(crate) inner: Arc<AtomicPtr<InnerVar<T>>>,
+    pub(crate) inner: Arc<InnerVar<T>>,
 }
 
 impl<T> RLUVar<T>
@@ -25,41 +25,32 @@ where
     T: Clone,
 {
     /// This function returns the inner value, or None if the pointer is null
-    pub fn get(&self) -> Option<&T> {
-        match self.inner.load(Ordering::SeqCst) {
-            ptr if ptr.is_null() => None,
-            ptr => {
-                let inner = unsafe { &*ptr };
-                Some(&inner.data)
-            }
+    // pub fn get(&self) -> Option<&T> {
+    //     // match self.inner.load(Ordering::SeqCst) {
+    //     //     ptr if ptr.is_null() => None,
+    //     //     ptr => {
+    //     //         let inner = unsafe { &*ptr };
+    //     //         Some(&inner.data)
+    //     //     }
+    //     // }
+    //     todo!()
+    // }
+
+    pub fn deref_data(&self) -> Result<BaseGuard<'_, T>> {
+        match self.inner.data.lock() {
+            Ok(guard) => Ok(BaseGuard::new(guard, None)),
+            Err(e) => Err(TransactionError::Inner(e.to_string())),
         }
     }
-    /// Swaps the inner variable with another
-    ///
-    /// # Safety
-    /// This method is unsafe, as the pointer might be changed somewhere else and might not get tracked
-    /// properly
-    pub unsafe fn swap(&self, other: *mut InnerVar<T>) {
-        self.inner.swap(other, Ordering::SeqCst);
-    }
-}
 
-impl<T> Deref for RLUVar<T>
-where
-    T: Clone,
-{
-    type Target = InnerVar<T>;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.inner.load(Ordering::SeqCst) }
+    /// Returns true, if this object is an original and references a copy
+    pub(crate) fn is_locked(&self) -> bool {
+        self.inner.copy.is_some()
     }
-}
 
-impl<T> DerefMut for RLUVar<T>
-where
-    T: Clone,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.inner.load(Ordering::SeqCst) }
+    /// Returns true, if this object is an original and does not references a copy
+    pub(crate) fn is_unlocked(&self) -> bool {
+        self.inner.copy.is_none()
     }
 }
 
@@ -69,7 +60,7 @@ where
 {
     fn from(value: T) -> Self {
         RLUVar {
-            inner: Arc::new(AtomicPtr::new(InnerVar::from(value).into_raw())),
+            inner: Arc::new(InnerVar::from(value)),
         }
     }
 }
@@ -85,13 +76,24 @@ where
     }
 }
 
+impl<T> Deref for RLUVar<T>
+where
+    T: Clone,
+{
+    type Target = InnerVar<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.inner
+    }
+}
+
 pub struct InnerVarCopy<T>
 where
     T: Clone,
 {
     pub locked_thread_id: Option<AtomicUsize>,
-    pub data: Atomic<T>,
-    pub original: AtomicPtr<InnerVar<T>>,
+    pub data: Arc<Mutex<T>>,
+    pub original: Arc<InnerVar<T>>,
 }
 
 impl<T> Clone for InnerVarCopy<T>
@@ -105,8 +107,26 @@ where
                 .as_ref()
                 .map(|thread_id| AtomicUsize::new(thread_id.load(Ordering::SeqCst))),
             data: self.data.clone(),
-            original: AtomicPtr::new(self.original.load(Ordering::SeqCst)),
+            original: self.original.clone(),
         }
+    }
+}
+
+impl<T> InnerVarCopy<T>
+where
+    T: Clone,
+{
+    #[allow(deref_nullptr)]
+    /// Writes the data back to original
+    ///
+    /// # Safety
+    ///
+    /// This method is safe, as dereferencing ptr to original will be checked against null
+    pub(crate) fn write_back(&self) {
+        let inner = &self.original;
+        let mut guard = inner.data.lock().expect("");
+
+        *guard = self.data.lock().expect("Could not lock copy data").deref().clone();
     }
 }
 
@@ -116,9 +136,8 @@ where
 {
     pub locked_thread_id: Option<AtomicUsize>,
     pub ctrl: Option<RLU<T>>,
-    pub(crate) data: Atomic<T>,
-
-    pub copy: Option<AtomicPtr<InnerVarCopy<T>>>,
+    pub data: Arc<Mutex<T>>,
+    pub copy: Option<Arc<Mutex<InnerVarCopy<T>>>>,
 }
 
 impl<T> InnerVar<T>
@@ -134,6 +153,11 @@ where
     pub(crate) fn is_unlocked(&self) -> bool {
         self.copy.is_none()
     }
+
+    pub fn get(&self) -> &T {
+        // &self.data
+        todo!()
+    }
 }
 
 impl<T> From<T> for InnerVar<T>
@@ -142,7 +166,7 @@ where
 {
     fn from(value: T) -> Self {
         Self {
-            data: Atomic::from(value),
+            data: Arc::new(Mutex::new(value)),
             locked_thread_id: None,
             copy: None,
             ctrl: None,
