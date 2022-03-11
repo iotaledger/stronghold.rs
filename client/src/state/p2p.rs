@@ -266,6 +266,41 @@ impl NetworkConfig {
     /// Ignore default rules in the firewall. Instead, when a remote peer sends an inbound request and no explicit
     /// permissions have been set for this peers, a [`PermissionsRequest`] is sent through this channel to
     /// query for the firewall rules that should be applied.
+    ///
+    /// ```
+    /// # use iota_stronghold::{p2p::{FirewallChannel, NetworkConfig, Permissions}, Stronghold};
+    /// # use futures::StreamExt;
+    /// #
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let client_path = "client".as_bytes().into();
+    /// #
+    /// let mut stronghold = Stronghold::init_stronghold_system(client_path, vec![]).await?;
+    ///
+    /// // Configure the network to use the firewall channel instead of the default permissions.
+    /// let (firewall_tx, mut firewall_rx) = FirewallChannel::new();
+    /// let mut config = NetworkConfig::new(Permissions::default()).with_async_firewall(firewall_tx);
+    ///
+    /// stronghold.spawn_p2p(config, None).await?;
+    /// stronghold.start_listening(None).await??;
+    ///
+    /// // Spawn a new task to handle the messages sent through the firewall channel.
+    /// actix::System::current().arbiter().spawn(async move {
+    ///     loop {
+    ///         // For each remote peer without individual permissions, a PermissionsRequest is received here.
+    ///         let permission_setter = firewall_rx.select_next_some().await;
+    ///         let sender = permission_setter.peer();
+    ///
+    ///         // Do some logic to set rules for this peer, e.g. by asking the user.
+    ///         let permissions = todo!();
+    ///
+    ///         // Apply the rule for pending and future requests.
+    ///         let _ = permission_setter.set_permissions(permissions);
+    ///     }
+    /// });
+    /// #
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_async_firewall(mut self, firewall_sender: FirewallChannelSender) -> Self {
         self.firewall_tx = Some(firewall_sender.0);
         self
@@ -422,13 +457,36 @@ impl FusedStream for FirewallChannel {
 }
 
 /// Permissions for remote peer to operate on the local vault or store of a client.
+///
+/// Example configuration that:
+/// - Per default only allows remote peers to use secrets, but not copy any or write to the vault.
+/// - Allows to specific client `open_client` full access.
+///
+/// ```
+/// # use iota_stronghold::p2p::{Permissions, ClientAccess};
+/// # let open_client = Vec::new();
+/// // Only allow to use secrets, but not to clone them or write to the vault.
+/// let default = ClientAccess::default().with_default_vault_access(true, false, false);
+/// // Create permissions, add exception to allow full access to the client at path `open_client`.
+/// let permissions = Permissions::new(default).with_client_permissions(open_client, ClientAccess::allow_all());
+/// ```
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Permissions {
-    default: ClientPermissions,
-    exceptions: HashMap<Vec<u8>, ClientPermissions>,
+    default: ClientAccess,
+    exceptions: HashMap<Vec<u8>, ClientAccess>,
 }
 
 impl Permissions {
+    /// Set `default` permissions to restrict access to the vaults and store of all clients.
+    ///
+    /// Exceptions for specific client-paths can be set via [`Permissions::with_client_permissions`].
+    pub fn new(default: ClientAccess) -> Self {
+        Permissions {
+            default,
+            ..Default::default()
+        }
+    }
+
     /// No operations are permitted.
     pub fn allow_none() -> Self {
         Self::default()
@@ -438,19 +496,19 @@ impl Permissions {
     /// to the store,
     pub fn allow_all() -> Self {
         Self {
-            default: ClientPermissions::allow_all(),
+            default: ClientAccess::allow_all(),
             ..Default::default()
         }
     }
 
     /// Set default permissions for accessing all clients without any explicit rules.
-    pub fn with_default_permissions(mut self, permissions: ClientPermissions) -> Self {
+    pub fn with_default_permissions(mut self, permissions: ClientAccess) -> Self {
         self.default = permissions;
         self
     }
 
     /// Set permissions for access to specific `client_path`s.
-    pub fn with_client_permissions(mut self, client_path: Vec<u8>, permissions: ClientPermissions) -> Self {
+    pub fn with_client_permissions(mut self, client_path: Vec<u8>, permissions: ClientAccess) -> Self {
         self.exceptions.insert(client_path, permissions);
         self
     }
@@ -472,8 +530,13 @@ impl Permissions {
 }
 
 /// Restrict access to the vaults and store of a specific client.
+///
+/// - `use_` grants the remote temporary access to use the vault's secret in a procedure.
+/// - `write` permits the remote to write to the vault, including the permission to delete secrets.
+/// - `clone_` allow the remote to sync with this vault and to clone secrets to their own vault. If the remote cloned a
+///   secret, it is not possible to revoke their access to it anymore.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ClientPermissions {
+pub struct ClientAccess {
     use_vault_default: bool,
     use_vault_exceptions: HashMap<Vec<u8>, bool>,
 
@@ -487,7 +550,28 @@ pub struct ClientPermissions {
     write_store: bool,
 }
 
-impl ClientPermissions {
+impl ClientAccess {
+    /// Set `default` permissions to restrict access to the vaults and store of a clients.
+    /// Exceptions for specific client-paths can be set via [`ClientAccess::with_vault_access`].
+    ///
+    /// See [`ClientAccess`] docs for more info in the parameters.
+    pub fn new(
+        use_vault_default: bool,
+        write_vault_default: bool,
+        clone_vault_default: bool,
+        read_store: bool,
+        write_store: bool,
+    ) -> Self {
+        ClientAccess {
+            use_vault_default,
+            write_vault_default,
+            clone_vault_default,
+            read_store,
+            write_store,
+            ..Default::default()
+        }
+    }
+
     /// No access to any structures of the vault is permitted.
     pub fn allow_none() -> Self {
         Self::default()
@@ -496,7 +580,7 @@ impl ClientPermissions {
     /// All operations on the client are permitted.
     /// This include reading, writing and cloning secrets, and reading/ writing to the store,
     pub fn allow_all() -> Self {
-        ClientPermissions {
+        ClientAccess {
             use_vault_default: true,
             write_vault_default: true,
             clone_vault_default: true,
@@ -508,10 +592,7 @@ impl ClientPermissions {
 
     /// Set default permission for accessing vaults in this client.
     ///
-    /// - `use_` grants the remote temporary access to use the vault's secret in a procedure.
-    /// - `write` permits the remote to write to the vault, including the permission to delete secrets.
-    /// - `clone_` allow the remote to sync with this vault and to clone secrets to their own vault. If the remote
-    ///   cloned a secret, it is not possible to revoke their access to it anymore.
+    /// See [`ClientAccess`] docs for more info in the parameters.
     pub fn with_default_vault_access(mut self, use_: bool, write: bool, clone_: bool) -> Self {
         self.use_vault_default = use_;
         self.write_vault_default = write;
@@ -521,7 +602,7 @@ impl ClientPermissions {
 
     /// Set specific permissions for accessing the vault at `vault_path`.
     ///
-    /// See [`ClientPermissions::with_default_vault_access`] for more info in the parameters.
+    /// See [`ClientAccess`] docs for more info in the parameters.
     pub fn with_vault_access(mut self, vault_path: Vec<u8>, use_: bool, write: bool, clone_: bool) -> Self {
         self.use_vault_exceptions.insert(vault_path.clone(), use_);
         self.write_vault_exceptions.insert(vault_path.clone(), write);

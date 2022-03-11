@@ -56,7 +56,7 @@ pub mod p2p {
         actors::network_messages::SwarmInfo,
         interface::{P2pError, P2pResult, SpawnNetworkError},
         state::p2p::{
-            ClientPermissions, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions, PermissionsRequest,
+            ClientAccess, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions, PermissionsRequest,
             Request, ShRequest, ShResult,
         },
     };

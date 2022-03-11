@@ -4,7 +4,7 @@
 use crate::{
     p2p::{identity::Keypair, NetworkConfig, OutboundFailure, P2pError, PeerId, Permissions, SwarmInfo},
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
-    state::p2p::{ClientPermissions, FirewallChannel, FirewallChannelSender},
+    state::p2p::{ClientAccess, FirewallChannel, FirewallChannelSender},
     tests::fresh,
     Location, Stronghold,
 };
@@ -362,7 +362,7 @@ async fn test_p2p_firewall() {
 
         // Allow `write` only on vault `allowed_vault_path_clone` in client `allowed_client_path_clone`.
         let client_permissions =
-            ClientPermissions::allow_none().with_vault_access(allowed_vault_path_clone, false, true, false);
+            ClientAccess::allow_none().with_vault_access(allowed_vault_path_clone, false, true, false);
         let permissions =
             Permissions::allow_none().with_client_permissions(allowed_client_path_clone, client_permissions);
         permission_setter.set_permissions(permissions).unwrap();
@@ -370,7 +370,7 @@ async fn test_p2p_firewall() {
     assert!(spawned_remote);
 
     let (done_tx, done_rx) = oneshot::channel();
-    let spawned_local = arbiter.spawn(async move {
+    let spawned_local = actix::System::current().arbiter().spawn(async move {
         let loc1 = Location::generic(allowed_vault_path.clone(), fresh::bytestring(1024));
 
         let res = local_stronghold
