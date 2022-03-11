@@ -8,7 +8,7 @@ You can build the Stronghold-p2p crate separately from Stronghold, as well as us
 ## Transmission of Data
 
 Data is transmitted via a [TCP](https://en.wikipedia.org/wiki/Transmission_Control_Protocol) transport with additional support for [Websockets](https://en.wikipedia.org/wiki/WebSocket) and [DNS](https://en.wikipedia.org/wiki/Domain_Name_System) resolution.
-The transport is "upgraded" with the [Yamux Protocol](https://github.com/hashicorp/yamux/blob/master/spec.md) for multiplexing, and a [Noise](https://noiseprotocol.org/noise.html) protocol that implements end-to-end encryption. 
+The transport is "upgraded" with the [Yamux Protocol](https://github.com/hashicorp/yamux/blob/master/spec.md) for multiplexing, and a [Noise](https://noiseprotocol.org/noise.html) protocol that implements end-to-end encryption.
 
 The Noise-handshake is based on the [Diffie-Helllman key exchange](https://en.wikipedia.org/wiki/Diffie%E2%80%93Hellman_key_exchange) and allows two peers that have no prior knowledge of each other to create a shared secret key over an insecure medium. Stronghold-p2p uses the [XX-Pattern](http://noiseprotocol.org/noise.html#interactive-handshake-patterns-fundamental) for the handshake.
 
@@ -20,4 +20,4 @@ If the two peers are in two different networks without public IP addresses, Stro
 
 ## Firewall
 
-Stronghold-p2p's network protocol implements a low-level firewall. The firewall approves or rejects each inbound and outbound request based on default and peer-specific rules. In addition to fixed rules, requests may also be approved or rejected individually in an asynchronous manner.
+Stronghold-p2p's network protocol implements a low-level firewall. The firewall approves or rejects each inbound request based on default and peer-specific rules. In addition to fixed rules, requests may also be approved or rejected individually in an asynchronous manner.

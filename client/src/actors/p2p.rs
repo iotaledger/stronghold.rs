@@ -10,10 +10,7 @@ use actix::prelude::*;
 use engine::vault::ClientId;
 use futures::{FutureExt, TryFutureExt};
 use messages::*;
-use p2p::{
-    firewall::RuleDirection, DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest,
-    RelayNotSupported,
-};
+use p2p::{DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported};
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
@@ -145,13 +142,9 @@ impl Handler<SetFirewallDefault> for Network {
         let default_permissions = self._config.permissions_default_mut();
         *default_permissions = msg.permissions.clone();
         let mut network = self.network.clone();
-        async move {
-            network
-                .set_firewall_default(RuleDirection::Inbound, msg.permissions.into_rule())
-                .await
-        }
-        .into_actor(self)
-        .boxed_local()
+        async move { network.set_firewall_default(Some(msg.permissions.into_rule())).await }
+            .into_actor(self)
+            .boxed_local()
     }
 }
 
@@ -163,13 +156,9 @@ impl Handler<SetFirewallRule> for Network {
             .peer_permissions_mut()
             .insert(msg.peer, msg.permissions.clone());
         let mut network = self.network.clone();
-        async move {
-            network
-                .set_firewall_default(RuleDirection::Inbound, msg.permissions.into_rule())
-                .await
-        }
-        .into_actor(self)
-        .boxed_local()
+        async move { network.set_peer_rule(msg.peer, msg.permissions.into_rule()).await }
+            .into_actor(self)
+            .boxed_local()
     }
 }
 
@@ -179,7 +168,7 @@ impl Handler<RemoveFirewallRule> for Network {
     fn handle(&mut self, msg: RemoveFirewallRule, _: &mut Self::Context) -> Self::Result {
         self._config.peer_permissions_mut().remove(&msg.peer);
         let mut network = self.network.clone();
-        async move { network.remove_peer_rule(msg.peer, RuleDirection::Inbound).await }
+        async move { network.remove_peer_rule(msg.peer).await }
             .into_actor(self)
             .boxed_local()
     }

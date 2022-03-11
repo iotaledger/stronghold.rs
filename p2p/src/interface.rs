@@ -13,7 +13,7 @@ pub use types::*;
 
 use crate::{
     behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
-    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule, RuleDirection},
+    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule},
     AddressInfo, RelayNotSupported,
 };
 
@@ -49,8 +49,8 @@ use std::{io, time::Duration};
 /// The firewall allows the user to set default-, and peer-specific firewall rules which are used
 /// to approve each inbound and outbound request. Apart from static rules, the firewall-channel
 /// may be used for asynchronous rules:
-/// 1. If no firewall rules are set for a peer and a request occurs, a [`FirewallRequest::PeerSpecificRule`]
-///    is sent through the channel. The responded rules are then set as firewall rules  for this peer.
+/// 1. If no firewall rule is set for a peer and a request occurs, a [`FirewallRequest::PeerSpecificRule`]
+///    is sent through the channel. The responded rule is then set as firewall rule  for this peer.
 ///    If the user does not response in time or the receiving side of the channel was dropped, the request is rejected.
 /// 2. If [`Rule::Ask`] has been set, a [`FirewallRequest::RequestApproval`] is sent on each request for
 ///    individual approval. If the user does not response in time or the receiving side of the channel was dropped, the
@@ -249,14 +249,12 @@ where
     }
 
     /// Set the default configuration for the firewall.
-    /// The default rules are used for peers that do not have any explicit rules.
-    pub async fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule<TRq>) {
+    ///
+    /// If the rule is `None` a [`FirewallRequest::PeerSpecificRule`]
+    /// request will be sent through the firewall channel when peers without a rule are sending a request.
+    pub async fn set_firewall_default(&mut self, default: Option<Rule<TRq>>) {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SetFirewallDefault {
-            direction,
-            default,
-            tx_yield,
-        };
+        let command = SwarmOperation::SetFirewallDefault { default, tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -272,34 +270,25 @@ where
     /// Remove a default firewall rule.
     /// If there is no default rule and no peer-specific rule, a [`FirewallRequest::PeerSpecificRule`]
     /// request will be sent through the firewall channel
-    pub async fn remove_firewall_default(&mut self, direction: RuleDirection) {
+    pub async fn remove_firewall_default(&mut self) {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemoveFirewallDefault { direction, tx_yield };
+        let command = SwarmOperation::RemoveFirewallDefault { tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
-    pub async fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule<TRq>) {
+    pub async fn set_peer_rule(&mut self, peer: PeerId, rule: Rule<TRq>) {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SetPeerRule {
-            peer,
-            direction,
-            rule,
-            tx_yield,
-        };
+        let command = SwarmOperation::SetPeerRule { peer, rule, tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Remove a peer specific rule, which will result in using the firewall default rules.
-    pub async fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
+    pub async fn remove_peer_rule(&mut self, peer: PeerId) {
         let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemovePeerRule {
-            peer,
-            direction,
-            tx_yield,
-        };
+        let command = SwarmOperation::RemovePeerRule { peer, tx_yield };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }

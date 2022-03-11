@@ -23,7 +23,7 @@ use futures::{
     task::{Context, Poll},
 };
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule},
+    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule},
     AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest, StrongholdP2p,
     StrongholdP2pBuilder,
 };
@@ -77,9 +77,9 @@ impl Network {
         mut network_config: NetworkConfig,
         keypair: Option<InitKeypair>,
     ) -> Result<Self, io::Error> {
-        // If a firewall channel was given ignore the default rules and use this channel, else use a dummy
-        // firewall-channel and set the default rules.
-        let (firewall_tx, firewall_inbound) = match network_config.firewall_tx.clone() {
+        // If a firewall channel was given ignore the default rule and use this channel, else use a dummy
+        // firewall-channel and set the default rule.
+        let (firewall_tx, firewall_default) = match network_config.firewall_tx.clone() {
             Some(tx) => (tx, None),
             None => (
                 mpsc::channel(0).0,
@@ -87,21 +87,11 @@ impl Network {
             ),
         };
         let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let firewall_default = FirewallRules {
-            inbound: firewall_inbound,
-            outbound: Some(Rule::AllowAll),
-        };
         let peer_permissions = network_config
             .peer_permissions
             .clone()
             .into_iter()
-            .map(|(peer, permissions)| {
-                let rules = FirewallRules {
-                    inbound: Some(permissions.into_rule()),
-                    outbound: Some(Rule::AllowAll),
-                };
-                (peer, rules)
-            })
+            .map(|(peer, permissions)| (peer, permissions.into_rule()))
             .collect();
         let firewall_config = FirewallConfiguration {
             default: firewall_default,
@@ -360,7 +350,7 @@ impl NetworkConfig {
 /// dropped once rules have been set through [`PermissionsRequest::set_permissions`].
 pub struct PermissionsRequest {
     peer: PeerId,
-    inner_tx: oneshot::Sender<FirewallRules<AccessRequest>>,
+    inner_tx: oneshot::Sender<Rule<AccessRequest>>,
 }
 
 impl PermissionsRequest {
@@ -372,11 +362,9 @@ impl PermissionsRequest {
     /// Set firewall permissions for this peer, which will be used to approve pending and future
     /// requests.
     pub fn set_permissions(self, permissions: Permissions) -> Result<(), Permissions> {
-        let rules = FirewallRules {
-            inbound: Some(permissions.clone().into_rule()),
-            outbound: None,
-        };
-        self.inner_tx.send(rules).map_err(|_| permissions)
+        self.inner_tx
+            .send(permissions.clone().into_rule())
+            .map_err(|_| permissions)
     }
 }
 

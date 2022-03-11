@@ -18,7 +18,7 @@ use libp2p::{
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
-use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule, RuleDirection};
+use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule};
 
 pub type Ack = ();
 
@@ -107,23 +107,19 @@ pub enum SwarmOperation<Rq, Rs, TRq> {
         tx_yield: oneshot::Sender<FirewallConfiguration<TRq>>,
     },
     SetFirewallDefault {
-        direction: RuleDirection,
-        default: Rule<TRq>,
+        default: Option<Rule<TRq>>,
         tx_yield: oneshot::Sender<Ack>,
     },
     RemoveFirewallDefault {
-        direction: RuleDirection,
         tx_yield: oneshot::Sender<Ack>,
     },
     SetPeerRule {
         peer: PeerId,
-        direction: RuleDirection,
         rule: Rule<TRq>,
         tx_yield: oneshot::Sender<Ack>,
     },
     RemovePeerRule {
         peer: PeerId,
-        direction: RuleDirection,
         tx_yield: oneshot::Sender<Ack>,
     },
 
@@ -463,33 +459,20 @@ where
                 let fw_default = self.swarm.behaviour().get_firewall_config().clone();
                 let _ = tx_yield.send(fw_default);
             }
-            SwarmOperation::SetFirewallDefault {
-                direction,
-                default,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().set_firewall_default(direction, default);
+            SwarmOperation::SetFirewallDefault { default, tx_yield } => {
+                self.swarm.behaviour_mut().set_firewall_default(default);
                 let _ = tx_yield.send(());
             }
-            SwarmOperation::RemoveFirewallDefault { direction, tx_yield } => {
-                self.swarm.behaviour_mut().remove_firewall_default(direction);
+            SwarmOperation::RemoveFirewallDefault { tx_yield } => {
+                self.swarm.behaviour_mut().remove_firewall_default();
                 let _ = tx_yield.send(());
             }
-            SwarmOperation::SetPeerRule {
-                peer,
-                direction,
-                rule,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().set_peer_rule(peer, direction, rule);
+            SwarmOperation::SetPeerRule { peer, rule, tx_yield } => {
+                self.swarm.behaviour_mut().set_peer_rule(peer, rule);
                 let _ = tx_yield.send(());
             }
-            SwarmOperation::RemovePeerRule {
-                peer,
-                direction,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().remove_peer_rule(peer, direction);
+            SwarmOperation::RemovePeerRule { peer, tx_yield } => {
+                self.swarm.behaviour_mut().remove_peer_rule(peer);
                 let _ = tx_yield.send(());
             }
             SwarmOperation::BanPeer { peer, tx_yield } => {

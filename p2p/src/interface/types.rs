@@ -84,15 +84,6 @@ pub struct Listener {
     pub uses_relay: Option<PeerId>,
 }
 
-/// Direction of a request.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RequestDirection {
-    /// Inbound requests sent from a remote peer.
-    Inbound,
-    /// Outbound requests sent to a remote peer.
-    Outbound,
-}
-
 /// Events happening in the Network.
 /// Includes events about connection and listener status as well as potential failures when receiving
 /// request-response messages.

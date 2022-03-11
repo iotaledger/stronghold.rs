@@ -22,9 +22,9 @@ mod handler;
 mod request_manager;
 use self::firewall::FwRequest;
 pub use self::request_manager::{ConnectedPoint, ConnectionId, EstablishedConnections};
-use crate::{InboundFailure, OutboundFailure, RequestDirection, RequestId, RqRsMessage};
+use crate::{InboundFailure, OutboundFailure, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
-use firewall::{FirewallConfiguration, FirewallRequest, FirewallRules, Rule, RuleDirection};
+use firewall::{FirewallConfiguration, FirewallRequest, Rule};
 use futures::{
     channel::{
         mpsc::{self, SendError},
@@ -37,7 +37,7 @@ use futures::{
     FutureExt, StreamExt, TryFutureExt,
 };
 pub use handler::MessageProtocol;
-use handler::{Handler, HandlerInEvent, HandlerOutEvent, ProtocolSupport};
+use handler::{Handler, HandlerInEvent, HandlerOutEvent};
 use libp2p::{
     core::{connection::ListenerId, either::EitherOutput, Multiaddr, PeerId},
     mdns::Mdns,
@@ -67,7 +67,7 @@ type ProtoHandler<Rq, Rs> = IntoConnectionHandlerSelect<
 >;
 
 // Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
-type PendingPeerRuleRequest<TRq> = BoxFuture<'static, (PeerId, Option<FirewallRules<TRq>>)>;
+type PendingPeerRuleRequest<TRq> = BoxFuture<'static, (PeerId, Option<Rule<TRq>>)>;
 // Future for a pending responses to a sent [`FirewallRequest::RequestApproval`].
 type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
 
@@ -263,68 +263,49 @@ where
     /// Send a new request to a remote peer.
     pub fn send_request(&mut self, peer: PeerId, request: Rq) -> RequestId {
         let request_id = RequestId::next(&self.next_request_id);
-        let approval_status = self.check_approval_status(peer, request_id, &request, RequestDirection::Outbound);
-        self.request_manager
-            .on_new_out_request(peer, request_id, request, approval_status);
+        self.request_manager.on_new_out_request(peer, request_id, request);
         request_id
     }
 
-    /// Get the current default rules for the firewall.
-    /// The default rules are used for peers that do not have any explicit rules.
+    /// Get the current default  for the firewall.
     pub fn get_firewall_config(&self) -> &FirewallConfiguration<TRq> {
         &self.firewall
     }
 
     /// Set the default configuration for the firewall.
-    /// The default rules are used for peers that do not have any explicit rules.
-    pub fn set_firewall_default(&mut self, direction: RuleDirection, default: Rule<TRq>) {
-        self.firewall.set_default(Some(default), direction);
+    pub fn set_firewall_default(&mut self, default: Option<Rule<TRq>>) {
+        self.firewall.set_default(default);
         self.request_manager.connected_peers().into_iter().for_each(|peer| {
-            if let Some(rules) = self.firewall.get_rules(&peer) {
-                if (rules.inbound.is_some() || !direction.is_inbound())
-                    && (rules.outbound.is_some() || !direction.is_outbound())
-                {
-                    return;
-                }
+            if self.firewall.get_rule(&peer).is_none() {
+                self.handle_updated_peer_rule(peer);
             }
-            self.handle_updated_peer_rule(peer, direction);
         })
     }
 
     /// Remove a default firewall rule.
     /// If there is no default rule and no peer-specific rule, a [`FirewallRequest::PeerSpecificRule`]
     /// request will be sent through the firewall channel
-    pub fn remove_firewall_default(&mut self, direction: RuleDirection) {
-        let old_rules = self.firewall.get_default_rules();
-        let is_change = (old_rules.inbound.is_some() && direction.is_inbound())
-            || (old_rules.inbound.is_some() && direction.is_inbound());
-        self.firewall.set_default(None, direction);
-        if is_change {
-            self.request_manager.connected_peers().iter().for_each(|peer| {
-                // Check if peer is affected
-                if let Some(rules) = self.firewall.get_rules(peer) {
-                    if (rules.inbound.is_some() || !direction.is_inbound())
-                        && (rules.outbound.is_some() || !direction.is_outbound())
-                    {
-                        // Skip peer if they have explicit rules for the direction and hence are not affected
-                        return;
-                    }
-                }
-                self.handle_updated_peer_rule(*peer, direction);
-            })
+    pub fn remove_firewall_default(&mut self) {
+        if self.firewall.get_default_rule().is_none() {
+            return;
         }
+        self.request_manager.connected_peers().into_iter().for_each(|peer| {
+            if self.firewall.get_rule(&peer).is_none() {
+                self.handle_updated_peer_rule(peer);
+            }
+        })
     }
 
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
-    pub fn set_peer_rule(&mut self, peer: PeerId, direction: RuleDirection, rule: Rule<TRq>) {
-        self.firewall.set_rule(peer, Some(rule), direction);
-        self.handle_updated_peer_rule(peer, direction);
+    pub fn set_peer_rule(&mut self, peer: PeerId, rule: Rule<TRq>) {
+        self.firewall.set_rule(peer, rule);
+        self.handle_updated_peer_rule(peer);
     }
 
-    /// Remove a peer specific rule, which will result in using the firewall default rules.
-    pub fn remove_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
-        self.firewall.set_rule(peer, None, direction);
-        self.handle_updated_peer_rule(peer, direction);
+    /// Remove a peer specific rule, which will result in using the firewall default rule.
+    pub fn remove_peer_rule(&mut self, peer: PeerId) {
+        self.firewall.remove_rule(&peer);
+        self.handle_updated_peer_rule(peer);
     }
 
     /// Add an address for the remote peer.
@@ -401,20 +382,9 @@ where
     }
 
     // Check the approval status of the request and add queries to the firewall if necessary.
-    fn check_approval_status(
-        &mut self,
-        peer: PeerId,
-        request_id: RequestId,
-        request: &Rq,
-        direction: RequestDirection,
-    ) -> ApprovalStatus {
-        // Check the firewall rules for the target peer and direction.
-        let rules = self.firewall.get_effective_rules(&peer);
-        let rule = match direction {
-            RequestDirection::Inbound => rules.inbound,
-            RequestDirection::Outbound => rules.outbound,
-        };
-        match rule {
+    fn check_approval_status(&mut self, peer: PeerId, request_id: RequestId, request: &Rq) -> ApprovalStatus {
+        // Check the firewall rule for the target peer.
+        match self.firewall.get_effective_rule(&peer) {
             None => {
                 // Query for a new peer specific rule.
                 self.query_peer_rule(peer);
@@ -422,7 +392,7 @@ where
             }
             Some(Rule::Ask) => {
                 // Query for individual approval for the requests.
-                self.query_request_approval(peer, request_id, TRq::from_request(request), direction);
+                self.query_request_approval(peer, request_id, TRq::from_request(request));
                 ApprovalStatus::MissingApproval
             }
             Some(Rule::AllowAll) => ApprovalStatus::Approved,
@@ -438,15 +408,15 @@ where
     }
 
     fn new_request_response_handler(&mut self, peer: Option<PeerId>) -> Handler<Rq, Rs> {
-        let protocol_support = match peer {
-            Some(peer) => ProtocolSupport::from_rules(&self.firewall.get_effective_rules(&peer)),
-            None => ProtocolSupport::Full,
+        let inbound_support = match peer {
+            Some(peer) => !matches!(self.firewall.get_effective_rule(&peer), Some(Rule::RejectAll)),
+            None => true,
         };
         // Use full protocol support on init.
-        // Once the connection is established, this will be updated with the effective rules for the remote peer.
+        // Once the connection is established, this will be updated with the effective rule for the remote peer.
         Handler::new(
             self.config.supported_protocols.clone(),
-            protocol_support,
+            inbound_support,
             self.config.connection_timeout,
             self.config.request_timeout,
             self.next_request_id.clone(),
@@ -468,7 +438,7 @@ where
                 request,
                 response_tx,
             } => {
-                let approval_status = self.check_approval_status(peer, request_id, &request, RequestDirection::Inbound);
+                let approval_status = self.check_approval_status(peer, request_id, &request);
                 self.request_manager.on_new_in_request(
                     peer,
                     request_id,
@@ -532,7 +502,7 @@ where
 
                 }
             })
-            .map_ok_or_else(move |()| (peer, None), move |rules| (peer, Some(rules)))
+            .map_ok_or_else(move |()| (peer, None), move |rule| (peer, Some(rule)))
             .boxed();
         self.pending_rule_rqs.push(future);
         self.rule_rq_handles.insert(peer, abort_handle_tx);
@@ -544,14 +514,13 @@ where
     //
     // A clone of the response-sender is handed. It is polled while a response from the firewall
     // is awaited
-    fn query_request_approval(&mut self, peer: PeerId, request_id: RequestId, rq: TRq, direction: RequestDirection) {
+    fn query_request_approval(&mut self, peer: PeerId, request_id: RequestId, rq: TRq) {
         let (approval_tx, approval_rx) = oneshot::channel();
         let (abort_handle_tx, abort_handle_rx) = oneshot::channel();
         let timeout = Delay::new(self.config.firewall_timeout);
 
         let firewall_req = FirewallRequest::RequestApproval {
             peer,
-            direction,
             request: rq,
             approval_tx,
         };
@@ -582,15 +551,15 @@ where
     }
 
     // Handle a changed firewall rule for a peer.
-    fn handle_updated_peer_rule(&mut self, peer: PeerId, direction: RuleDirection) {
-        // Set protocol support for the active handlers according to the new rules.
-        let rules = self.firewall.get_effective_rules(&peer);
-        let set_support = ProtocolSupport::from_rules(&rules);
-        self.request_manager.set_protocol_support(peer, None, set_support);
+    fn handle_updated_peer_rule(&mut self, peer: PeerId) {
+        // Set inbound protocol support for the active handlers according to the new rule.
+        let rule = self.firewall.get_effective_rule(&peer);
+        let inbound_support = !matches!(rule, Some(Rule::RejectAll));
+        self.request_manager.set_inbound_support(peer, None, inbound_support);
         // Query for individual request approval due to [`Rule::Ask`].
-        if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rules, direction) {
-            ask_reqs.into_iter().for_each(|(id, rq, dir)| {
-                self.query_request_approval(peer, id, rq, dir);
+        if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rule.cloned()) {
+            ask_reqs.into_iter().for_each(|(id, rq)| {
+                self.query_request_approval(peer, id, rq);
             })
         }
     }
@@ -630,17 +599,12 @@ where
         // Drive mdns.
         let _ = self.mdns.poll(cx, _params);
 
-        // Update firewall rules if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
-        while let Poll::Ready(Some((peer, rules))) = self.pending_rule_rqs.poll_next_unpin(cx) {
-            if let Some(FirewallRules { inbound, outbound }) = rules {
-                if inbound.is_some() {
-                    self.firewall.set_rule(peer, inbound, RuleDirection::Inbound)
-                }
-                if outbound.is_some() {
-                    self.firewall.set_rule(peer, outbound, RuleDirection::Outbound)
-                }
+        // Update firewall rule if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
+        while let Poll::Ready(Some((peer, rule))) = self.pending_rule_rqs.poll_next_unpin(cx) {
+            if let Some(rule) = rule {
+                self.firewall.set_rule(peer, rule);
             }
-            self.handle_updated_peer_rule(peer, RuleDirection::Both);
+            self.handle_updated_peer_rule(peer);
         }
 
         // Handle individual approvals for requests that were returned after a [`FirewallRequest::RequestApproval`]
@@ -737,12 +701,12 @@ where
                     handler: self.new_handler_for_peer(Some(peer)),
                     opts: DialOpts::peer_id(peer).condition(PeerCondition::Disconnected).build(),
                 },
-                BehaviourAction::SetProtocolSupport {
+                BehaviourAction::SetInboundSupport {
                     peer,
                     connection,
                     support,
                 } => {
-                    let event = HandlerInEvent::SetProtocolSupport(support);
+                    let event = HandlerInEvent::SetInboundSupport(support);
                     NetworkBehaviourAction::NotifyHandler {
                         peer_id: peer,
                         handler: NotifyHandler::One(connection),
@@ -776,13 +740,13 @@ where
         _other_established: usize,
     ) {
         // If the remote connected to us and there is no rule for inbound requests yet, query firewall.
-        if endpoint.is_listener() && self.firewall.get_effective_rules(peer).inbound.is_none() {
+        if endpoint.is_listener() && self.firewall.get_effective_rule(peer).is_none() {
             self.query_peer_rule(*peer);
         }
         // Set the protocol support for the remote peer.
-        let support = ProtocolSupport::from_rules(&self.firewall.get_effective_rules(peer));
+        let support_inbound = !matches!(self.firewall.get_effective_rule(peer), Some(Rule::RejectAll));
         self.request_manager
-            .set_protocol_support(*peer, Some(*connection), support);
+            .set_inbound_support(*peer, Some(*connection), support_inbound);
 
         if let Some(addrs) = failed_addresses {
             for addr in addrs {
@@ -814,7 +778,7 @@ where
     ) {
         self.request_manager
             .on_connection_closed(*peer, connection, remaining_established);
-        // Abort pending requests for firewall rules, if the peer completely disconnected.
+        // Abort pending requests for firewall rule, if the peer completely disconnected.
         if remaining_established == 0 {
             let _ = self.rule_rq_handles.remove(peer);
         }

@@ -691,7 +691,7 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Change the default firewall rule. All inbound requests from peers without individual rules will be
+    /// Change the default firewall rule. All inbound requests from peers without an individual rule will be
     /// approved/ rejected based on this rule.
     ///
     /// **Note:** This rule is only active if the [`NetworkConfig::with_async_firewall`] was **not** enabled on init.
@@ -739,7 +739,7 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Remove individual client mapping for a peer, so that the settings rules apply.
+    /// Remove individual client mapping for a peer, so that the default setting applies.
     pub async fn remove_client_mapping(&self, peer: PeerId) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
         actor.send(network_messages::RemoveClientMapping { peer }).await?;

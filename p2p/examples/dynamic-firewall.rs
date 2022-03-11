@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This example demonstrates a dynamic usage of the Stronghold-P2p firewall.
-//! Instead setting fixed rules, it dynamically asks the user to set firewall rules for each peer that connects.
+//! Instead setting fixed rules, it dynamically asks the user to set a firewall rule for each peer that connects.
 //!
 //! There are two different types of requests we can send to a remote:
 //! - Ping: `-p <remote-peer-id>` -> A Pong will automatically be sent back as response
 //! - Message `-p <remote-peer-id> -m <message>` -> Remote has 20s time to type a response message.
 //!
-//! Per default all outbound requests are permitted, and no rules are set for inbound requests.
+//! Per default no rule is set for inbound requests.
 //! When a Alice then would like to send a request to Bob for the first time, Bob is prompted to set
 //! a general firewall rule for requests from Alice. The following options are provided
 //! - yes: Permit all requests from Alice
@@ -39,7 +39,7 @@
 //! ```
 //! the id being the one that was printed in T2.
 //!
-//! In the second terminal, it will ask for the firewall rules:
+//! In the second terminal, it will ask for the firewall rule:
 //! T2:
 //! ```sh
 //! Peer 12D3KooWRgJG7no2snYqGM8jwABTs952KFb6GHghzz1vRw7T5Cmd connected. Allow requests from them?: (yes/no/ask/ping)
@@ -65,9 +65,9 @@ use futures::{channel::mpsc, FutureExt, StreamExt};
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallConfiguration, FirewallRequest, FirewallRules, FwRequest, Rule, RuleDirection,
+        FirewallConfiguration, FirewallRequest, FwRequest, Rule,
     },
-    ChannelSinkConfig, EventChannel, PeerId, ReceiveRequest, RequestDirection, StrongholdP2p,
+    ChannelSinkConfig, EventChannel, PeerId, ReceiveRequest, StrongholdP2p,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -198,16 +198,16 @@ async fn on_firewall_request(
                 // This rule will now apply for all inbound requests from this peer.
                 // Skip setting a rule for outbound requests, as it is per default already set to `AllowAll`.
                 match stdin.next_line().await?.unwrap().as_str() {
-                    "yes" => break rule_tx.send(FirewallRules::new(Some(Rule::AllowAll), None)).unwrap(),
-                    "no" => break rule_tx.send(FirewallRules::new(Some(Rule::RejectAll), None)).unwrap(),
-                    "ask" => break rule_tx.send(FirewallRules::new(Some(Rule::Ask), None)).unwrap(),
+                    "yes" => break rule_tx.send(Rule::AllowAll).unwrap(),
+                    "no" => break rule_tx.send(Rule::RejectAll).unwrap(),
+                    "ask" => break rule_tx.send(Rule::Ask).unwrap(),
                     "ping" => {
                         // Create rule that only permits ping-messages.
                         let rule: Rule<RequestPermission> = Rule::Restricted {
                             restriction: Arc::new(allow_only_ping),
                             _maker: PhantomData,
                         };
-                        rule_tx.send(FirewallRules::new(Some(rule), None)).unwrap();
+                        rule_tx.send(rule).unwrap();
                         break;
                     }
                     _ => {
@@ -225,11 +225,9 @@ async fn on_firewall_request(
         // Ask for individual approval of a request because `Rule::Ask` has been set
         FirewallRequest::RequestApproval {
             peer,
-            direction,
             request,
             approval_tx,
         } => {
-            assert_eq!(direction, RequestDirection::Inbound);
             println!(
                 "Received Request with type {:?} from peer {}. Permit?: (yes/no)",
                 request, peer
@@ -264,7 +262,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (request_tx, mut request_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
 
     let mut firewall_config = FirewallConfiguration::default();
-    firewall_config.set_default(Some(Rule::AllowAll), RuleDirection::Outbound);
+    firewall_config.set_default(Some(Rule::AllowAll));
     let mut network = StrongholdP2p::new(firewall_tx, request_tx, None, firewall_config).await?;
 
     network.start_listening("/ip4/0.0.0.0/tcp/0".parse()?).await?;

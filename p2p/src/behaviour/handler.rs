@@ -15,10 +15,7 @@
 
 mod protocol;
 use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
-use crate::{
-    firewall::{FirewallRules, Rule},
-    RequestId, RqRsMessage,
-};
+use crate::{RequestId, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -45,65 +42,6 @@ type ConnectionHandlerEventType<Rq, Rs> = ConnectionHandlerEvent<
 
 type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Rq, oneshot::Sender<Rs>), oneshot::Canceled>>;
 
-// The level of support for the [`MessageProtocol`] protocol.
-// This is set according to the currently effective firewall rules for the remote peer.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ProtocolSupport {
-    // The protocol is only supported for inbound requests.
-    Inbound,
-    // The protocol is only supported for outbound requests.
-    Outbound,
-    // The protocol is supported for all requests.
-    Full,
-    // Neither inbound, nor outbound requests are supported.
-    None,
-}
-
-impl Default for ProtocolSupport {
-    fn default() -> Self {
-        ProtocolSupport::None
-    }
-}
-
-impl ProtocolSupport {
-    // Derive the supported protocols from the firewall rules.
-    // A direction will only be not supported if the firewall is configured to reject all request in that direction.
-    pub fn from_rules<TRq>(rules: &FirewallRules<TRq>) -> Self {
-        let allow_inbound = rules
-            .inbound
-            .as_ref()
-            .map(|r| !matches!(r, Rule::RejectAll))
-            .unwrap_or(true);
-        let allow_outbound = rules
-            .outbound
-            .as_ref()
-            .map(|r| !matches!(r, Rule::RejectAll))
-            .unwrap_or(true);
-        match allow_inbound && allow_outbound {
-            true => ProtocolSupport::Full,
-            _ if allow_inbound => ProtocolSupport::Inbound,
-            _ if allow_outbound => ProtocolSupport::Outbound,
-            _ => ProtocolSupport::None,
-        }
-    }
-
-    // Check if inbound requests are supported.
-    pub fn is_inbound(&self) -> bool {
-        match self {
-            ProtocolSupport::Inbound | ProtocolSupport::Full => true,
-            ProtocolSupport::Outbound | ProtocolSupport::None => false,
-        }
-    }
-
-    // Check if  outbound requests are supported.
-    pub fn is_outbound(&self) -> bool {
-        match self {
-            ProtocolSupport::Outbound | ProtocolSupport::Full => true,
-            ProtocolSupport::Inbound | ProtocolSupport::None => false,
-        }
-    }
-}
-
 // Events emitted in `NetBehaviour::poll` and injected to [`Handler::inject_event`].
 #[derive(Debug)]
 pub enum HandlerInEvent<Rq>
@@ -114,8 +52,8 @@ where
     SendRequest { request_id: RequestId, request: Rq },
     // Set the protocol support for inbound and outbound requests.
     // This will be sent to the handler when the connection is first established,
-    // and each time the effective firewall rules for the remote change.
-    SetProtocolSupport(ProtocolSupport),
+    // and each time the effective firewall rule for the remote changes.
+    SetInboundSupport(bool),
 }
 
 // Events emitted in [`Handler::poll`] and injected to `NetBehaviour::inject_event`.
@@ -162,8 +100,8 @@ where
 {
     // Protocol versions that are potentially supported.
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
-    // Protocol support according to the firewall configuration for the remote peer.
-    protocol_support: ProtocolSupport,
+    // Whether inbound requests and thus the `ResponseProtocol` is supported.
+    support_inbound: bool,
     // Timeout for negotiating a handshake on a substream i.g. sending a requests and receiving the response.
     request_timeout: Duration,
     // Timeout for an idle connection.
@@ -193,14 +131,14 @@ where
 {
     pub fn new(
         supported_protocols: SmallVec<[MessageProtocol; 2]>,
-        protocol_support: ProtocolSupport,
+        support_inbound: bool,
         keep_alive_timeout: Duration,
         request_timeout: Duration,
         next_request_id: Arc<AtomicU64>,
     ) -> Self {
         Self {
             supported_protocols,
-            protocol_support,
+            support_inbound,
             request_timeout,
             keep_alive_timeout,
             keep_alive: KeepAlive::Yes,
@@ -218,13 +156,8 @@ where
         request_id: RequestId,
         request: Rq,
     ) -> SubstreamProtocol<RequestProtocol<Rq, Rs>, RequestId> {
-        let protocols = self
-            .protocol_support
-            .is_outbound()
-            .then(|| self.supported_protocols.clone())
-            .unwrap_or_default();
         let proto = RequestProtocol {
-            protocols,
+            protocols: self.supported_protocols.clone(),
             request,
             _marker: PhantomData,
         };
@@ -240,8 +173,7 @@ where
         let (request_tx, request_rx) = oneshot::channel();
 
         let protocols = self
-            .protocol_support
-            .is_inbound()
+            .support_inbound
             .then(|| self.supported_protocols.clone())
             .unwrap_or_default();
 
@@ -296,8 +228,8 @@ where
                 self.pending_out_req.push_back((request_id, request));
                 self.keep_alive = KeepAlive::Yes;
             }
-            HandlerInEvent::SetProtocolSupport(ps) => {
-                self.protocol_support = ps;
+            HandlerInEvent::SetInboundSupport(b) => {
+                self.support_inbound = b;
             }
         }
     }
@@ -339,12 +271,7 @@ where
     }
 
     fn connection_keep_alive(&self) -> KeepAlive {
-        if let ProtocolSupport::None = self.protocol_support {
-            // Immediately close connection if per se no requests are allowed.
-            KeepAlive::No
-        } else {
-            self.keep_alive
-        }
+        self.keep_alive
     }
 
     // Poll pending futures and emit events for requests, responses and errors.
