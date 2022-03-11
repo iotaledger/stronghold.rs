@@ -3,7 +3,10 @@
 use crate::{var::InnerVarCopy, InnerVar, RluContext};
 use std::{
     ops::{Deref, DerefMut},
-    sync::{Arc, MutexGuard},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, MutexGuard, RwLock,
+    },
 };
 
 pub enum WriteGuardType<'a, T>
@@ -11,7 +14,7 @@ where
     T: Clone,
 {
     Mutex(MutexGuard<'a, T>),
-    MutexCopy(MutexGuard<'a, InnerVarCopy<T>>, T),
+    MutexCopy(MutexGuard<'a, Option<InnerVarCopy<T>>>, T),
 }
 
 pub struct WriteGuard<'a, T>
@@ -54,7 +57,7 @@ where
     T: Clone,
 {
     pub fn from_guard_copy(
-        inner: MutexGuard<'a, InnerVarCopy<T>>,
+        inner: MutexGuard<'a, Option<InnerVarCopy<T>>>,
         copied: T,
         context: &'a RluContext<T>,
         original: Option<Arc<InnerVar<T>>>,
@@ -85,14 +88,39 @@ where
 {
     fn drop(&mut self) {
         let inner = &self.inner;
-        let guard = self.context.log.lock().expect("Lock on log could not be released");
+        let mut guard = self.context.log.lock().expect("Log could not be released");
         match inner {
             WriteGuardType::Mutex(m) => {
-                //
+                if let Some(original) = &self.original {
+                    let locked_id = match &original.locked_thread_id {
+                        Some(locked_id) => locked_id.load(Ordering::SeqCst),
+                        None => 0,
+                    };
+
+                    let data = &*m.deref();
+
+                    let copy = InnerVarCopy {
+                        locked_thread_id: Some(AtomicUsize::new(locked_id)),
+                        data: Arc::new(RwLock::new(data.clone())),
+                        original: original.clone(),
+                    };
+
+                    guard.push(Arc::new(copy));
+                    drop(guard);
+                }
             }
-            WriteGuardType::MutexCopy(mc, _) => {
-                //
+            WriteGuardType::MutexCopy(copy_guard, modified) => {
+                if let Some(inner) = &**copy_guard {
+                    let mut inner_copy_guard = inner.data.write().expect("Could not lock inner data");
+                    *inner_copy_guard = modified.clone();
+
+                    guard.push(Arc::new(inner.clone()))
+                }
+                drop(guard);
             }
         };
+
+        // end RLU section
+        self.context.read_unlock();
     }
 }

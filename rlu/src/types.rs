@@ -91,5 +91,5 @@ where
     ///
     /// assert_eq!(*rlu_var.get(), 16);
     /// ```
-    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>>;
+    fn get_mut<'a>(&'a self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>>;
 }

@@ -10,7 +10,7 @@ use std::{
 const LOG_ENTRY_SIZE: usize = 32;
 
 pub(crate) struct Node<T> {
-    alloc: [Option<T>; LOG_ENTRY_SIZE], // the maximum size of log entries
+    alloc: [Option<T>; LOG_ENTRY_SIZE],
     index: AtomicUsize,
 }
 
