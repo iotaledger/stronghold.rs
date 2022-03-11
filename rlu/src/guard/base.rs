@@ -6,7 +6,7 @@ use std::{
     sync::MutexGuard,
 };
 
-///
+/// A basic guard type for returns
 pub struct BaseGuard<'a, T>
 where
     T: Clone,

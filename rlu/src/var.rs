@@ -2,15 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{guard::BaseGuard, Result, TransactionError, RLU};
-use std::{
-    ops::Deref,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex, RwLock,
 };
 
-/// # RLUVar &lt;T&gt;
 /// This type represents an rlu managed type. The type is is not being constructed directly
 /// but with the help of [`RLU`].
 pub struct RLUVar<T>
@@ -24,19 +20,12 @@ impl<T> RLUVar<T>
 where
     T: Clone,
 {
-    /// This function returns the inner value, or None if the pointer is null
-    // pub fn get(&self) -> Option<&T> {
-    //     // match self.inner.load(Ordering::SeqCst) {
-    //     //     ptr if ptr.is_null() => None,
-    //     //     ptr => {
-    //     //         let inner = unsafe { &*ptr };
-    //     //         Some(&inner.data)
-    //     //     }
-    //     // }
-    //     todo!()
-    // }
+    pub fn get(&self) -> T {
+        self.inner.get()
+    }
 
-    pub fn deref_data(&self) -> Result<BaseGuard<'_, T>> {
+    /// Tries to get a [`BaseGuard`]
+    pub fn try_inner(&self) -> Result<BaseGuard<'_, T>> {
         match self.inner.data.lock() {
             Ok(guard) => Ok(BaseGuard::new(guard, None)),
             Err(e) => Err(TransactionError::Inner(e.to_string())),
@@ -45,12 +34,12 @@ where
 
     /// Returns true, if this object is an original and references a copy
     pub(crate) fn is_locked(&self) -> bool {
-        self.inner.copy.is_some()
+        self.inner.copy.lock().expect("").is_some()
     }
 
     /// Returns true, if this object is an original and does not references a copy
     pub(crate) fn is_unlocked(&self) -> bool {
-        self.inner.copy.is_none()
+        self.inner.copy.lock().expect("").is_none()
     }
 }
 
@@ -76,23 +65,12 @@ where
     }
 }
 
-impl<T> Deref for RLUVar<T>
-where
-    T: Clone,
-{
-    type Target = InnerVar<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.inner
-    }
-}
-
 pub struct InnerVarCopy<T>
 where
     T: Clone,
 {
     pub locked_thread_id: Option<AtomicUsize>,
-    pub data: Arc<Mutex<T>>,
+    pub data: Arc<RwLock<T>>,
     pub original: Arc<InnerVar<T>>,
 }
 
@@ -116,17 +94,22 @@ impl<T> InnerVarCopy<T>
 where
     T: Clone,
 {
-    #[allow(deref_nullptr)]
     /// Writes the data back to original
     ///
     /// # Safety
     ///
     /// This method is safe, as dereferencing ptr to original will be checked against null
     pub(crate) fn write_back(&self) {
-        let inner = &self.original;
-        let mut guard = inner.data.lock().expect("");
+        let data_guard = self.data.read().expect("cannot get lock in copy -> data");
+        let copy = data_guard.clone();
+        drop(data_guard);
 
-        *guard = self.data.lock().expect("Could not lock copy data").deref().clone();
+        let mut guard = self.original.data.lock().expect("");
+
+        *guard = copy;
+
+        // // manually dropping guard?
+        drop(guard);
     }
 }
 
@@ -137,7 +120,7 @@ where
     pub locked_thread_id: Option<AtomicUsize>,
     pub ctrl: Option<RLU<T>>,
     pub data: Arc<Mutex<T>>,
-    pub copy: Option<Arc<Mutex<InnerVarCopy<T>>>>,
+    pub copy: Arc<Mutex<Option<InnerVarCopy<T>>>>,
 }
 
 impl<T> InnerVar<T>
@@ -146,17 +129,16 @@ where
 {
     /// Returns true, if this object is an original and references a copy
     pub(crate) fn is_locked(&self) -> bool {
-        self.copy.is_some()
+        self.copy.lock().expect("").is_some()
     }
 
     /// Returns true, if this object is an original and does not references a copy
     pub(crate) fn is_unlocked(&self) -> bool {
-        self.copy.is_none()
+        self.copy.lock().expect("").is_none()
     }
 
-    pub fn get(&self) -> &T {
-        // &self.data
-        todo!()
+    pub fn get(&self) -> T {
+        self.data.lock().expect("").clone()
     }
 }
 
@@ -168,7 +150,7 @@ where
         Self {
             data: Arc::new(Mutex::new(value)),
             locked_thread_id: None,
-            copy: None,
+            copy: Arc::new(Mutex::new(None)),
             ctrl: None,
         }
     }
@@ -186,7 +168,7 @@ where
                 Some(inner) => inner.load(Ordering::SeqCst),
                 None => 0,
             })),
-            copy: None,
+            copy: Arc::new(Mutex::new(None)),
         }
     }
 }

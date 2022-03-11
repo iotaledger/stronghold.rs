@@ -8,6 +8,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
 };
 use stronghold_rlu as rlu;
 
@@ -25,7 +26,7 @@ fn init_logger() {
 fn reference_impl() {
     let mut map = HashMap::new();
     map.insert(1234567, "hello, world");
-    let mut rlu = RLU::default();
+    let rlu = RLU::default();
     let rlu_var = rlu.create(map);
 
     assert!(rlu
@@ -36,60 +37,106 @@ fn reference_impl() {
             Ok(())
         })
         .is_ok());
+
+    assert!(rlu
+        .execute(|ctx| {
+            {
+                let mut write = ctx.get_mut(&rlu_var)?;
+                (*write).insert(2344, "testtest");
+                drop(write);
+            }
+            {
+                let read = ctx.get(&rlu_var)?;
+                assert!(read.contains_key(&2344));
+                assert!(read.contains_key(&1234567));
+            }
+
+            Ok(())
+        })
+        .is_ok());
 }
 
-// #[ignore]
-// #[test]
-// fn test_multiple_readers_single_writer() {
-//     const EXPECTED: usize = 15usize;
+#[test]
+fn reference_concurrent() {
+    let mut map = HashMap::new();
+    map.insert(1234567, "hello, world");
+    let rlu = RLU::with_strategy(RLUStrategy::Abort);
+    let rlu_var = rlu.create(map);
 
-//     let ctrl = RLU::new();
-//     let rlu_var: RLUVar<usize> = ctrl.create(6usize);
+    let v1 = rlu_var.clone();
+    let v2 = rlu_var.clone();
+    let r1 = rlu.clone();
+    let r2 = rlu.clone();
 
-//     let r1 = rlu_var.clone();
-//     let c1 = ctrl.clone();
+    let j0 = std::thread::spawn(move || {
+        r1.execute(|ctx| {
+            {
+                let mut write = ctx.get_mut(&v1)?;
+                (*write).insert(2344, "testtest");
+                drop(write);
+            }
 
-//     match c1.execute(|mut context| {
-//         let mut data = context.get_mut(&r1)?;
-//         let inner = &mut *data;
-//         *inner += 9usize;
+            Ok(())
+        })
+        .is_ok()
+    });
 
-//         Ok(())
-//     }) {
-//         Err(err) => Err(err),
-//         Ok(()) => Ok(()),
-//     }
-//     .expect("Failed");
+    // is this cheating?
+    std::thread::sleep(Duration::from_millis(50));
 
-//     for _ in 0..10000 {
-//         let r1 = rlu_var.clone();
-//         let c1 = ctrl.clone();
-//         let context_fn = |context: RluContext<usize>| {
-//             let data = context.get(&r1);
-//             match *data {
-//                 Ok(inner) if **inner == EXPECTED => {
-//                     // we would require to call unlock at the end of each successful try
-//                     context.read_unlock(inner);
+    let j1 = std::thread::spawn(move || {
+        r2.execute(|ctx| {
+            let read = ctx.get(&v2)?;
+            match read.contains_key(&2344) {
+                true => Ok(()),
+                false => Err(TransactionError::Abort),
+            }
+        })
+        .is_ok()
+    });
 
-//                     Ok(())
-//                 }
-//                 Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
-//                     "Value is not expected: actual {}, expected {}",
-//                     **inner, EXPECTED
-//                 ))),
-//                 Ok(_inner) => Ok(()),
-//                 Err(_) => Err(TransactionError::Failed),
-//             }
-//         };
+    assert!(j0.join().expect(""));
+    assert!(j1.join().expect(""));
+}
 
-//         if c1.execute(context_fn).is_err() {
-//             // handle error
-//         }
-//     }
+#[test]
+fn test_multiple_readers_single_writer() {
+    const EXPECTED: usize = 15usize;
 
-//     let value = rlu_var.get();
-//     assert_eq!(value, Some(&15))
-// }
+    let ctrl = RLU::new();
+    let rlu_var: RLUVar<usize> = ctrl.create(6usize);
+
+    let r1 = rlu_var.clone();
+    let c1 = ctrl.clone();
+
+    assert!(c1
+        .execute(|context| {
+            let mut data = context.get_mut(&r1)?;
+            let inner = &mut *data;
+            *inner += 9usize;
+
+            Ok(())
+        })
+        .is_ok());
+
+    for _ in 0..10000 {
+        let r1 = rlu_var.clone();
+        let c1 = ctrl.clone();
+
+        assert!(c1
+            .execute(|context| {
+                let data = context.get(&r1)?;
+                match *data {
+                    d if d == EXPECTED => Ok(()),
+                    _ => Err(TransactionError::Failed),
+                }
+            })
+            .is_ok());
+    }
+
+    let value = rlu_var.get();
+    assert_eq!(value, 15)
+}
 // #[ignore]
 // #[test]
 // fn test_concurrent_mutliple_readers_single_write() {

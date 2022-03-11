@@ -9,7 +9,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
     },
 };
 
@@ -164,13 +164,13 @@ where
                 data: Arc::new(Mutex::new(data)),
                 ctrl: Some(self.clone()),
                 locked_thread_id: None,
-                copy: None,
+                copy: Arc::new(Mutex::new(None)),
             }),
         }
     }
 
     /// executes a series of reads and writes
-    pub fn execute<F>(&mut self, func: F) -> Result<()>
+    pub fn execute<F>(&self, func: F) -> Result<()>
     where
         F: Fn(Arc<RluContext<T>>) -> Result<()>,
     {
@@ -180,7 +180,9 @@ where
             match func(self.context()) {
                 Err(err) => {
                     match &self.strategy {
-                        RLUStrategy::Retry => {}
+                        RLUStrategy::Retry => {
+                            println!("retry");
+                        }
                         RLUStrategy::RetryWithBreaker(breaker) => {
                             // Keep the cpu busy for minimal amount of time
                             // WARNING: This can fail, because the breaker has reached the internal limits
@@ -196,7 +198,7 @@ where
         }
     }
 
-    fn context(&mut self) -> Arc<RluContext<T>> {
+    fn context(&self) -> Arc<RluContext<T>> {
         let id = self.next_thread_id.fetch_add(1, Ordering::SeqCst);
 
         let context = Arc::new(RluContext {
@@ -212,6 +214,7 @@ where
 
         let mut lock = self.contexts.lock().expect("Could not get lock");
         lock.deref_mut().insert(id, context.clone());
+        drop(lock);
 
         context
     }
@@ -262,58 +265,9 @@ impl<T> Write<T> for RluContext<T>
 where
     T: Clone,
 {
-    fn get_mut<'a>(&'a mut self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>> {
-        self.set_writer();
-
-        // // load mutable pointer
-        // let inner_ptr = var.inner.load(Ordering::SeqCst);
-        // assert!(!inner_ptr.is_null());
-
-        // if var.is_unlocked() {
-        //     // TODO: return obj
-        // }
-
-        // // deref pointer
-        // let inner = unsafe { &mut *inner_ptr };
-
-        // // get current id of self
-        // let self_id = self.id.load(Ordering::SeqCst);
-
-        // let copy = match &inner.copy {
-        //     Some(copy_ptr) => {
-        //         let ptr = copy_ptr.load(Ordering::SeqCst);
-        //         if ptr.is_null() {
-        //             return Err(TransactionError::Inner("Copy is null reference".to_string()));
-        //         }
-        //         unsafe { &mut *ptr }
-        //     }
-        //     None => return Err(TransactionError::Inner("Copy is null reference".to_string())),
-        // };
-
-        // // get locked id
-        // let copy_lock_id = match &copy.locked_thread_id {
-        //     Some(atomic_id) => atomic_id.load(Ordering::SeqCst),
-        //     None => return Err(TransactionError::Inner("No locked thread".to_string())),
-        // };
-
-        // if self_id == copy_lock_id {
-        //     // TODO: return copy here
-        // }
-
-        // let (original, ctrl) = (&inner.data, &inner.ctrl);
-
-        // // create copied var
-        // let inner_copy = InnerVarCopy {
-        //     data: original.clone(),
-        //     locked_thread_id: Some(AtomicUsize::new(self_id)),
-        //     original: AtomicPtr::new(var.inner.load(Ordering::SeqCst)),
-        // }
-        // .into_raw();
-
-        // inner.copy.replace(AtomicPtr::new(inner_copy));
-
-        // Ok(WriteGuard::new(WriteGuardInner::Copy(inner_copy), self))
-        todo!()
+    fn get_mut<'a>(&'a self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>> {
+        self.read_lock();
+        self.try_lock(var)
     }
 }
 
@@ -342,7 +296,7 @@ where
     #[inline]
     pub fn dereference<'a>(&'a self, var: &'a RLUVar<T>) -> Result<ReadGuard<'a, T>> {
         // get inner var
-        let inner_data = var.deref_data()?;
+        let inner_data = var.try_inner()?;
 
         // if object is unlocked, it has no copy. return the original
         if var.is_unlocked() {
@@ -353,32 +307,46 @@ where
         // but we explicitly split (inner) var and it's copy.
         // if this is required, we would need to rebuild the underlying structure
 
-        let inner_copy = &var.inner.copy;
+        let inner_copy = var
+            .inner
+            .copy
+            .lock()
+            .map_err(|e| TransactionError::Inner(e.to_string()))?;
 
-        let copy_lock_id = match &inner_copy {
-            Some(guard) => match guard.lock() {
-                Ok(inner_copy) => match &inner_copy.locked_thread_id {
-                    Some(id) => id.load(Ordering::SeqCst),
-                    None => 0,
-                },
-                Err(e) => return Err(TransactionError::Inner(e.to_string())),
+        let copy_lock_id = match &*inner_copy {
+            Some(inner_copy) => match &inner_copy.locked_thread_id {
+                Some(id) => id.load(Ordering::SeqCst),
+                None => 0,
             },
-            None => return Err(TransactionError::NoCopyPresent), // ?
+            None => return Err(TransactionError::NoCopyPresent),
         };
+
+        drop(inner_copy);
 
         let self_id = self.id.load(Ordering::SeqCst);
 
         if self_id == copy_lock_id {
+            let inner_copy = var
+                .inner
+                .copy
+                .lock()
+                .map_err(|e| TransactionError::Inner(e.to_string()))?;
 
-            // todo
-            // return match copy.data.lock() {
-            //     Ok(guard) => todo!(), // Ok(ReadGuard::from_guard(guard, self)),
-            //     Err(e) => Err(TransactionError::Inner(e.to_string())),
-            // };
+            return match &*inner_copy {
+                Some(guard) => {
+                    let data_guard = guard.data.read().map_err(|e| TransactionError::Inner(e.to_string()))?;
+                    let copied = data_guard.clone();
+
+                    drop(data_guard);
+                    drop(inner_copy);
+                    Ok(ReadGuard::from_copied(copied, self))
+                }
+                None => Err(TransactionError::Abort),
+            };
         }
 
         // get other context that locks the copy
-        match &var.deref().ctrl {
+        match &var.inner.ctrl {
             Some(control) => {
                 let all_contexts = control.contexts.lock().expect("");
                 let locking_context = match all_contexts.get(&copy_lock_id) {
@@ -391,31 +359,24 @@ where
 
                 // check for stealing
                 if write_clock <= local_clock {
-                    match &inner_copy {
-                        Some(guard) => {
-                            let inner = guard.lock().expect("");
+                    let inner_copy = var
+                        .inner
+                        .copy
+                        .lock()
+                        .map_err(|e| TransactionError::Inner(e.to_string()))?;
 
-                            let copied = inner.data.lock().expect("").clone();
+                    match &*inner_copy {
+                        Some(inner) => {
+                            println!("lock copy -> data");
+                            let data_guard = inner.data.read().map_err(|e| TransactionError::Inner(e.to_string()))?;
+                            let copied = data_guard.clone();
+
+                            drop(data_guard);
 
                             return Ok(ReadGuard::from_copied(copied, self));
-
-                            // Ok(copy) => match copy.deref().data {
-                            //     Ok(guard) => return Ok(ReadGuard::from_guard(guard, self)),
-                            //     Err(e) => return Err(TransactionError::Inner(e.to_string())),
-                            // },
-                            // Err(e) => return Err(TransactionError::Inner(e.to_string())),
                         }
-                        None => return Err(TransactionError::NoCopyPresent), // ?
+                        None => return Err(TransactionError::NoCopyPresent),
                     };
-
-                    // return match var.inner.copy.data.lock() {
-                    //     Ok(guard) => Ok(ReadGuard::from_guard(guard, self)),
-                    //     Err(e) => Err(TransactionError::Inner(e.to_string())),
-                    // };
-
-                    // copy is most recent
-                    // return Some(&copy.data.lock().expect("msg").deref());
-                    // todo
                 }
             }
             None => return Err(TransactionError::Inner("No inner controller present".to_string())),
@@ -429,69 +390,78 @@ where
         self.set_writer();
 
         // get actual object
-        let inner = var.deref();
+        let inner = &var.inner;
 
         // get self id
         let self_id = self.id.load(Ordering::SeqCst);
 
-        let copy = match &inner.deref().copy {
-            Some(copy_ptr) => copy_ptr.deref(),
-            None => return Err(TransactionError::Failed),
-        };
-
         if var.is_locked() {
-            let copy_thread_id = match &copy.lock().expect("msg").locked_thread_id {
+            let copy_guard = inner.copy.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
+            let copy = match &*copy_guard {
+                Some(copy_ptr) => copy_ptr,
+                None => return Err(TransactionError::Failed),
+            };
+
+            let copy_thread_id = match &copy.locked_thread_id {
                 Some(thread_id) => thread_id.load(Ordering::SeqCst),
                 None => return Err(TransactionError::Failed),
             };
 
             if copy_thread_id == self_id {
-                let copy = match &inner.copy {
-                    Some(guard) => {
-                        let guard = guard.lock().expect("");
-                        let copied = guard.data.lock().expect("msg").deref_mut().clone();
+                match &*copy_guard {
+                    Some(copy) => {
+                        let mut mutex_guard = copy.data.write().expect("msg");
+                        let copied = mutex_guard.deref_mut().clone();
+                        drop(mutex_guard);
 
                         return Ok(WriteGuard::from_guard_copy(
-                            guard,
+                            copy_guard,
                             copied,
                             self,
                             Some(var.inner.clone()),
                         ));
                     }
-                    None => return Err(TransactionError::NoCopyPresent), // ?
+                    None => {
+                        self.abort();
+                        return Err(TransactionError::NoCopyPresent);
+                    }
                 };
             }
-
-            self.abort();
-            // this should indicate a retry of the rlu section
-            return Err(TransactionError::Abort);
         }
 
+        let data = inner
+            .deref()
+            .data
+            .lock()
+            .map_err(|e| TransactionError::Inner(e.to_string()))?
+            .clone();
+
         let copy = InnerVarCopy {
-            data: inner.deref().data.clone(),
+            data: Arc::new(RwLock::new(data.clone())),
             locked_thread_id: Some(AtomicUsize::new(self_id)),
             original: var.inner.clone(),
         };
 
-        // WriteGuard::
+        let mut copy_guard = inner.copy.lock().map_err(|e| TransactionError::Inner(e.to_string()))?;
+        // update var to point to copy
+        copy_guard.replace(copy);
 
-        // inner.deref_mut().copy = Some(copy.clone());
-
-        // let mut log_guard = self.log.lock().expect("Could not release lock on log");
-        // log_guard.deref_mut().push(copy);
-
-        // Ok(log.last_mut().unwrap().get_mut())
-        todo!()
+        return Ok(WriteGuard::from_guard_copy(
+            copy_guard,
+            data,
+            self,
+            Some(var.inner.clone()),
+        ));
     }
 
     fn synchronize(&self) {
-        let contexts = self.ctrl.contexts.lock().expect(""); // unsafe { &*self.ctrl.contexts.load(Ordering::SeqCst) };
+        let contexts = self.ctrl.contexts.lock().expect("");
         let mut sync_count = self.sync_count.lock().expect("Could not release lock on sync_count");
-
+        let self_id = self.id.load(Ordering::SeqCst);
         // sychronize with other contexts, collect their run stats
         for (id, ctx) in contexts.deref() {
             let id = ctx.id.load(Ordering::SeqCst);
-            if id == self.id.load(Ordering::SeqCst) {
+            if id == self_id {
                 continue;
             }
             let run_count = ctx.run_count.load(Ordering::SeqCst);
@@ -502,16 +472,24 @@ where
         // wait for other contexts
         for (id, ctx) in contexts.deref() {
             loop {
+                if sync_count.get(id).is_none() {
+                    break;
+                }
+
+                let ctx_run_count = ctx.run_count.load(Ordering::SeqCst);
+                let write_clock = self.write_clock.load(Ordering::SeqCst);
+                let local_clock = ctx.local_clock.load(Ordering::SeqCst);
+
                 if sync_count[id] & 0x1 == 0 {
                     // is inactive
                     break;
                 }
-                if sync_count[id] != ctx.run_count.load(Ordering::SeqCst) {
+                if sync_count[id] != ctx_run_count {
                     // has progressed
                     break;
                 }
 
-                if self.write_clock.load(Ordering::SeqCst) <= ctx.local_clock.load(Ordering::SeqCst) {
+                if write_clock <= local_clock {
                     // started after this context
                     break;
                 }
@@ -533,9 +511,13 @@ where
     }
 
     fn write_back_log(&self) {
-        let mut guard = self.log.lock().expect("Could not release lock on log");
-        for item in guard.deref_mut().drain().flatten() {
-            item.write_back();
+        match self.log.try_lock() {
+            Ok(mut guard) => {
+                for item in guard.deref_mut().drain().flatten() {
+                    item.write_back();
+                }
+            }
+            Err(e) => panic!("{}", e),
         }
     }
 

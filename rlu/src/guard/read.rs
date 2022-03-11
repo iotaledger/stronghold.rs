@@ -5,7 +5,8 @@ use std::{ops::Deref, sync::MutexGuard};
 
 use super::BaseGuard;
 
-/// Provides a read guard over inner value
+/// Provides a read guard over inner value. The inner data can be derefed. [`ReadGuard`] only
+/// returns immutable data types.
 pub struct ReadGuard<'a, T>
 where
     T: Clone,
@@ -44,17 +45,6 @@ where
     }
 }
 
-impl<'a, T> Drop for ReadGuard<'a, T>
-where
-    T: Clone,
-{
-    fn drop(&mut self) {
-        if let Some(context) = self.context {
-            context.read_unlock()
-        }
-    }
-}
-
 impl<'a, T> Deref for ReadGuard<'a, T>
 where
     T: Clone,
@@ -68,6 +58,18 @@ where
                 Some(copied) => copied,
                 None => unreachable!(),
             },
+        }
+    }
+}
+
+impl<'a, T> Drop for ReadGuard<'a, T>
+where
+    T: Clone,
+{
+    fn drop(&mut self) {
+        if let Some(context) = self.context {
+            // end RLU section
+            context.read_unlock()
         }
     }
 }
