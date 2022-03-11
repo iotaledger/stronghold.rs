@@ -42,7 +42,7 @@ pub struct EventChannel<T> {
     buffer: Option<(VecDeque<T>, usize)>,
     // Wether the `Sink` implementation of the inner channel should be used, without a buffer.
     //
-    // This results in the `SwarmTask` blocking until `<mpsc::Sender as Sink>::send` resolves.
+    // This results in the `EventLoop` blocking until `<mpsc::Sender as Sink>::send` resolves.
     use_inner: bool,
     // Waker from `<EventChannel as Stream>::poll_next` that is notified if a new event was added to the buffer.
     waker: Option<Waker>,

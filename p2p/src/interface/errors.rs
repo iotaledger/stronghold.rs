@@ -54,7 +54,7 @@ pub enum DialErr {
     #[error("An error occurred while negotiating the transport protocol(s) on a connection: `{0:?}`.")]
     Transport(Vec<(Multiaddr, TransportError<io::Error>)>),
     /// The communication system was shut down before the dialing attempt resolved.
-    #[error("The network task was shut down.")]
+    #[error("The network event-loop was shut down.")]
     Shutdown,
 }
 
@@ -145,7 +145,7 @@ pub enum ListenErr {
     #[error("Transport error: {0}")]
     Transport(TransportErr),
     /// The communication system was shut down before the listening attempt resolved.
-    #[error("The network task was shut down.")]
+    #[error("The network event-loop was shut down.")]
     Shutdown,
 }
 

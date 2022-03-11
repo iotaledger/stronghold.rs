@@ -11,8 +11,8 @@
 //! Stronghold-P2p is using the libp2p networking framework.
 //! On top of libp2p's protocols for describing how and what data is send through the network, the [`StrongholdP2p`]
 //! interface provides an additional layer of abstraction and manages the network polling and all interaction in a
-//! separate task. Futhermore, it integrates a firewall with which rules can be set to restrict requests and/ or ask for
-//! dynamic approval before forwarding them.
+//! event loop that runs in a separate task. Futhermore, it integrates a firewall with which rules can be set to
+//! restrict requests and/ or ask for dynamic approval before forwarding them.
 
 pub mod behaviour;
 mod libp2p_reexport {

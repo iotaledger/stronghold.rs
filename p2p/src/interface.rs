@@ -3,12 +3,12 @@
 
 mod errors;
 mod event_channel;
-mod swarm_task;
+mod event_loop;
 mod types;
 
 pub use errors::*;
 pub use event_channel::{ChannelSinkConfig, EventChannel};
-use swarm_task::{SwarmOperation, SwarmTask};
+use event_loop::{EventLoop, SwarmOperation};
 pub use types::*;
 
 use crate::{
@@ -38,7 +38,7 @@ use std::{io, time::Duration};
 #[derive(Clone)]
 /// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
 ///
-/// All Swarm interaction takes place in a separate task.
+/// All Swarm interaction takes place in an event-loop in a separate task.
 /// [`StrongholdP2p`] is essentially a wrapper for the Sender side of a mpsc channel, which is used to initiate
 /// operations on the swarm.
 ///
@@ -129,7 +129,7 @@ where
 {
     // Id of the local peer.
     local_peer_id: PeerId,
-    // Channel for sending [`SwarmOperation`] to the [`SwarmTask`] .
+    // Channel for sending [`SwarmOperation`] to the [`EventLoop`] .
     // The [`SwarmOperation`]s trigger according operations on the Swarm.
     // The result of an operation is received via the oneshot Receiver that is included in each type.
     command_tx: mpsc::Sender<SwarmOperation<Rq, Rs, TRq>>,
@@ -638,9 +638,9 @@ where
     /// - Authentication and encryption with the Noise-Protocol, using the XX-handshake
     /// - Yamux substream multiplexing
     ///
-    /// The method spawns a new task with the provided executor, that handles all interaction with the Swarm.
-    /// The task runs until [`StrongholdP2p`] is dropped, [`StrongholdP2p`] provides an interface to perform
-    /// operations on the swarm-task.
+    /// The method spawns an event loop in a new task with the provided executor, that handles all interaction with the
+    /// Swarm. The loop runs until [`StrongholdP2p`] is dropped, [`StrongholdP2p`] provides an interface to perform
+    /// operations in it.
     /// Additionally, the executor is used to configure the
     /// [`SwarmBuilder::executor`][libp2p::swarm::SwarmBuilder::executor].
     ///
@@ -732,9 +732,9 @@ where
         // Channel for sending `SwarmOperation`s.
         let (command_tx, command_rx) = mpsc::channel(10);
 
-        // Spawn a new task responsible for all Swarm interaction.
-        let swarm_task = SwarmTask::new(swarm, command_rx, self.requests_channel, self.events_channel);
-        executor.exec(swarm_task.run().boxed());
+        // Spawn an event-loop for all Swarm interaction in new task.
+        let event_loop = EventLoop::new(swarm, command_rx, self.requests_channel, self.events_channel);
+        executor.exec(event_loop.run().boxed());
 
         Ok(StrongholdP2p {
             local_peer_id,

@@ -141,13 +141,13 @@ pub enum SwarmOperation<Rq, Rs, TRq> {
     },
 }
 
-// Central task that is responsible for all Swarm interaction.
+// Central loop that is responsible for all Swarm interaction.
 // Drives the [`Swarm`] by continuously polling for the next [`SwarmEvent`].
 //
 // Operations on the Swarm are performed based on the [`SwarmOperation`]s that are received through the `command_rx`
 // channel. The outcome for each operation is returned through the oneshot channel that is included in the
 // [`SwarmOperation`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
-pub struct SwarmTask<Rq, Rs, TRq>
+pub struct EventLoop<Rq, Rs, TRq>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
@@ -186,20 +186,20 @@ where
     await_relayed_listen: HashMap<ListenerId, (PeerId, oneshot::Sender<Result<Multiaddr, ListenRelayErr>>)>,
 }
 
-impl<Rq, Rs, TRq> SwarmTask<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> EventLoop<Rq, Rs, TRq>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
     TRq: FwRequest<Rq>,
 {
-    // Create new instance of a swarm-task.
+    // Create new instance of en event-loop
     pub fn new(
         swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
         command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
         request_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         event_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Self {
-        SwarmTask {
+        EventLoop {
             swarm,
             command_rx,
             request_channel,
@@ -216,7 +216,7 @@ where
     // - Drive the [`Swarm`] by polling it for events.
     // - Poll the commands-channel for [`SwarmOperation`]s that are sent from [`StrongholdP2p`].
     //
-    // If all [`StrongholdP2p`] clones are dropped, the command-channel will return `None` and [`SwarmTask`] will shut
+    // If all [`StrongholdP2p`] clones are dropped, the command-channel will return `None` and [`EventLoop`] will shut
     // down.
     pub async fn run(mut self) {
         loop {
@@ -583,7 +583,7 @@ where
         removed_one
     }
 
-    // Shutdown the task, send errors for all pending operations.
+    // Shutdown the event-loop, send errors for all pending operations.
     fn shutdown(mut self) {
         for (_, tx_yield) in self.await_response.drain() {
             let _ = tx_yield.send(Err(OutboundFailure::Shutdown));
