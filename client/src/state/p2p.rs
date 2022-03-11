@@ -152,8 +152,8 @@ pub struct NetworkConfig {
     enable_relay: bool,
     addresses: Option<AddressInfo>,
 
-    peer_client_mapping: HashMap<PeerId, Option<ClientMapping>>,
-    client_mapping_default: Option<ClientMapping>,
+    peer_client_mapping: HashMap<PeerId, ClientMapping>,
+    client_mapping_default: ClientMapping,
 
     peer_permissions: HashMap<PeerId, Permissions>,
     permissions_default: Permissions,
@@ -194,7 +194,7 @@ impl Default for NetworkConfig {
             enable_relay: false,
             addresses: None,
             peer_client_mapping: HashMap::new(),
-            client_mapping_default: None,
+            client_mapping_default: ClientMapping::default(),
             peer_permissions: HashMap::new(),
             permissions_default: Permissions::allow_none(),
             firewall_tx: None,
@@ -324,8 +324,7 @@ impl NetworkConfig {
     ///
     /// This maps the `client_path` that is sent from the remote (as part of their request) to a local
     /// target client with another `client_path`.
-    /// In case of `None` the client_path remains unchanged.
-    pub fn with_default_client_mapping(mut self, mapping: Option<ClientMapping>) -> Self {
+    pub fn with_default_client_mapping(mut self, mapping: ClientMapping) -> Self {
         self.client_mapping_default = mapping;
         self
     }
@@ -333,8 +332,8 @@ impl NetworkConfig {
     /// Extend mapping for inbound requests to a target client from specific peers.
     ///
     /// See [`NetworkConfig::with_default_client_mapping`].
-    pub fn with_peer_client_mapping(mut self, map: HashMap<PeerId, Option<ClientMapping>>) -> Self {
-        self.peer_client_mapping.extend(map);
+    pub fn with_peer_client_mapping(mut self, peer: PeerId, mapping: ClientMapping) -> Self {
+        self.peer_client_mapping.insert(peer, mapping);
         self
     }
 
@@ -346,11 +345,11 @@ impl NetworkConfig {
         &mut self.permissions_default
     }
 
-    pub(crate) fn peer_client_mapping_mut(&mut self) -> &mut HashMap<PeerId, Option<ClientMapping>> {
+    pub(crate) fn peer_client_mapping_mut(&mut self) -> &mut HashMap<PeerId, ClientMapping> {
         &mut self.peer_client_mapping
     }
 
-    pub(crate) fn client_mapping_default_mut(&mut self) -> &mut Option<ClientMapping> {
+    pub(crate) fn client_mapping_default_mut(&mut self) -> &mut ClientMapping {
         &mut self.client_mapping_default
     }
 }
@@ -793,6 +792,8 @@ impl FwRequest<ShRequest> for AccessRequest {
 /// the requests should be forwarded. [`ClientMapping`] allows to map this
 /// client_path to a local one. In case of `None` the requested `client_path` is kept
 /// as it is.
+///
+/// Per default no mapping applies.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ClientMapping {
     /// Map specific `client_path`s to local `client_path`s.

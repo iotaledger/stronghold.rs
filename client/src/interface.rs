@@ -45,7 +45,7 @@ use crate::{
         GetNetwork, InsertNetwork, RemoveNetwork,
     },
     procedures::FatalProcedureError,
-    state::p2p::{FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
+    state::p2p::{ClientMapping, FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -691,33 +691,58 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Change the firewall rule for specific peers, optionally also set it as the default rule, which applies if there
-    /// are no specific rules for a peer. All inbound requests from the peers that this rule applies to, will be
+    /// Change the default firewall rule. All inbound requests from peers without individual rules will be
     /// approved/ rejected based on this rule.
-    pub async fn set_firewall_permissions(
-        &self,
-        permissions: Permissions,
-        peers: Vec<PeerId>,
-        set_default: bool,
-    ) -> StrongholdResult<()> {
+    ///
+    /// **Note:** This rule is only active if the [`NetworkConfig::with_async_firewall`] was **not** enabled on init.
+    pub async fn set_default_permission(&self, permissions: Permissions) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
+        actor
+            .send(network_messages::SetFirewallDefault {
+                permissions: permissions.clone(),
+            })
+            .await?;
+        Ok(())
+    }
 
-        if set_default {
-            actor
-                .send(network_messages::SetFirewallDefault {
-                    permissions: permissions.clone(),
-                })
-                .await?;
-        }
+    /// Change the firewall rule for an individual peer. All inbound requests from this peer will be
+    /// approved/ rejected based on this rule.
+    pub async fn set_peer_permissions(&self, permissions: Permissions, peer: PeerId) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor
+            .send(network_messages::SetFirewallRule { peer, permissions })
+            .await?;
+        Ok(())
+    }
 
-        for peer in peers {
-            actor
-                .send(network_messages::SetFirewallRule {
-                    peer,
-                    permissions: permissions.clone(),
-                })
-                .await?;
-        }
+    /// Remove the individual firewall rule of an peer, Instead the default rule will be used,
+    /// or the `FirewallChannel` in case of [`NetworkConfig::with_async_firewall`].
+    pub async fn remove_peer_permissions(&self, peer: PeerId) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor.send(network_messages::RemoveFirewallRule { peer }).await?;
+        Ok(())
+    }
+
+    /// Change the default rule for mapping clients on inbound requests to a local client.
+    pub async fn set_default_client_mapping(&self, mapping: ClientMapping) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor
+            .send(network_messages::SetDefaultClientMapping { mapping })
+            .await?;
+        Ok(())
+    }
+
+    /// Set individual client mapping for a peer.
+    pub async fn set_client_mapping(&self, mapping: ClientMapping, peer: PeerId) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor.send(network_messages::SetClientMapping { peer, mapping }).await?;
+        Ok(())
+    }
+
+    /// Remove individual client mapping for a peer, so that the settings rules apply.
+    pub async fn remove_client_mapping(&self, peer: PeerId) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor.send(network_messages::RemoveClientMapping { peer }).await?;
         Ok(())
     }
 

@@ -66,22 +66,19 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
             ..
         } = item;
         let ShRequest { client_path, request } = request;
-        let mapping = match self._config.peer_client_mapping_mut().get(&peer) {
+        let ClientMapping {
+            map_client_paths,
+            default,
+        } = match self._config.peer_client_mapping_mut().get(&peer) {
             Some(m) => m,
             None => self._config.client_mapping_default_mut(),
         };
-        let client_path = match mapping {
-            Some(ClientMapping {
-                map_client_paths,
-                default,
-            }) => match map_client_paths
-                .get(&client_path)
-                .cloned()
-                .unwrap_or_else(|| default.clone())
-            {
-                Some(path) => path,
-                None => client_path,
-            },
+        let client_path = match map_client_paths
+            .get(&client_path)
+            .cloned()
+            .unwrap_or_else(|| default.clone())
+        {
+            Some(path) => path,
             None => client_path,
         };
 
@@ -162,8 +159,9 @@ impl Handler<SetFirewallRule> for Network {
     type Result = ResponseActFuture<Self, ()>;
 
     fn handle(&mut self, msg: SetFirewallRule, _: &mut Self::Context) -> Self::Result {
-        let peer_permissions = self._config.peer_permissions_mut();
-        peer_permissions.insert(msg.peer, msg.permissions.clone());
+        self._config
+            .peer_permissions_mut()
+            .insert(msg.peer, msg.permissions.clone());
         let mut network = self.network.clone();
         async move {
             network
@@ -172,6 +170,43 @@ impl Handler<SetFirewallRule> for Network {
         }
         .into_actor(self)
         .boxed_local()
+    }
+}
+
+impl Handler<RemoveFirewallRule> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: RemoveFirewallRule, _: &mut Self::Context) -> Self::Result {
+        self._config.peer_permissions_mut().remove(&msg.peer);
+        let mut network = self.network.clone();
+        async move { network.remove_peer_rule(msg.peer, RuleDirection::Inbound).await }
+            .into_actor(self)
+            .boxed_local()
+    }
+}
+
+impl Handler<SetDefaultClientMapping> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetDefaultClientMapping, _: &mut Self::Context) -> Self::Result {
+        let default_mapping = self._config.client_mapping_default_mut();
+        *default_mapping = msg.mapping;
+    }
+}
+
+impl Handler<SetClientMapping> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetClientMapping, _: &mut Self::Context) -> Self::Result {
+        self._config.peer_client_mapping_mut().insert(msg.peer, msg.mapping);
+    }
+}
+
+impl Handler<RemoveClientMapping> for Network {
+    type Result = ();
+
+    fn handle(&mut self, msg: RemoveClientMapping, _: &mut Self::Context) -> Self::Result {
+        self._config.peer_client_mapping_mut().remove(&msg.peer);
     }
 }
 
@@ -205,10 +240,6 @@ impl_handler!(StopListeningRelay => bool, |network, msg| {
 
 impl_handler!(ConnectPeer => Result<Multiaddr, DialErr>, |network, msg| {
     network.connect_peer(msg.peer).await
-});
-
-impl_handler!(RemoveFirewallRule => (), |network, msg| {
-    network.remove_peer_rule(msg.peer, RuleDirection::Inbound).await
 });
 
 impl_handler!(GetPeerAddrs => Vec<Multiaddr>, |network, msg| {
@@ -310,6 +341,25 @@ pub mod messages {
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct RemoveFirewallRule {
+        pub peer: PeerId,
+    }
+
+    #[derive(Message)]
+    #[rtype(result = "()")]
+    pub struct SetDefaultClientMapping {
+        pub mapping: ClientMapping,
+    }
+
+    #[derive(Message)]
+    #[rtype(result = "()")]
+    pub struct SetClientMapping {
+        pub peer: PeerId,
+        pub mapping: ClientMapping,
+    }
+
+    #[derive(Message)]
+    #[rtype(result = "()")]
+    pub struct RemoveClientMapping {
         pub peer: PeerId,
     }
 
