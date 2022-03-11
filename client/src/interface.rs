@@ -57,7 +57,7 @@ use std::io;
 
 pub type StrongholdResult<T> = Result<T, ActorError>;
 
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone)]
 pub enum ActorError {
     #[error("actor mailbox error: {0}")]
     Mailbox(#[from] MailboxError),
@@ -65,11 +65,28 @@ pub enum ActorError {
     TargetNotFound,
 }
 
+impl PartialEq<ActorError> for ActorError {
+    fn eq(&self, other: &ActorError) -> bool {
+        matches!(
+            (self, other),
+            (ActorError::TargetNotFound, ActorError::TargetNotFound)
+                | (
+                    ActorError::Mailbox(MailboxError::Closed),
+                    ActorError::Mailbox(MailboxError::Closed)
+                )
+                | (
+                    ActorError::Mailbox(MailboxError::Timeout),
+                    ActorError::Mailbox(MailboxError::Timeout)
+                )
+        )
+    }
+}
+
 #[cfg(feature = "p2p")]
 pub type P2pResult<T> = Result<T, P2pError>;
 
 #[cfg(feature = "p2p")]
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone, PartialEq)]
 pub enum P2pError {
     #[error("local actor error: {0}")]
     Local(#[from] ActorError),

@@ -229,7 +229,7 @@ impl<TRq> FirewallConfiguration<TRq> {
     }
 
     /// Create a new instance with default configuration rejecting all requests.
-    pub fn reject_all() -> Self {
+    pub fn allow_none() -> Self {
         FirewallConfiguration {
             default: FirewallRules {
                 inbound: Some(Rule::RejectAll),

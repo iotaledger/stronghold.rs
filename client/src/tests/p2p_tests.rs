@@ -4,11 +4,13 @@
 use crate::{
     p2p::{identity::Keypair, NetworkConfig, OutboundFailure, P2pError, PeerId, Permissions, SwarmInfo},
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
+    state::p2p::{ClientPermissions, FirewallChannel, FirewallChannelSender},
     tests::fresh,
     Location, Stronghold,
 };
+use futures::StreamExt;
 use stronghold_utils::random::bytestring;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 struct Setup {
     local_stronghold: Stronghold,
@@ -18,20 +20,33 @@ struct Setup {
     remote_client: Vec<u8>,
 }
 
+enum FirewallSetup {
+    Async(FirewallChannelSender),
+    Fixed(Permissions),
+}
+
+impl Default for FirewallSetup {
+    fn default() -> Self {
+        FirewallSetup::Fixed(Permissions::allow_all())
+    }
+}
+
 // Init local and remote Stronghold, start listening on the remote and add the address info to the local peer.
-async fn spawn_peers(remote_firewall_config: Permissions, store_keys: Option<Location>) -> Setup {
+async fn spawn_peers(remote_firewall_config: FirewallSetup, store_keys: Option<Location>) -> Setup {
     let remote_client = bytestring(4096);
     // Start remote stronghold and start listening
     let mut remote_sh = Stronghold::init_stronghold_system(remote_client.clone(), vec![])
         .await
         .unwrap();
-    match remote_sh
-        .spawn_p2p(
-            NetworkConfig::new(remote_firewall_config).with_mdns_enabled(false),
-            None,
-        )
-        .await
-    {
+    let (permissions, firewall_tx) = match remote_firewall_config {
+        FirewallSetup::Fixed(p) => (p, None),
+        FirewallSetup::Async(firewall_tx) => (Permissions::allow_none(), Some(firewall_tx)),
+    };
+    let mut config = NetworkConfig::new(permissions).with_mdns_enabled(false);
+    if let Some(tx) = firewall_tx {
+        config = config.with_async_firewall(tx);
+    }
+    match remote_sh.spawn_p2p(config, None).await {
         Ok(()) => {}
         Err(e) => panic!("Unexpected error {}", e),
     }
@@ -111,7 +126,7 @@ async fn test_stronghold_p2p() {
         remote_id,
         remote_client,
         ..
-    } = spawn_peers(Permissions::allow_all(), None).await;
+    } = spawn_peers(FirewallSetup::default(), None).await;
     let remote_client_clone = remote_client.clone();
 
     // Channel for signaling that local/ remote is ready i.g. performed a necessary write, before the other ran try
@@ -251,7 +266,7 @@ async fn test_p2p_config() {
         remote_stronghold,
         remote_id,
         remote_client,
-    } = spawn_peers(Permissions::allow_all(), Some(keys_location.clone())).await;
+    } = spawn_peers(FirewallSetup::default(), Some(keys_location.clone())).await;
 
     // Set a firewall rule
     remote_stronghold
@@ -310,4 +325,139 @@ async fn test_p2p_config() {
         | Err(P2pError::SendRequest(OutboundFailure::Timeout)) => panic!("Unexpected error {:?}", res),
         Err(_) => {}
     }
+}
+
+#[actix::test]
+async fn test_p2p_firewall() {
+    let system = actix::System::current();
+    let arbiter = system.arbiter();
+
+    let (firewall_tx, mut firewall_rx) = FirewallChannel::new();
+
+    let Setup {
+        local_stronghold,
+        local_id,
+        mut remote_stronghold,
+        remote_id,
+        remote_client,
+    } = spawn_peers(FirewallSetup::Async(firewall_tx), None).await;
+
+    let forbidden_client_path = fresh::bytestring(1024);
+    remote_stronghold
+        .spawn_stronghold_actor(forbidden_client_path.clone(), vec![])
+        .await
+        .unwrap();
+
+    let allowed_client_path = remote_client;
+    let allowed_client_path_clone = allowed_client_path.clone();
+
+    let allowed_vault_path = fresh::bytestring(1024);
+    let allowed_vault_path_clone = allowed_vault_path.clone();
+
+    let spawned_remote = arbiter.spawn(async move {
+        let _ = remote_stronghold;
+        // Permissions requests issued by the write attempt of `local_stronghold`.
+        let permission_setter = firewall_rx.select_next_some().await;
+        assert_eq!(permission_setter.peer(), local_id);
+
+        // Allow `write` only on vault `allowed_vault_path_clone` in client `allowed_client_path_clone`.
+        let client_permissions =
+            ClientPermissions::allow_none().with_vault_access(allowed_vault_path_clone, false, true, false);
+        let permissions =
+            Permissions::allow_none().with_client_permissions(allowed_client_path_clone, client_permissions);
+        permission_setter.set_permissions(permissions).unwrap();
+    });
+    assert!(spawned_remote);
+
+    let (done_tx, done_rx) = oneshot::channel();
+    let spawned_local = arbiter.spawn(async move {
+        let loc1 = Location::generic(allowed_vault_path.clone(), fresh::bytestring(1024));
+
+        let res = local_stronghold
+            .write_remote_vault(
+                remote_id,
+                allowed_client_path.clone(),
+                loc1.clone(),
+                fresh::bytestring(1024),
+                fresh::record_hint(),
+                vec![],
+            )
+            .await
+            .map(|ok| ok.unwrap());
+        assert!(res.is_ok());
+
+        let res = local_stronghold
+            .write_remote_vault(
+                remote_id,
+                forbidden_client_path.clone(),
+                loc1,
+                fresh::bytestring(1024),
+                fresh::record_hint(),
+                vec![],
+            )
+            .await
+            .map(|ok| ok.unwrap());
+        // Firewall at the remote rejected the request to the invalid client path.
+        assert_eq!(res, Err(P2pError::SendRequest(OutboundFailure::ConnectionClosed)));
+
+        let loc2 = Location::generic(allowed_client_path.clone(), fresh::bytestring(1024));
+        let res = local_stronghold
+            .write_remote_vault(
+                remote_id,
+                allowed_client_path.clone(),
+                loc2,
+                fresh::bytestring(1024),
+                fresh::record_hint(),
+                vec![],
+            )
+            .await
+            .map(|ok| ok.unwrap());
+        // Firewall at the remote rejected the request to the invalid vault path.
+        assert_eq!(res, Err(P2pError::SendRequest(OutboundFailure::ConnectionClosed)));
+
+        let loc3 = Location::generic(allowed_vault_path.clone(), fresh::bytestring(1024));
+        let proc_generate = Slip10Generate {
+            size_bytes: None,
+            output: loc3.clone(),
+            hint: fresh::record_hint(),
+        };
+
+        let loc4 = Location::generic(allowed_vault_path.clone(), fresh::bytestring(1024));
+        let proc_derive = Slip10Derive {
+            input: Slip10DeriveInput::Seed(loc3),
+            chain: fresh::hd_path().1,
+            output: loc4,
+            hint: fresh::record_hint(),
+        };
+
+        let res = local_stronghold
+            .remote_runtime_exec_chained(
+                remote_id,
+                allowed_client_path.clone(),
+                vec![proc_generate.into(), proc_derive.into()],
+            )
+            .await
+            .map(|ok| ok.unwrap());
+        // Firewall at the remote rejected the request  because only `write` is allowed, but not
+        // `use`, which is required for the `Slip10Derive`.
+        assert_eq!(res, Err(P2pError::SendRequest(OutboundFailure::ConnectionClosed)));
+
+        // Counter check that Slip10Generate on its own works.
+        let loc5 = Location::generic(allowed_vault_path.clone(), fresh::bytestring(1024));
+        let proc_generate = Slip10Generate {
+            size_bytes: None,
+            output: loc5,
+            hint: fresh::record_hint(),
+        };
+        let res = local_stronghold
+            .remote_runtime_exec(remote_id, allowed_client_path.clone(), proc_generate)
+            .await
+            .map(|ok| ok.unwrap());
+        assert!(res.is_ok());
+
+        done_tx.send(()).unwrap()
+    });
+    assert!(spawned_local);
+
+    done_rx.await.unwrap();
 }

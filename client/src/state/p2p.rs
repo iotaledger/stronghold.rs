@@ -19,6 +19,7 @@ use futures::{
         mpsc::{self, TryRecvError},
         oneshot,
     },
+    stream::FusedStream,
     task::{Context, Poll},
 };
 use p2p::{
@@ -278,9 +279,9 @@ impl NetworkConfig {
         self
     }
 
-    /// Extend the peer-specific permissions.
-    pub fn with_peer_permission(mut self, permissions: HashMap<PeerId, Permissions>) -> Self {
-        self.peer_permissions.extend(permissions);
+    /// Set the peer-specific permissions.
+    pub fn with_peer_permission(mut self, peer: PeerId, permissions: Permissions) -> Self {
+        self.peer_permissions.insert(peer, permissions);
         self
     }
 
@@ -364,9 +365,9 @@ impl FirewallChannel {
     ///
     /// The `FirewallChannelSender` shall be passed to the `Network` on init via
     /// [`NetworkConfig::with_async_firewall`] on init.
-    pub fn new() -> (Self, FirewallChannelSender) {
+    pub fn new() -> (FirewallChannelSender, Self) {
         let (tx, rx) = mpsc::channel(10);
-        (FirewallChannel { inner_rx: rx }, FirewallChannelSender(tx))
+        (FirewallChannelSender(tx), FirewallChannel { inner_rx: rx })
     }
 
     /// Close the channel.
@@ -414,11 +415,17 @@ impl Stream for FirewallChannel {
     }
 }
 
+impl FusedStream for FirewallChannel {
+    fn is_terminated(&self) -> bool {
+        self.inner_rx.is_terminated()
+    }
+}
+
 /// Permissions for remote peer to operate on the local vault or store of a client.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Permissions {
-    default: Option<ClientPermissions>,
-    exceptions: HashMap<Vec<u8>, Option<ClientPermissions>>,
+    default: ClientPermissions,
+    exceptions: HashMap<Vec<u8>, ClientPermissions>,
 }
 
 impl Permissions {
@@ -431,24 +438,20 @@ impl Permissions {
     /// to the store,
     pub fn allow_all() -> Self {
         Self {
-            default: Some(ClientPermissions::all()),
+            default: ClientPermissions::allow_all(),
             ..Default::default()
         }
     }
 
     /// Set default permissions for accessing all clients without any explicit rules.
-    ///
-    /// In case of `None` no access is permitted.
-    pub fn with_default_permissions(mut self, permissions: Option<ClientPermissions>) -> Self {
+    pub fn with_default_permissions(mut self, permissions: ClientPermissions) -> Self {
         self.default = permissions;
         self
     }
 
-    /// Extend permissions for access to specific `client_path`s.
-    ///
-    /// In case of `None` no access to this client is permitted.
-    pub fn extend_client_permissions(mut self, permissions: HashMap<Vec<u8>, Option<ClientPermissions>>) -> Self {
-        self.exceptions.extend(permissions);
+    /// Set permissions for access to specific `client_path`s.
+    pub fn with_client_permissions(mut self, client_path: Vec<u8>, permissions: ClientPermissions) -> Self {
+        self.exceptions.insert(client_path, permissions);
         self
     }
 
@@ -461,10 +464,10 @@ impl Permissions {
     }
 
     pub(crate) fn is_permitted(&self, request: &AccessRequest) -> bool {
-        match self.exceptions.get(&request.client_path).unwrap_or(&self.default) {
-            Some(p) => p.is_permitted(request),
-            None => false,
-        }
+        self.exceptions
+            .get(&request.client_path)
+            .unwrap_or(&self.default)
+            .is_permitted(request)
     }
 }
 
@@ -486,12 +489,13 @@ pub struct ClientPermissions {
 
 impl ClientPermissions {
     /// No access to any structures of the vault is permitted.
-    pub fn none() -> Self {
+    pub fn allow_none() -> Self {
         Self::default()
     }
+
     /// All operations on the client are permitted.
     /// This include reading, writing and cloning secrets, and reading/ writing to the store,
-    pub fn all() -> Self {
+    pub fn allow_all() -> Self {
         ClientPermissions {
             use_vault_default: true,
             write_vault_default: true,
@@ -520,8 +524,8 @@ impl ClientPermissions {
     /// See [`ClientPermissions::with_default_vault_access`] for more info in the parameters.
     pub fn with_vault_access(mut self, vault_path: Vec<u8>, use_: bool, write: bool, clone_: bool) -> Self {
         self.use_vault_exceptions.insert(vault_path.clone(), use_);
-        self.use_vault_exceptions.insert(vault_path.clone(), write);
-        self.use_vault_exceptions.insert(vault_path, clone_);
+        self.write_vault_exceptions.insert(vault_path.clone(), write);
+        self.clone_vault_exceptions.insert(vault_path, clone_);
         self
     }
 
@@ -534,6 +538,9 @@ impl ClientPermissions {
 
     // Check if a inbound request is permitted according to the set permissions.
     pub(crate) fn is_permitted(&self, request: &AccessRequest) -> bool {
+        if let Some(approval) = self.fixed_approval() {
+            return approval;
+        }
         request.required_access.iter().all(|access| match access {
             Access::Use { vault_path } => self
                 .use_vault_exceptions
@@ -571,6 +578,37 @@ impl ClientPermissions {
             Access::ReadStore => self.read_store,
             Access::WriteStore => self.write_store,
         })
+    }
+
+    // Returns the approval that blindly applies for all requests independently
+    // of type of access or target vault-path.
+    //
+    // If there are an vault-exceptions or the approval differs based on the type
+    // of access `None is returned`.
+    fn fixed_approval(&self) -> Option<bool> {
+        if !self.use_vault_exceptions.is_empty()
+            || !self.write_vault_exceptions.is_empty()
+            || !self.clone_vault_exceptions.is_empty()
+        {
+            return None;
+        }
+        if self.use_vault_default
+            && self.write_vault_default
+            && self.clone_vault_default
+            && self.read_store
+            && self.write_store
+        {
+            return Some(true);
+        }
+        if !self.use_vault_default
+            && !self.write_vault_default
+            && !self.clone_vault_default
+            && !self.read_store
+            && !self.write_store
+        {
+            return Some(false);
+        }
+        None
     }
 }
 
