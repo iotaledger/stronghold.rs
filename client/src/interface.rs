@@ -45,7 +45,7 @@ use crate::{
         GetNetwork, InsertNetwork, RemoveNetwork,
     },
     procedures::FatalProcedureError,
-    state::p2p::{ClientMapping, FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
+    state::p2p::{FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
@@ -720,29 +720,6 @@ impl Stronghold {
     pub async fn remove_peer_permissions(&self, peer: PeerId) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
         actor.send(network_messages::RemoveFirewallRule { peer }).await?;
-        Ok(())
-    }
-
-    /// Change the default rule for mapping clients on inbound requests to a local client.
-    pub async fn set_default_client_mapping(&self, mapping: ClientMapping) -> StrongholdResult<()> {
-        let actor = self.network_actor().await?;
-        actor
-            .send(network_messages::SetDefaultClientMapping { mapping })
-            .await?;
-        Ok(())
-    }
-
-    /// Set individual client mapping for a peer.
-    pub async fn set_client_mapping(&self, mapping: ClientMapping, peer: PeerId) -> StrongholdResult<()> {
-        let actor = self.network_actor().await?;
-        actor.send(network_messages::SetClientMapping { peer, mapping }).await?;
-        Ok(())
-    }
-
-    /// Remove individual client mapping for a peer, so that the default setting applies.
-    pub async fn remove_client_mapping(&self, peer: PeerId) -> StrongholdResult<()> {
-        let actor = self.network_actor().await?;
-        actor.send(network_messages::RemoveClientMapping { peer }).await?;
         Ok(())
     }
 

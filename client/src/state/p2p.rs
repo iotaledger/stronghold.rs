@@ -142,9 +142,6 @@ pub struct NetworkConfig {
     enable_relay: bool,
     addresses: Option<AddressInfo>,
 
-    peer_client_mapping: HashMap<PeerId, ClientMapping>,
-    client_mapping_default: ClientMapping,
-
     peer_permissions: HashMap<PeerId, Permissions>,
     permissions_default: Permissions,
 
@@ -161,8 +158,6 @@ impl fmt::Debug for NetworkConfig {
             .field("enable_mdns", &self.enable_mdns)
             .field("enable_relay", &self.enable_relay)
             .field("addresses", &self.addresses)
-            .field("peer_client_mapping", &self.peer_client_mapping)
-            .field("client_mapping_default", &self.client_mapping_default)
             .field("peer_permissions", &self.peer_permissions)
             .field("permissions_default", &self.permissions_default)
             .field("firewall_tx", &"")
@@ -183,8 +178,6 @@ impl Default for NetworkConfig {
             enable_mdns: false,
             enable_relay: false,
             addresses: None,
-            peer_client_mapping: HashMap::new(),
-            client_mapping_default: ClientMapping::default(),
             peer_permissions: HashMap::new(),
             permissions_default: Permissions::allow_none(),
             firewall_tx: None,
@@ -310,37 +303,12 @@ impl NetworkConfig {
         self
     }
 
-    /// Set default mapping for inbound requests to a target client.
-    ///
-    /// This maps the `client_path` that is sent from the remote (as part of their request) to a local
-    /// target client with another `client_path`.
-    pub fn with_default_client_mapping(mut self, mapping: ClientMapping) -> Self {
-        self.client_mapping_default = mapping;
-        self
-    }
-
-    /// Extend mapping for inbound requests to a target client from specific peers.
-    ///
-    /// See [`NetworkConfig::with_default_client_mapping`].
-    pub fn with_peer_client_mapping(mut self, peer: PeerId, mapping: ClientMapping) -> Self {
-        self.peer_client_mapping.insert(peer, mapping);
-        self
-    }
-
     pub(crate) fn peer_permissions_mut(&mut self) -> &mut HashMap<PeerId, Permissions> {
         &mut self.peer_permissions
     }
 
     pub(crate) fn permissions_default_mut(&mut self) -> &mut Permissions {
         &mut self.permissions_default
-    }
-
-    pub(crate) fn peer_client_mapping_mut(&mut self) -> &mut HashMap<PeerId, ClientMapping> {
-        &mut self.peer_client_mapping
-    }
-
-    pub(crate) fn client_mapping_default_mut(&mut self) -> &mut ClientMapping {
-        &mut self.client_mapping_default
     }
 }
 
@@ -684,7 +652,6 @@ impl ClientAccess {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessRequest {
     // Client to which the request should be forwarded.
-    // Note: this is already the mapped client_path. See `ClientMapping`.
     pub client_path: Vec<u8>,
     // List of vault and record access that the ShRequest needs.
     pub required_access: Vec<Access>,
@@ -771,24 +738,6 @@ impl FwRequest<ShRequest> for AccessRequest {
             required_access,
         }
     }
-}
-
-/// Map the `client_path` requested by the remote peer to a local
-/// `client_path`.
-///
-/// Request from / to a remote peer include a path of the client to which
-/// the requests should be forwarded. [`ClientMapping`] allows to map this
-/// client_path to a local one. In case of `None` the requested `client_path` is kept
-/// as it is.
-///
-/// Per default no mapping applies.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct ClientMapping {
-    /// Map specific `client_path`s to local `client_path`s.
-    pub map_client_paths: HashMap<Vec<u8>, Option<Vec<u8>>>,
-
-    /// Default mapping for all requested `client_path`s for which not extra rule has been set.
-    pub default: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Message, Clone, Serialize, Deserialize)]

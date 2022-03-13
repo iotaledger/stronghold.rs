@@ -3,7 +3,7 @@
 
 use crate::{
     actors::{secure_messages::WriteToVault, GetClient},
-    state::p2p::{ClientMapping, Network, NetworkConfig, Request, ShRequest, ShResult},
+    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
     utils::LoadFromPath,
 };
 use actix::prelude::*;
@@ -57,28 +57,9 @@ impl Actor for Network {
 impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
     fn handle(&mut self, item: ReceiveRequest<ShRequest, ShResult>, ctx: &mut Self::Context) {
         let ReceiveRequest {
-            request,
-            response_tx,
-            peer,
-            ..
+            request, response_tx, ..
         } = item;
         let ShRequest { client_path, request } = request;
-        let ClientMapping {
-            map_client_paths,
-            default,
-        } = match self._config.peer_client_mapping_mut().get(&peer) {
-            Some(m) => m,
-            None => self._config.client_mapping_default_mut(),
-        };
-        let client_path = match map_client_paths
-            .get(&client_path)
-            .cloned()
-            .unwrap_or_else(|| default.clone())
-        {
-            Some(path) => path,
-            None => client_path,
-        };
-
         let client_id = ClientId::load_from_path(&client_path, &client_path);
         sh_request_dispatch!(request => |inner| {
             let fut = self.registry
@@ -171,31 +152,6 @@ impl Handler<RemoveFirewallRule> for Network {
         async move { network.remove_peer_rule(msg.peer).await }
             .into_actor(self)
             .boxed_local()
-    }
-}
-
-impl Handler<SetDefaultClientMapping> for Network {
-    type Result = ();
-
-    fn handle(&mut self, msg: SetDefaultClientMapping, _: &mut Self::Context) -> Self::Result {
-        let default_mapping = self._config.client_mapping_default_mut();
-        *default_mapping = msg.mapping;
-    }
-}
-
-impl Handler<SetClientMapping> for Network {
-    type Result = ();
-
-    fn handle(&mut self, msg: SetClientMapping, _: &mut Self::Context) -> Self::Result {
-        self._config.peer_client_mapping_mut().insert(msg.peer, msg.mapping);
-    }
-}
-
-impl Handler<RemoveClientMapping> for Network {
-    type Result = ();
-
-    fn handle(&mut self, msg: RemoveClientMapping, _: &mut Self::Context) -> Self::Result {
-        self._config.peer_client_mapping_mut().remove(&msg.peer);
     }
 }
 
@@ -330,25 +286,6 @@ pub mod messages {
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct RemoveFirewallRule {
-        pub peer: PeerId,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct SetDefaultClientMapping {
-        pub mapping: ClientMapping,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct SetClientMapping {
-        pub peer: PeerId,
-        pub mapping: ClientMapping,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct RemoveClientMapping {
         pub peer: PeerId,
     }
 

@@ -1,12 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::HashMap;
-
 use crate::{
     p2p::{identity::Keypair, NetworkConfig, OutboundFailure, P2pError, PeerId, Permissions, SwarmInfo},
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
-    state::p2p::{ClientAccess, ClientMapping, FirewallChannel, FirewallChannelSender},
+    state::p2p::{ClientAccess, FirewallChannel, FirewallChannelSender},
     tests::fresh,
     Location, Stronghold,
 };
@@ -462,117 +460,4 @@ async fn test_p2p_firewall() {
     assert!(spawned_local);
 
     done_rx.await.unwrap();
-}
-
-#[actix::test]
-async fn test_client_mapping() {
-    let Setup {
-        local_stronghold,
-        local_id,
-        mut remote_stronghold,
-        remote_id,
-        remote_client,
-    } = spawn_peers(FirewallSetup::default(), None).await;
-
-    let client_a = remote_client;
-    let client_b = fresh::bytestring(1024);
-    remote_stronghold
-        .spawn_stronghold_actor(client_b.clone(), vec![])
-        .await
-        .unwrap();
-    let client_c = fresh::bytestring(1024);
-    remote_stronghold
-        .spawn_stronghold_actor(client_c.clone(), vec![])
-        .await
-        .unwrap();
-
-    remote_stronghold.switch_actor_target(client_a.clone()).await.unwrap();
-
-    // Map requests for client_a to client_b, all other to client_c.
-    let mapping = ClientMapping {
-        map_client_paths: HashMap::from([(client_a.clone(), Some(client_b.clone()))]),
-        default: Some(client_c.clone()),
-    };
-    remote_stronghold.set_client_mapping(mapping, local_id).await.unwrap();
-
-    let loc1 = fresh::location();
-    let hint1 = fresh::record_hint();
-    let loc2 = fresh::location();
-    let hint2 = fresh::record_hint();
-
-    // Target client_a.
-    match local_stronghold
-        .write_remote_vault(
-            remote_id,
-            client_a.clone(),
-            loc1.clone(),
-            fresh::bytestring(1024),
-            hint1,
-            vec![],
-        )
-        .await
-        .unwrap()
-    {
-        Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e),
-    }
-    // Target random client path.
-    match local_stronghold
-        .write_remote_vault(
-            remote_id,
-            fresh::bytestring(1024),
-            loc2.clone(),
-            fresh::bytestring(1024),
-            hint2,
-            vec![],
-        )
-        .await
-        .unwrap()
-    {
-        Ok(()) => {}
-        Err(e) => panic!("Unexpected error {}", e),
-    }
-
-    // Client-a at remote should not contain any values.
-    let list = remote_stronghold.list_hints_and_ids(loc1.vault_path()).await.unwrap();
-    assert!(list.is_empty());
-    let list = remote_stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
-    assert!(list.is_empty());
-
-    // Client-b should only contain value at loc1.
-    remote_stronghold.switch_actor_target(client_b.clone()).await.unwrap();
-    let mut list = remote_stronghold.list_hints_and_ids(loc1.vault_path()).await.unwrap();
-    assert_eq!(list.len(), 1);
-    assert!(list.pop().unwrap().1 == hint1);
-    let list = remote_stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
-    assert!(list.is_empty());
-
-    // Client-c should only contain value at loc2.
-    remote_stronghold.switch_actor_target(client_c).await.unwrap();
-    let list = remote_stronghold.list_hints_and_ids(loc1.vault_path()).await.unwrap();
-    assert!(list.is_empty());
-    let mut list = remote_stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
-    assert_eq!(list.len(), 1);
-    assert!(list.pop().unwrap().1 == hint2);
-
-    // TODO!
-
-    // // Restrict access to client-b.
-    // let permissions = Permissions::allow_all().with_client_permissions(client_b, ClientAccess::allow_none());
-    // remote_stronghold.set_peer_permissions(permissions, local_id).await.unwrap();
-    // // Request should fail as it will be mapped to client-b and then rejected according to the rule.
-    // match local_stronghold
-    //     .write_remote_vault(
-    //         remote_id,
-    //         client_a.clone(),
-    //         fresh::location(),
-    //         fresh::bytestring(1024),
-    //         fresh::record_hint(),
-    //         vec![],
-    //     )
-    //     .await
-    // {
-    //     Err(P2pError::SendRequest(OutboundFailure::ConnectionClosed)) => {},
-    //     res => panic!("Unexpected result {:?}", res),
-    // }
 }
