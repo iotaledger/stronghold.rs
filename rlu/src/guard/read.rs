@@ -69,7 +69,7 @@ where
     fn drop(&mut self) {
         if let Some(context) = self.context {
             // end RLU section
-            context.read_unlock()
+            assert!(context.read_unlock().is_ok());
         }
     }
 }
