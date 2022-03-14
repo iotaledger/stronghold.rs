@@ -9,7 +9,7 @@ use rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, 
 use std::{
     cell::RefCell,
     collections::HashMap,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{atomic::AtomicUsize, Arc, Mutex, RwLock},
     time::Duration,
 };
 use stronghold_rlu as rlu;
@@ -62,7 +62,6 @@ fn reference_impl() {
 #[test]
 fn reference_concurrent() {
     let map = HashMap::new();
-    // map.insert(1234567, "hello, world");
     let mut keys = Vec::new();
 
     let rlu = RLU::with_strategy(RLUStrategy::Retry);
@@ -90,7 +89,7 @@ fn reference_concurrent() {
         });
 
         // this effectively serializes the write / read operation, which is not intended
-        std::thread::sleep(Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(10));
 
         let j1 = std::thread::spawn(move || {
             r2.execute(|ctx| {
@@ -123,8 +122,6 @@ fn reference_concurrent() {
 
         keys.push(key);
 
-        // normally, this could be reduced to `assert!(j0.join().is_ok())`, but we would like to see a
-        // potential error being rendered.
         assert!(j0.join().is_ok());
         assert!(j1.join().is_ok());
     }
@@ -135,7 +132,6 @@ fn reference_concurrent() {
     }
 }
 
-#[ignore]
 #[test]
 fn test_multiple_readers_single_writer() {
     const EXPECTED: usize = 15usize;
