@@ -603,7 +603,7 @@ impl Stronghold {
         Ok(Ok(()))
     }
 
-    // Export the config and state of the p2p-layer.
+    /// Export the config and state of the p2p-layer.
     pub async fn export_config(&mut self) -> StrongholdResult<NetworkConfig> {
         let actor = self.network_actor().await?;
         let config = actor.send(network_messages::ExportConfig).await?;

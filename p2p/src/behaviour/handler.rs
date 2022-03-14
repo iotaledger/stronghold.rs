@@ -89,9 +89,9 @@ where
     OutboundUnsupportedProtocols(RequestId),
 }
 
-// Handler for a single connection to a remote peer.
-// One connection can have multiple substreams that each either negotiate the `RequestProtocol` or the
-// `ResponseProtocol` by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
+/// Handler for a single connection to a remote peer.
+/// One connection can have multiple substreams that each either negotiate the `RequestProtocol` or the
+/// `ResponseProtocol` by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
 pub struct Handler<Rq, Rs>
 where
     Rq: RqRsMessage,
@@ -101,7 +101,7 @@ where
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
     // Whether inbound requests and thus the `ResponseProtocol` is supported.
     support_inbound: bool,
-    // Timeout for negotiating a handshake on a substream i.e. sending a requests and receiving the response.
+    // Timeout for negotiating a handshake on a substream, i.e. sending a requests and receiving the response.
     request_timeout: Duration,
     // Timeout for an idle connection.
     keep_alive_timeout: Duration,

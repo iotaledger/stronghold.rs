@@ -47,8 +47,8 @@ pub struct Products<T> {
 }
 
 /// Procedure to create, use or remove secrets from a stronghold vault.
-// The `primitives::procedure` macro may be used to auto-implement this
-// trait for procedures that implement `GenerateSecret`, `DeriveSecret` or `UseSecret`.
+/// The `primitives::procedure` macro may be used to auto-implement this
+/// trait for procedures that implement `GenerateSecret`, `DeriveSecret` or `UseSecret`.
 pub trait Procedure: Sized {
     // Non-secret output type.
     type Output: TryFrom<ProcedureOutput>;

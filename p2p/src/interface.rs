@@ -41,26 +41,27 @@ use serde::{Deserialize, Serialize};
 use std::{io, num::NonZeroU32, time::Duration};
 use thiserror::Error;
 
-/// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
+/// Central interface for listening to the network, establishing connection to remote peers, sending requests `Rq`
+/// and receiving their response `Rs`.
 ///
-/// All Swarm interaction takes place in an event-loop in a separate task.
+/// All [`Swarm`][`libp2p::Swarm`] interaction takes place in an event-loop in a separate task.
 /// [`StrongholdP2p`] is essentially a wrapper for the Sender side of a mpsc channel, which is used to initiate
-/// operations on the swarm.
+/// operations on the swarm. Thus it is safe to clone, while still operating on the same swarm.
 ///
 /// Refer to [`StrongholdP2pBuilder`] for more information on the default configuration.
 ///
 /// ## Firewall configuration
 ///
 /// The firewall allows the user to set default-, and peer-specific firewall rules which are used
-/// to approve each inbound request. Apart from static rules, the firewall-channel may be used for asynchronous rules:
+/// to approve every inbound request.
+/// The firewall operates on the `TRq` type, which can be a modified version of the "real" request, that only includes
+/// the firewall-relevant information. Apart from static rules, the firewall-channel may be used for asynchronous rules:
 /// 1. If no firewall rule is set for a peer and a request occurs, a [`FirewallRequest::PeerSpecificRule`]
 ///    is sent through the channel. The responded rule is then set as firewall rule  for this peer.
 ///    If the user does not response in time or the receiving side of the channel was dropped, the request is rejected.
 /// 2. If [`Rule::Ask`] has been set, a [`FirewallRequest::RequestApproval`] is sent on each request for
 ///    individual approval. If the user does not response in time or the receiving side of the channel was dropped, the
 /// request is rejected.
-///
-///
 ///
 /// ## Example
 ///
@@ -106,7 +107,7 @@ use thiserror::Error;
 /// // Channel used for asynchronous firewall rules.
 /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
 ///
-/// // Channel trough which inbound requests are forwarded.
+/// // Channel through which inbound requests are forwarded.
 /// let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
 ///
 /// // Optional channel through which current events in the network are sent, e.g.
@@ -194,9 +195,9 @@ where
         rx_yield.await.unwrap()
     }
 
-    /// Start listening via a relay peer on an address following the scheme
-    /// `<relay-addr>/<relay-id>/p2p-circuit/<local-id>`. This will establish a keep-alive connection to the relay,
+    /// Start listening via a relay peer. This will establish a keep-alive connection to the relay,
     /// the relay will forward all requests to the local peer.
+    /// The returned address will follow the scheme `<relay-addr>/<relay-id>/p2p-circuit/<local-id>`.
     pub async fn start_relayed_listening(
         &mut self,
         relay: PeerId,
@@ -330,7 +331,7 @@ where
         rx_yield.await.unwrap()
     }
 
-    // Export the address info.
+    /// Export address info of remote peers and relays.
     pub async fn export_address_info(&mut self) -> AddressInfo {
         let (return_tx, rx_yield) = oneshot::channel();
         let command = SwarmCommand::ExportAddressInfo { return_tx };
@@ -355,9 +356,9 @@ where
     }
 
     /// Remove a relay from the list of dialing relays.
-    // Returns `false` if the peer was not among the known relays.
-    //
-    // **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
+    /// Returns `false` if the peer was not among the known relays.
+    ///
+    /// **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
     pub async fn remove_dialing_relay(&mut self, peer: PeerId) -> bool {
         let (return_tx, rx_yield) = oneshot::channel();
         let command = SwarmCommand::RemoveDialingRelay { peer, return_tx };
@@ -432,7 +433,7 @@ where
         rx_yield.await.unwrap()
     }
 
-    // Get currently established connections.
+    /// Get currently established connections.
     pub async fn established_connections(&mut self) -> Vec<(PeerId, Vec<ConnectedPoint>)> {
         let (return_tx, rx_yield) = oneshot::channel();
         let command = SwarmCommand::GetConnections { return_tx };
@@ -478,7 +479,7 @@ pub enum InitKeypair {
 /// pre-configured transport, or [`StrongholdP2pBuilder::build_with_transport`] with a custom transport.
 ///
 /// When building a new `StrongholdP2p` a new [`Swarm`][libp2p::Swarm] is created and continuously polled for events.
-/// Inbound requests are forwarded through a mpsc::channel<ReceiveRequest<Rq, Rs>>.
+/// Inbound requests are forwarded through a `mpsc::channel<ReceiveRequest<Rq, Rs>>`    .
 /// Optionally all events regarding connections and listeners are forwarded as [`NetworkEvent`].
 pub struct StrongholdP2pBuilder<Rq, Rs, TRq = Rq>
 where
@@ -628,7 +629,7 @@ where
     /// transport.
     ///
     /// The transport is upgraded with:
-    /// - [Relay protocol][<https://docs.libp2p.io/concepts/circuit-relay/>]
+    /// - [Relay protocol][`libp2p::relay`]
     /// - Authentication and encryption with the Noise-Protocol, using the XX-handshake
     /// - Yamux substream multiplexing
     ///
@@ -760,7 +761,7 @@ pub struct ReceiveRequest<Rq, Rs> {
 pub struct Listener {
     /// The addresses associated with this listener.
     pub addrs: SmallVec<[Multiaddr; 6]>,
-    /// Whether the listener uses a relay.
+    /// Whether it is listening via a relay.
     pub uses_relay: Option<PeerId>,
 }
 

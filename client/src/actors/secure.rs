@@ -191,7 +191,7 @@ pub mod p2p_messages {
 
     use super::*;
 
-    // Generate new keypair to use for `StrongholdP2p`.
+    /// Generate new keypair to use for `StrongholdP2p`.
     pub struct GenerateP2pKeypair {
         pub location: Location,
         pub hint: RecordHint,
@@ -211,11 +211,11 @@ pub mod p2p_messages {
         type Result = Result<(), ProcedureError>;
     }
 
-    // Derive a new noise keypair from a stored p2p-keypair.
-    // Returns the new keypair and the `PeerId` that is derived from the public
-    // key of the stored keypair.
-    // **Note**: The keypair differs for each new derivation, the `PeerId`
-    // is consistent.
+    /// Derive a new noise keypair from a stored p2p-keypair.
+    /// Returns the new keypair and the `PeerId` that is derived from the public
+    /// key of the stored keypair.
+    /// **Note**: The keypair differs for each new derivation, the `PeerId`
+    /// is consistent.
     pub struct DeriveNoiseKeypair {
         pub p2p_keypair: Location,
     }

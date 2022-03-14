@@ -23,8 +23,8 @@ use std::collections::HashMap;
 
 pub type Ack = ();
 
-// Perform actions on the Swarm.
-// The return value is sent back through the `return_tx` oneshot channel.
+/// Perform actions on the Swarm.
+/// The return value is sent back through the `return_tx` oneshot channel.
 pub enum SwarmCommand<Rq, Rs, TRq> {
     SendRequest {
         peer: PeerId,
@@ -188,7 +188,7 @@ where
     Rs: RqRsMessage,
     TRq: FwRequest<Rq>,
 {
-    // Create new instance of en event-loop
+    /// Create new instance of en event-loop
     pub fn new(
         swarm: Swarm<NetworkBehaviour<Rq, Rs, TRq>>,
         command_rx: mpsc::Receiver<SwarmCommand<Rq, Rs, TRq>>,
@@ -208,12 +208,12 @@ where
         }
     }
 
-    // Central loop:
-    // - Drive the `Swarm` by polling it for events.
-    // - Poll the commands-channel for [`SwarmCommand`]s that are sent from `StrongholdP2p`.
-    //
-    // If all [`StrongholdP2p`] clones are dropped, the command-channel will return `None` and `EventLoop` will shut
-    // down.
+    /// Central loop:
+    /// - Drive the `Swarm` by polling it for events.
+    /// - Poll the commands-channel for [`SwarmCommand`]s that are sent from `StrongholdP2p`.
+    ///
+    /// If all `StrongholdP2p` clones are dropped, the command-channel will return `None` and `EventLoop` will shut
+    /// down.
     pub async fn run(mut self) {
         loop {
             if let Some(event_channel) = self.event_channel.as_mut() {

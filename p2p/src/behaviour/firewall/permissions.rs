@@ -138,7 +138,7 @@ impl FirewallPermission {
         FirewallPermission(p)
     }
 
-    /// Check if the sum includes this [`PermissionValue`] i.e. if a certain bit is set.
+    /// Check if the sum includes this [`PermissionValue`], i.e. if a certain bit is set.
     pub fn permits(&self, v: &PermissionValue) -> bool {
         self.value() & v.value() != 0
     }

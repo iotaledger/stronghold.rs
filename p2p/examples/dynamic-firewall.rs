@@ -96,8 +96,8 @@ fn allow_only_ping(request: &RequestPermission) -> bool {
 
 // Handle user input through stdin.
 // Expect either of:
-// - `-p <peer-id>`: Send a ping
-// - `-p <peer-id> -m <message>`: Send a message
+// - "-p <peer-id>": Send a ping
+// - "-p <peer-id> -m <message>"": Send a message
 async fn on_user_input(
     network: &mut StrongholdP2p<Request, Response, RequestPermission>,
     input: String,

@@ -59,15 +59,15 @@ macro_rules! sh_result_mapping {
 /// On [`Network::new`] a new [`StrongholdP2p`] is created, which will spawn
 /// a libp2p Swarm and continuously poll it.
 pub struct Network {
-    // Interface of stronghold-p2p for all network interaction.
+    /// Interface of stronghold-p2p for all network interaction.
     pub network: StrongholdP2p<ShRequest, ShResult, AccessRequest>,
-    // Actor registry from which the address of the target client and snapshot actor can be queried.
+    /// Actor registry from which the address of the target client and snapshot actor can be queried.
     pub registry: Addr<Registry>,
-    // Channel through which inbound requests are received.
-    // This channel is only inserted temporary on [`Network::new`], and is handed
-    // to the stream handler in `<Self as Actor>::started`.
+    /// Channel through which inbound requests are received.
+    /// This channel is only inserted temporary on [`Network::new`], and is handed
+    /// to the stream handler in `<Self as Actor>::started`.
     pub _inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
-    // Cache the network config so it can be returned on `ExportConfig`.
+    /// Cache the network config so it can be returned on `ExportConfig`.
     pub _config: NetworkConfig,
 }
 
@@ -569,7 +569,7 @@ impl ClientAccess {
         self
     }
 
-    // Check if a inbound request is permitted according to the set permissions.
+    /// Check if a inbound request is permitted according to the set permissions.
     pub(crate) fn is_permitted(&self, request: &AccessRequest) -> bool {
         if let Some(approval) = self.fixed_approval() {
             return approval;
@@ -648,9 +648,9 @@ impl ClientAccess {
 // Required client, vault and store access of an inbound `ShRequest`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccessRequest {
-    // Client to which the request should be forwarded.
+    /// Client to which the request should be forwarded.
     pub client_path: Vec<u8>,
-    // List of vault and record access that the ShRequest needs.
+    /// List of vault and record access that the ShRequest needs.
     pub required_access: Vec<Access>,
 }
 

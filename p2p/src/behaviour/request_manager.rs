@@ -13,7 +13,7 @@ use libp2p::PeerId;
 use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 
-// Actions for the behaviour to handle i.e. the behaviour emits the appropriate `NetworkBehaviourAction`.
+// Actions for the behaviour so that it emits the appropriate `NetworkBehaviourAction`.
 pub enum BehaviourAction<Rq, Rs> {
     // Approved inbound request to forward to the user.
     InboundOk {

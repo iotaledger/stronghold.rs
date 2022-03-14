@@ -9,9 +9,9 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-/// Configure how the network should behave in the case that the capacity of the [`EventChannel`] is reached, i.e. if
-/// the channel is full. This is relevant in cases when the frequency of messages is larger than the frequency
-/// in which the [`mpsc::Receiver`][futures::channel::mpsc::Receiver] side reads from the stream.
+/// Configure how the network should behave in the case that the capacity of the [`EventChannel`] is reached. This is
+/// relevant in cases when the frequency of messages is larger than the frequency in which the
+/// [`mpsc::Receiver`][futures::channel::mpsc::Receiver] side reads from the stream.
 pub enum ChannelSinkConfig {
     /// Block until the channel has enough capacity for the new request.
     ///

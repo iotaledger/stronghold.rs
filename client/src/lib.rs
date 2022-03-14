@@ -53,7 +53,7 @@ pub use engine::{
 #[cfg(feature = "p2p")]
 pub mod p2p {
     pub use crate::{
-        actors::network_messages::SwarmInfo,
+        actors::{network_messages::SwarmInfo, secure_messages},
         interface::{P2pError, P2pResult, SpawnNetworkError},
         state::p2p::{
             ClientAccess, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions, PermissionsRequest,

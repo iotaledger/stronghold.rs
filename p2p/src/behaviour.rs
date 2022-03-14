@@ -246,9 +246,9 @@ where
     }
 
     /// Remove a relay from the list of dialing relays.
-    // Returns `false` if the peer was not among the known relays.
-    //
-    // **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
+    /// Returns `false` if the peer was not among the known relays.
+    ///
+    /// **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
     pub fn remove_dialing_relay(&mut self, peer: &PeerId) -> bool {
         self.addresses.remove_relay(peer)
     }

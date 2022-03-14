@@ -55,10 +55,10 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    // Supported protocols for inbound requests.
-    // Rejects all inbound requests if empty.
+    /// Supported protocols for inbound requests.
+    /// Rejects all inbound requests if empty.
     pub protocols: SmallVec<[MessageProtocol; 2]>,
-    // Channel for forwarding the inbound request.
+    /// Channel for forwarding the inbound request.
     pub request_tx: oneshot::Sender<(Rq, oneshot::Sender<Rs>)>,
 }
 
@@ -115,9 +115,9 @@ where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
 {
-    // Supported protocols for outbound requests.
+    /// Supported protocols for outbound requests.
     pub protocols: SmallVec<[MessageProtocol; 2]>,
-    // Outbound request.
+    /// Outbound request.
     pub request: Rq,
 
     pub _marker: PhantomData<Rs>,

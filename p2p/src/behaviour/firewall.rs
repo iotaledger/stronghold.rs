@@ -1,12 +1,41 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! Firewall in [`StrongholdP2p`][`crate::StrongholdP2p`] for filtering inbound requests.
+
 pub mod permissions;
 use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
 use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
+/// Derive new type from the received request, that only contains firewall-relevant information.
+///
+/// ```
+/// # use serde::{Serialize, Deserialize};
+/// # use p2p::firewall::FwRequest;
+/// #
+/// #[derive(Debug, PartialEq)]
+/// enum Request {
+///     Read { key: Vec<u8> },
+///     Write { key: Vec<u8>, data: Vec<u8> },
+/// }
+///
+/// #[derive(Debug, Clone, PartialEq)]
+/// enum RequestType {
+///     Read,
+///     Write,
+/// }
+///
+/// impl FwRequest<Request> for RequestType {
+///     fn from_request(request: &Request) -> Self {
+///         match request {
+///             Request::Read { .. } => RequestType::Read,
+///             Request::Write { .. } => RequestType::Write,
+///         }
+///     }
+/// }
+/// ```
 pub trait FwRequest<Rq>: Send + 'static {
     fn from_request(request: &Rq) -> Self;
 }
@@ -82,7 +111,7 @@ impl<TRq> Clone for Rule<TRq> {
 }
 
 /// Rules for the firewall of [`StrongholdP2p`][crate::StrongholdP2p].
-/// These rules specifies what inbound requests from which peer are allowed.
+/// These rules specifies what inbound requests from which peers are allowed.
 /// If there is neither a default rule, nor a peer specific one for a request from a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
@@ -163,7 +192,7 @@ impl<TRq> FirewallRules<TRq> {
         self.peer_rules.get(peer)
     }
 
-    /// Get effective rule for a peer i.e. peer-specific rule or else the default rule.
+    /// Get effective rule for a peer, which is the peer-specific rule or else the default rule.
     pub fn get_effective_rule(&self, peer: &PeerId) -> Option<&Rule<TRq>> {
         self.peer_rules.get(peer).or(self.default.as_ref())
     }
