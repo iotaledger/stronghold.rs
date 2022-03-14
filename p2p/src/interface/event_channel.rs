@@ -9,7 +9,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-/// Configure how the network should behave in the case that the capacity of the [`EventChannel`] is reached, i.g. if
+/// Configure how the network should behave in the case that the capacity of the [`EventChannel`] is reached, i.e. if
 /// the channel is full. This is relevant in cases when the frequency of messages is larger than the frequency
 /// in which the [`mpsc::Receiver`][futures::channel::mpsc::Receiver] side reads from the stream.
 pub enum ChannelSinkConfig {
@@ -17,7 +17,7 @@ pub enum ChannelSinkConfig {
     ///
     /// **Note**: This pauses all network interaction and enforces back-pressure, which may be desirable if the machine
     /// is at its limit. But it also hinders all active actions on `StrongholdP2p`, hence asynchronous methods like
-    /// [`StrongholdP2p::send_request`][super::StrongholdP2p::send_request] will be blocked as well.
+    /// [`StrongholdP2p::send_request`][crate::StrongholdP2p::send_request] will be blocked as well.
     Block,
     /// New events will be dropped if the channel is full.
     DropLatest,

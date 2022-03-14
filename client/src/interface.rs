@@ -522,7 +522,7 @@ impl Stronghold {
     }
 
     /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
-    /// The `key` parameter species the location in which in the config is stored, i.g.
+    /// The `key` parameter species the location in which in the config is stored, i.e.
     /// the key that was set on [`Stronghold::stop_p2p`].
     ///
     /// Optionally pass a [`FirewallChannelSender`] for asynchronous firewall interaction.

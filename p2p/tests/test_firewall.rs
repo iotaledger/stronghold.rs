@@ -12,7 +12,7 @@ use libp2p::tcp::TokioTcpConfig;
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallConfiguration, FirewallRequest, FwRequest, Rule,
+        FirewallRequest, FirewallRules, FwRequest, Rule,
     },
     ChannelSinkConfig, EventChannel, InboundFailure, NetworkEvent, OutboundFailure, PeerId, ReceiveRequest,
     StrongholdP2p, StrongholdP2pBuilder,
@@ -57,7 +57,7 @@ async fn init_peer() -> NewPeer {
         firewall_tx,
         request_channel,
         Some(event_channel),
-        FirewallConfiguration::default(),
+        FirewallRules::default(),
     );
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {

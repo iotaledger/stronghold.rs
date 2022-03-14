@@ -14,8 +14,7 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-use super::EMPTY_QUEUE_SHRINK_THRESHOLD;
-use crate::{RequestId, RqRsMessage};
+use crate::{behaviour::EMPTY_QUEUE_SHRINK_THRESHOLD, RequestId, RqRsMessage};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -42,7 +41,7 @@ type ConnectionHandlerEventType<Rq, Rs> = ConnectionHandlerEvent<
 
 type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Rq, oneshot::Sender<Rs>), oneshot::Canceled>>;
 
-// Events emitted in `NetBehaviour::poll` and injected to [`Handler::inject_event`].
+// Events emitted in `NetworkBehaviour::poll` and injected to `Handler::inject_event`.
 #[derive(Debug)]
 pub enum HandlerInEvent<Rq>
 where
@@ -50,13 +49,13 @@ where
 {
     // Send an outbound request.
     SendRequest { request_id: RequestId, request: Rq },
-    // Set the protocol support for inbound and outbound requests.
+    // Set the protocol support for inbound requests.
     // This will be sent to the handler when the connection is first established,
     // and each time the effective firewall rule for the remote changes.
     SetInboundSupport(bool),
 }
 
-// Events emitted in [`Handler::poll`] and injected to `NetBehaviour::inject_event`.
+// Events emitted in `Handler::poll` and injected to `NetworkBehaviour::inject_event`.
 #[derive(Debug)]
 pub enum HandlerOutEvent<Rq, Rs>
 where
@@ -91,8 +90,8 @@ where
 }
 
 // Handler for a single connection to a remote peer.
-// One connection can have multiple substreams that each either negotiate the [`RequestProtocol`] or the
-// [`ResponseProtocol`] by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
+// One connection can have multiple substreams that each either negotiate the `RequestProtocol` or the
+// `ResponseProtocol` by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
 pub struct Handler<Rq, Rs>
 where
     Rq: RqRsMessage,
@@ -102,7 +101,7 @@ where
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
     // Whether inbound requests and thus the `ResponseProtocol` is supported.
     support_inbound: bool,
-    // Timeout for negotiating a handshake on a substream i.g. sending a requests and receiving the response.
+    // Timeout for negotiating a handshake on a substream i.e. sending a requests and receiving the response.
     request_timeout: Duration,
     // Timeout for an idle connection.
     keep_alive_timeout: Duration,
@@ -110,17 +109,17 @@ where
     // Current setting whether the connection to the remote should be kept alive.
     // This is set according to timeout configuration and pending requests.
     keep_alive: KeepAlive,
-    // Request id assigned to the next inbound request.
+    // Request id assigned to the next request.
     next_request_id: Arc<AtomicU64>,
 
     // Fatal error in connection.
     pending_error: Option<ConnectionHandlerUpgrErr<io::Error>>,
 
-    // Pending events to emit to the `NetBehaviour`
+    // Pending events to emit to the `NetworkBehaviour`
     pending_events: VecDeque<HandlerOutEvent<Rq, Rs>>,
-    // Pending outbound request that require a new [`ConnectionHandlerEvent::OutboundSubstreamRequest`].
+    // Pending outbound request that require a new `ConnectionHandlerEvent::OutboundSubstreamRequest`.
     pending_out_req: VecDeque<(RequestId, Rq)>,
-    // Pending inbound requests for which a [`ResponseProtocol`] was created, but no request message was received yet.
+    // Pending inbound requests for which a `ResponseProtocol` was created, but no request message was received yet.
     pending_in_req: FuturesUnordered<PendingInboundFuture<Rq, Rs>>,
 }
 
@@ -150,7 +149,7 @@ where
         }
     }
 
-    // Create a new [`RequestProtocol`] for an outbound request.
+    // Create a new `RequestProtocol` for an outbound request.
     fn new_outbound_protocol(
         &mut self,
         request_id: RequestId,
@@ -164,12 +163,12 @@ where
         SubstreamProtocol::new(proto, request_id).with_timeout(self.request_timeout)
     }
 
-    // Create a new [`ResponseProtocol`] for an inbound request.
+    // Create a new `ResponseProtocol` for an inbound request.
     fn new_inbound_protocol(&self) -> SubstreamProtocol<ResponseProtocol<Rq, Rs>, RequestId> {
         // Assign a new request id to the expected request.
         let request_id = RequestId::next(&self.next_request_id);
 
-        // Channel for the [`ResponseProtocol`] to forward the inbound request.
+        // Channel for the `ResponseProtocol` to forward the inbound request.
         let (request_tx, request_rx) = oneshot::channel();
 
         let protocols = self
@@ -221,7 +220,7 @@ where
         self.pending_events.push_back(event);
     }
 
-    // New event emitted by the `NetBehaviour`.
+    // New event emitted by the `NetworkBehaviour`.
     fn inject_event(&mut self, event: Self::InEvent) {
         match event {
             HandlerInEvent::SendRequest { request_id, request } => {
@@ -234,7 +233,7 @@ where
         }
     }
 
-    // Upgrading the outbound substream with the [`RequestProtocol`] failed.
+    // Upgrading the outbound substream with the `RequestProtocol` failed.
     fn inject_dial_upgrade_error(&mut self, request_id: RequestId, error: ConnectionHandlerUpgrErr<io::Error>) {
         match error {
             ConnectionHandlerUpgrErr::Timeout => {
@@ -252,7 +251,7 @@ where
         }
     }
 
-    // Upgrading the inbound substream with the [`ResponseProtocol`] failed.
+    // Upgrading the inbound substream with the `ResponseProtocol` failed.
     fn inject_listen_upgrade_error(&mut self, request_id: RequestId, error: ConnectionHandlerUpgrErr<io::Error>) {
         match error {
             ConnectionHandlerUpgrErr::Timeout => {
@@ -280,14 +279,14 @@ where
         if let Some(err) = self.pending_error.take() {
             return Poll::Ready(ConnectionHandlerEvent::Close(err));
         }
-        // Emit events to `NetBehaviour`.
+        // Emit events to `NetworkBehaviour`.
         if let Some(event) = self.pending_events.pop_front() {
             return Poll::Ready(ConnectionHandlerEvent::Custom(event));
         }
         if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
             self.pending_events.shrink_to_fit();
         }
-        // Forward inbound requests to `NetBehaviour` once the request was read from the substream.
+        // Forward inbound requests to `NetworkBehaviour` once the request was read from the substream.
         while let Poll::Ready(Some(result)) = self.pending_in_req.poll_next_unpin(cx) {
             if let Ok((request_id, request, response_tx)) = result {
                 self.keep_alive = KeepAlive::Yes;
@@ -298,7 +297,7 @@ where
                 }));
             }
         }
-        // Create new outbound substream with [`RequestProtocol`] for outbound requests.
+        // Create new outbound substream with `RequestProtocol` for outbound requests.
         if let Some((request_id, request)) = self.pending_out_req.pop_front() {
             self.keep_alive = KeepAlive::Yes;
             let protocol = self.new_outbound_protocol(request_id, request);

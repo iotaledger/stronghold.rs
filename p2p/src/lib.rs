@@ -16,17 +16,25 @@
 
 pub mod behaviour;
 mod libp2p_reexport {
-    pub use libp2p::{core::Executor, identity, swarm::DialError, Multiaddr, PeerId};
+    pub use libp2p::{
+        core::{ConnectedPoint, Executor},
+        identity,
+        swarm::DialError,
+        Multiaddr, PeerId,
+    };
     pub type AuthenticKeypair = libp2p::noise::AuthenticKeypair<libp2p::noise::X25519Spec>;
     pub type NoiseKeypair = libp2p::noise::Keypair<libp2p::noise::X25519Spec>;
 }
 mod interface;
 
 pub use behaviour::{
-    assemble_relayed_addr, firewall, AddressInfo, ConnectedPoint, ConnectionId, EstablishedConnections,
-    MessageProtocol, PeerAddress, RelayNotSupported,
+    assemble_relayed_addr, firewall, AddressInfo, InboundFailure, OutboundFailure, PeerAddress, RelayNotSupported,
+    RequestId, RqRsMessage,
 };
-pub use interface::*;
+pub use interface::{
+    ChannelSinkConfig, ConnectionErr, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Listener, NetworkEvent, ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder, TransportErr,
+};
 pub use libp2p_reexport::*;
 
 #[macro_export]

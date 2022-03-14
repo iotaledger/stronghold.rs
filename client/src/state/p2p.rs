@@ -23,7 +23,7 @@ use futures::{
     task::{Context, Poll},
 };
 use p2p::{
-    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule},
+    firewall::{FirewallRequest, FirewallRules, FwRequest, Rule},
     AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, PeerId, ReceiveRequest, StrongholdP2p,
     StrongholdP2pBuilder,
 };
@@ -93,11 +93,8 @@ impl Network {
             .into_iter()
             .map(|(peer, permissions)| (peer, permissions.into_rule()))
             .collect();
-        let firewall_config = FirewallConfiguration {
-            default: firewall_default,
-            peer_rules: peer_permissions,
-        };
-        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None, firewall_config)
+        let rules = FirewallRules::new(firewall_default, peer_permissions);
+        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None, rules)
             .with_mdns_support(network_config.enable_mdns)
             .with_relay_support(network_config.enable_relay);
         if let Some(address_info) = network_config.addresses.take() {

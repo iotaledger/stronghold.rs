@@ -1,19 +1,18 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-mod errors;
 mod event_channel;
 mod event_loop;
-mod types;
 
-pub use errors::*;
 pub use event_channel::{ChannelSinkConfig, EventChannel};
-use event_loop::{EventLoop, SwarmOperation};
-pub use types::*;
+use event_loop::{EventLoop, SwarmCommand};
+use smallvec::SmallVec;
 
 use crate::{
-    behaviour::{BehaviourEvent, EstablishedConnections, NetBehaviour, NetBehaviourConfig},
-    firewall::{FirewallConfiguration, FirewallRequest, FwRequest, Rule},
+    behaviour::{
+        BehaviourEvent, ConfigConfig, InboundFailure, NetworkBehaviour, OutboundFailure, RequestId, RqRsMessage,
+    },
+    firewall::{FirewallRequest, FirewallRules, FwRequest, Rule},
     AddressInfo, RelayNotSupported,
 };
 
@@ -23,19 +22,25 @@ use futures::{
     AsyncRead, AsyncWrite, FutureExt,
 };
 use libp2p::{
-    core::{connection::ListenerId, transport::Transport, upgrade, Executor, Multiaddr, PeerId},
+    core::{transport::Transport, upgrade, ConnectedPoint, Executor, Multiaddr, PeerId},
     identity::Keypair,
     mdns::{Mdns, MdnsConfig},
+    multihash::Multihash,
     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
     relay::v1::{new_transport_and_behaviour, RelayConfig},
-    swarm::SwarmBuilder,
+    swarm::{
+        ConnectionError, ConnectionLimit, ConnectionLimits as Libp2pConnectionLimits, DialError,
+        PendingConnectionError, SwarmBuilder, SwarmEvent,
+    },
     yamux::YamuxConfig,
+    TransportError,
 };
 #[cfg(feature = "tcp-transport")]
 use libp2p::{dns::TokioDnsConfig, tcp::TokioTcpConfig, websocket::WsConfig};
-use std::{io, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{io, num::NonZeroU32, time::Duration};
+use thiserror::Error;
 
-#[derive(Clone)]
 /// Interface for the stronghold-p2p library to create a swarm, handle events and perform operations.
 ///
 /// All Swarm interaction takes place in an event-loop in a separate task.
@@ -47,8 +52,7 @@ use std::{io, time::Duration};
 /// ## Firewall configuration
 ///
 /// The firewall allows the user to set default-, and peer-specific firewall rules which are used
-/// to approve each inbound and outbound request. Apart from static rules, the firewall-channel
-/// may be used for asynchronous rules:
+/// to approve each inbound request. Apart from static rules, the firewall-channel may be used for asynchronous rules:
 /// 1. If no firewall rule is set for a peer and a request occurs, a [`FirewallRequest::PeerSpecificRule`]
 ///    is sent through the channel. The responded rule is then set as firewall rule  for this peer.
 ///    If the user does not response in time or the receiving side of the channel was dropped, the request is rejected.
@@ -62,7 +66,7 @@ use std::{io, time::Duration};
 ///
 /// ```
 /// # use serde::{Serialize, Deserialize};
-/// # use p2p::{firewall::{FirewallConfiguration, FwRequest}, ChannelSinkConfig, EventChannel, StrongholdP2p};
+/// # use p2p::{firewall::{FirewallRules, FwRequest}, ChannelSinkConfig, EventChannel, StrongholdP2p};
 /// # use futures::channel::mpsc;
 /// #
 /// // Type of the requests send to the remote.
@@ -73,7 +77,7 @@ use std::{io, time::Duration};
 /// }
 ///
 /// // Trimmed version of the request that is used for validation in the firewall.
-/// // In case of a [`FirewallRequest::RequestApproval`], this is the message that is bubbled up through the
+/// // In case of a `FirewallRequest::RequestApproval`, this is the message that is bubbled up through the
 /// // firewall channel.
 /// //
 /// // This type is optional but may be needed because e.g. no details the actual request should be exposed to the receiving side of the firewall-channel.
@@ -113,9 +117,10 @@ use std::{io, time::Duration};
 ///     firewall_tx,
 ///     request_tx,
 ///     Some(events_tx),
-///     FirewallConfiguration::allow_all(),
+///     FirewallRules::allow_all(),
 /// );
 /// ```
+#[derive(Clone)]
 pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
     // Request message type
@@ -129,10 +134,10 @@ where
 {
     // Id of the local peer.
     local_peer_id: PeerId,
-    // Channel for sending [`SwarmOperation`] to the [`EventLoop`] .
-    // The [`SwarmOperation`]s trigger according operations on the Swarm.
+    // Channel for sending `SwarmCommand` to the `EventLoop`.
+    // The `SwarmCommand`s trigger according operations on the Swarm.
     // The result of an operation is received via the oneshot Receiver that is included in each type.
-    command_tx: mpsc::Sender<SwarmOperation<Rq, Rs, TRq>>,
+    command_tx: mpsc::Sender<SwarmCommand<Rq, Rs, TRq>>,
 }
 
 impl<Rq, Rs, TRq> StrongholdP2p<Rq, Rs, TRq>
@@ -148,9 +153,9 @@ where
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
         requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<EventChannel<NetworkEvent>>,
-        firewall_config: FirewallConfiguration<TRq>,
+        firewall_rules: FirewallRules<TRq>,
     ) -> Result<Self, io::Error> {
-        StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel, firewall_config)
+        StrongholdP2pBuilder::new(firewall_channel, requests_channel, events_channel, firewall_rules)
             .build()
             .await
     }
@@ -165,11 +170,11 @@ where
     /// This will attempt to establish a connection to the remote via one of the known addresses if there is no active
     /// connection.
     pub async fn send_request(&mut self, peer: PeerId, request: Rq) -> Result<Rs, OutboundFailure> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SendRequest {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::SendRequest {
             peer,
             request,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -183,8 +188,8 @@ where
     /// This method only returns the first reported listening address for the new listener.
     /// All active listening addresses for each listener can be obtained from [`StrongholdP2p::listeners`]
     pub async fn start_listening(&mut self, address: Multiaddr) -> Result<Multiaddr, ListenErr> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::StartListening { address, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::StartListening { address, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -197,11 +202,11 @@ where
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
     ) -> Result<Multiaddr, ListenRelayErr> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::StartRelayedListening {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::StartRelayedListening {
             relay,
             relay_addr,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -209,32 +214,32 @@ where
 
     //// Currently active listeners.
     pub async fn listeners(&mut self) -> Vec<Listener> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetListeners { tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::GetListeners { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Stop listening on all listeners.
     pub async fn stop_listening(&mut self) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::StopListening { tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::StopListening { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Stop listening on the listener associated with the given address.
     pub async fn stop_listening_addr(&mut self, address: Multiaddr) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::StopListeningAddr { address, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::StopListeningAddr { address, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Stop listening via the given relay.
     pub async fn stop_listening_relay(&mut self, relay: PeerId) -> bool {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::StopListeningRelay { relay, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::StopListeningRelay { relay, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -242,8 +247,8 @@ where
     /// Establish a new new connection to the remote peer.
     /// This will try each known address until either a connection was successful, or all failed.
     pub async fn connect_peer(&mut self, peer: PeerId) -> Result<Multiaddr, DialErr> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::ConnectPeer { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::ConnectPeer { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -253,16 +258,16 @@ where
     /// If the rule is `None` a [`FirewallRequest::PeerSpecificRule`]
     /// request will be sent through the firewall channel when peers without a rule are sending a request.
     pub async fn set_firewall_default(&mut self, default: Option<Rule<TRq>>) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SetFirewallDefault { default, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::SetFirewallDefault { default, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Get the current firewall configuration.
-    pub async fn get_firewall_config(&mut self) -> FirewallConfiguration<TRq> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetFirewallConfig { tx_yield };
+    pub async fn get_firewall_config(&mut self) -> FirewallRules<TRq> {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::GetFirewallConfig { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -271,43 +276,43 @@ where
     /// If there is no default rule and no peer-specific rule, a [`FirewallRequest::PeerSpecificRule`]
     /// request will be sent through the firewall channel
     pub async fn remove_firewall_default(&mut self) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemoveFirewallDefault { tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::RemoveFirewallDefault { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Set a peer specific rule to overwrite the default behaviour for that peer.
     pub async fn set_peer_rule(&mut self, peer: PeerId, rule: Rule<TRq>) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SetPeerRule { peer, rule, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::SetPeerRule { peer, rule, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Remove a peer specific rule, which will result in using the firewall default rules.
     pub async fn remove_peer_rule(&mut self, peer: PeerId) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemovePeerRule { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::RemovePeerRule { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Get the known addresses for a remote peer.
     pub async fn get_addrs(&mut self, peer: PeerId) -> Vec<Multiaddr> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetPeerAddrs { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::GetPeerAddrs { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Add an address for the remote peer.
     pub async fn add_address(&mut self, peer: PeerId, address: Multiaddr) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::AddPeerAddr {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::AddPeerAddr {
             peer,
             address,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -315,11 +320,11 @@ where
 
     /// Remove an address from the known addresses of a remote peer.
     pub async fn remove_address(&mut self, peer: PeerId, address: Multiaddr) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemovePeerAddr {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::RemovePeerAddr {
             peer,
             address,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -327,8 +332,8 @@ where
 
     // Export the address info.
     pub async fn export_address_info(&mut self) -> AddressInfo {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::ExportAddressInfo { tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::ExportAddressInfo { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -339,11 +344,11 @@ where
         peer: PeerId,
         address: Option<Multiaddr>,
     ) -> Result<Option<Multiaddr>, RelayNotSupported> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::AddDialingRelay {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::AddDialingRelay {
             peer,
             address,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -354,8 +359,8 @@ where
     //
     // **Note**: Known relayed addresses for remote peers using this relay will not be influenced by this.
     pub async fn remove_dialing_relay(&mut self, peer: PeerId) -> bool {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::RemoveDialingRelay { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::RemoveDialingRelay { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
@@ -367,11 +372,11 @@ where
         peer: PeerId,
         use_relay_fallback: bool,
     ) -> Result<(), RelayNotSupported> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::SetRelayFallback {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::SetRelayFallback {
             peer,
             use_relay_fallback,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -389,12 +394,12 @@ where
         relay: PeerId,
         is_exclusive: bool,
     ) -> Result<Option<Multiaddr>, RelayNotSupported> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::UseSpecificRelay {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::UseSpecificRelay {
             target,
             relay,
             is_exclusive,
-            tx_yield,
+            return_tx,
         };
         self.send_command(command).await;
         rx_yield.await.unwrap()
@@ -405,36 +410,36 @@ where
     /// Any incoming connection and any dialing attempt will immediately be rejected.
     /// This function has no effect if the peer is already banned.
     pub async fn ban_peer(&mut self, peer: PeerId) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::BanPeer { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::BanPeer { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Unbans a peer.
     pub async fn unban_peer(&mut self, peer: PeerId) {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::UnbanPeer { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::UnbanPeer { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     /// Check whether the Network has an established connection to a peer.
     pub async fn is_connected(&mut self, peer: PeerId) -> bool {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetIsConnected { peer, tx_yield };
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::GetIsConnected { peer, return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
 
     // Get currently established connections.
-    pub async fn established_connections(&mut self) -> Vec<(PeerId, EstablishedConnections)> {
-        let (tx_yield, rx_yield) = oneshot::channel();
-        let command = SwarmOperation::GetConnections { tx_yield };
+    pub async fn established_connections(&mut self) -> Vec<(PeerId, Vec<ConnectedPoint>)> {
+        let (return_tx, rx_yield) = oneshot::channel();
+        let command = SwarmCommand::GetConnections { return_tx };
         self.send_command(command).await;
         rx_yield.await.unwrap()
     }
-    async fn send_command(&mut self, command: SwarmOperation<Rq, Rs, TRq>) {
+    async fn send_command(&mut self, command: SwarmCommand<Rq, Rs, TRq>) {
         let _ = poll_fn(|cx| self.command_tx.poll_ready(cx)).await;
         let _ = self.command_tx.start_send(command);
     }
@@ -488,8 +493,8 @@ where
     // Use an existing keypair instead of creating a new one.
     ident: Option<(AuthenticKeypair<X25519Spec>, PeerId)>,
 
-    // Configuration of the underlying [`NetBehaviour`].
-    behaviour_config: NetBehaviourConfig,
+    // Configuration of the underlying `NetworkBehaviour`.
+    behaviour_config: ConfigConfig,
 
     // Limit of simultaneous connections.
     connections_limit: Option<ConnectionLimits>,
@@ -497,8 +502,8 @@ where
     // List of known addresses that were persisted from a former running instance.
     address_info: Option<AddressInfo>,
 
-    // Firewall configuration.
-    firewall_config: FirewallConfiguration<TRq>,
+    // Firewall rules.
+    firewall_rules: FirewallRules<TRq>,
 
     // Use Mdns protocol for peer discovery in the local network.
     //
@@ -523,7 +528,7 @@ where
         firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
         requests_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         events_channel: Option<EventChannel<NetworkEvent>>,
-        firewall_config: FirewallConfiguration<TRq>,
+        firewall_rules: FirewallRules<TRq>,
     ) -> Self {
         StrongholdP2pBuilder {
             firewall_channel,
@@ -532,7 +537,7 @@ where
             ident: None,
             behaviour_config: Default::default(),
             connections_limit: None,
-            firewall_config,
+            firewall_rules,
             support_mdns: true,
             support_relay: true,
             address_info: None,
@@ -635,7 +640,7 @@ where
     ///
     /// ```
     /// # use p2p::{
-    ///     firewall::FirewallConfiguration,
+    ///     firewall::FirewallRules,
     ///     ChannelSinkConfig, EventChannel,  StrongholdP2p, StrongholdP2pBuilder
     /// };
     /// # use futures::channel::mpsc;
@@ -646,7 +651,7 @@ where
     /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
     /// let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
     ///
-    /// let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None, FirewallConfiguration::allow_all());
+    /// let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None, FirewallRules::allow_all());
     /// let p2p: StrongholdP2p<String, String> = builder
     ///     .build_with_transport(TokioTcpConfig::new(), |fut| {
     ///          tokio::spawn(fut);
@@ -701,12 +706,12 @@ where
             None
         };
 
-        let behaviour = NetBehaviour::new(
+        let behaviour = NetworkBehaviour::new(
             self.behaviour_config,
             mdns,
             relay,
             self.firewall_channel,
-            self.firewall_config,
+            self.firewall_rules,
             self.address_info,
         );
 
@@ -718,7 +723,7 @@ where
         let swarm = swarm_builder.build();
         let local_peer_id = *swarm.local_peer_id();
 
-        // Channel for sending `SwarmOperation`s.
+        // Channel for sending `SwarmCommand`s.
         let (command_tx, command_rx) = mpsc::channel(10);
 
         // Spawn an event-loop for all Swarm interaction in new task.
@@ -729,5 +734,405 @@ where
             local_peer_id,
             command_tx,
         })
+    }
+}
+
+/// Inbound Request from a remote peer.
+/// It is expected that a response will be returned through the `response_rx` channel,
+/// otherwise an [`OutboundFailure`] will occur at the remote peer.
+#[derive(Debug)]
+pub struct ReceiveRequest<Rq, Rs> {
+    /// ID of the request.
+    pub request_id: RequestId,
+    /// ID of the remote peer that send the request.
+    pub peer: PeerId,
+    /// Request from the remote peer.
+    pub request: Rq,
+    /// Channel for returning the response.
+    ///
+    /// **Note:** If an [`InboundFailure`] occurs before a response was sent, the Receiver side of this channel is
+    /// dropped.
+    pub response_tx: oneshot::Sender<Rs>,
+}
+
+/// Active Listener of the local peer.
+#[derive(Debug, Clone)]
+pub struct Listener {
+    /// The addresses associated with this listener.
+    pub addrs: SmallVec<[Multiaddr; 6]>,
+    /// Whether the listener uses a relay.
+    pub uses_relay: Option<PeerId>,
+}
+
+/// Events happening in the Network.
+/// Includes events about connection and listener status as well as potential failures when receiving
+/// request-response messages.
+#[derive(Debug)]
+pub enum NetworkEvent {
+    /// A failure occurred in the context of receiving an inbound request and sending a response.
+    InboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: InboundFailure,
+    },
+    /// A connection to the given peer has been opened.
+    ConnectionEstablished {
+        /// Identity of the peer that connected.
+        peer: PeerId,
+        /// Endpoint of the connection that has been opened.
+        endpoint: ConnectedPoint,
+        /// Number of established connections to this peer, including the one that has just been
+        /// opened.
+        num_established: NonZeroU32,
+    },
+    /// A connection with the given peer has been closed,
+    /// possibly as a result of an error.
+    ConnectionClosed {
+        /// Identity of the peer that disconnected.
+        peer: PeerId,
+        /// Endpoint of the connection that has been closed.
+        endpoint: ConnectedPoint,
+        /// Number of other remaining connections to this same peer.
+        num_established: u32,
+        /// Potential Error that resulted in the disconnection.
+        cause: Option<io::Error>,
+    },
+    /// An error happened on a connection during its initial handshake.
+    ///
+    /// This can include, for example, an error during the handshake of the encryption layer, or
+    /// the connection unexpectedly closed.
+    IncomingConnectionError {
+        /// Local connection address.
+        /// This address has been earlier reported with a [`NewListenAddr`](SwarmEvent::NewListenAddr)
+        /// event.
+        local_addr: Multiaddr,
+        /// Address used to send back data to the remote.
+        send_back_addr: Multiaddr,
+        /// The error that happened.
+        error: ConnectionErr,
+    },
+    /// One of the listeners has reported a new local listening address.
+    NewListenAddr(Multiaddr),
+    /// One of the listeners has reported the expiration of a listening address.
+    ExpiredListenAddr(Multiaddr),
+    /// One of the listeners gracefully closed.
+    ListenerClosed {
+        /// The addresses that the listener was listening on. These addresses are now considered
+        /// expired, similar to if a [`ExpiredListenAddr`](SwarmEvent::ExpiredListenAddr) event
+        /// has been generated for each of them.
+        addresses: Vec<Multiaddr>,
+        /// Potential Error in the stream that cause the listener to close.
+        cause: Option<io::Error>,
+    },
+    /// One of the listeners reported a non-fatal error.
+    ListenerError {
+        /// The listener error.
+        error: io::Error,
+    },
+}
+
+type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
+
+impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
+    type Error = ();
+    fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
+        match value {
+            SwarmEvent::Behaviour(BehaviourEvent::InboundFailure {
+                request_id,
+                peer,
+                failure,
+            }) => Ok(NetworkEvent::InboundFailure {
+                request_id,
+                peer,
+                failure,
+            }),
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                endpoint,
+                num_established,
+                concurrent_dial_errors: _,
+            } => Ok(NetworkEvent::ConnectionEstablished {
+                peer: peer_id,
+                num_established,
+                endpoint,
+            }),
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                endpoint,
+                num_established,
+                cause,
+            } => {
+                let cause = match cause {
+                    Some(ConnectionError::IO(e)) => Some(e),
+                    _ => None,
+                };
+                Ok(NetworkEvent::ConnectionClosed {
+                    peer: peer_id,
+                    num_established,
+                    endpoint,
+                    cause,
+                })
+            }
+            SwarmEvent::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error,
+            } => Ok(NetworkEvent::IncomingConnectionError {
+                local_addr,
+                send_back_addr,
+                error: error.into(),
+            }),
+            SwarmEvent::ExpiredListenAddr { address, .. } => Ok(NetworkEvent::ExpiredListenAddr(address)),
+            SwarmEvent::ListenerClosed { addresses, reason, .. } => {
+                let cause = match reason {
+                    Ok(()) => None,
+                    Err(e) => Some(e),
+                };
+                Ok(NetworkEvent::ListenerClosed { addresses, cause })
+            }
+            SwarmEvent::ListenerError { error, .. } => Ok(NetworkEvent::ListenerError { error }),
+            SwarmEvent::NewListenAddr { address, .. } => Ok(NetworkEvent::NewListenAddr(address)),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionLimits {
+    max_pending_incoming: Option<u32>,
+    max_pending_outgoing: Option<u32>,
+    max_established_incoming: Option<u32>,
+    max_established_outgoing: Option<u32>,
+    max_established_per_peer: Option<u32>,
+    max_established_total: Option<u32>,
+}
+
+impl Default for ConnectionLimits {
+    fn default() -> Self {
+        ConnectionLimits {
+            max_pending_incoming: None,
+            max_pending_outgoing: None,
+            max_established_incoming: None,
+            max_established_outgoing: None,
+            max_established_per_peer: Some(5),
+            max_established_total: None,
+        }
+    }
+}
+
+impl From<ConnectionLimits> for Libp2pConnectionLimits {
+    fn from(l: ConnectionLimits) -> Self {
+        Libp2pConnectionLimits::default()
+            .with_max_pending_incoming(l.max_pending_incoming)
+            .with_max_pending_outgoing(l.max_pending_outgoing)
+            .with_max_established_incoming(l.max_established_incoming)
+            .with_max_established_outgoing(l.max_established_outgoing)
+            .with_max_established_per_peer(l.max_established_per_peer)
+            .with_max_established(l.max_established_total)
+    }
+}
+
+impl ConnectionLimits {
+    /// Configures the maximum number of concurrently incoming connections being established.
+    pub fn with_max_pending_incoming(mut self, limit: Option<u32>) -> Self {
+        self.max_pending_incoming = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrently outgoing connections being established.
+    pub fn with_max_pending_outgoing(mut self, limit: Option<u32>) -> Self {
+        self.max_pending_outgoing = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established inbound connections.
+    pub fn with_max_established_incoming(mut self, limit: Option<u32>) -> Self {
+        self.max_established_incoming = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established outbound connections.
+    pub fn with_max_established_outgoing(mut self, limit: Option<u32>) -> Self {
+        self.max_established_outgoing = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established connections (both
+    /// inbound and outbound).
+    ///
+    /// Note: This should be used in conjunction with
+    /// [`ConnectionLimits::with_max_established_incoming`] to prevent possible
+    /// eclipse attacks (all connections being inbound).
+    pub fn with_max_established(mut self, limit: Option<u32>) -> Self {
+        self.max_established_total = limit;
+        self
+    }
+
+    /// Configures the maximum number of concurrent established connections per peer,
+    /// regardless of direction (incoming or outgoing).
+    pub fn with_max_established_per_peer(mut self, limit: Option<u32>) -> Self {
+        self.max_established_per_peer = limit;
+        self
+    }
+}
+
+/// Error on dialing a peer and establishing a connection.
+#[derive(Error, Debug)]
+pub enum DialErr {
+    /// The peer is currently banned.
+    #[error("Peer is banned.")]
+    Banned,
+    /// The configured limit for simultaneous outgoing connections
+    /// has been reached.
+    #[error("Connection limit: `{limit}`/`{current}`.")]
+    ConnectionLimit { limit: u32, current: u32 },
+    /// The peer being dialed is the local peer and thus the dial was aborted.
+    #[error("Tried to dial local peer id.")]
+    LocalPeerId,
+    /// No direct or relayed addresses for the peer are known.
+    #[error("No addresses known for peer.")]
+    NoAddresses,
+    /// Pending connection attempt has been aborted.
+    #[error(" Pending connection attempt has been aborted.")]
+    Aborted,
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected.
+    #[error("Wrong peer ID, obtained: {obtained:?}")]
+    WrongPeerId { obtained: PeerId },
+    /// The provided peer identity is invalid.
+    #[error("Invalid peer ID: {0:?}")]
+    InvalidPeerId(Multihash),
+    /// An I/O error occurred on the connection.
+    #[error("An I/O error occurred on the connection: {0}.")]
+    ConnectionIo(io::Error),
+    /// An error occurred while negotiating the transport protocol(s) on a connection.
+    #[error("An error occurred while negotiating the transport protocol(s) on a connection: `{0:?}`.")]
+    Transport(Vec<(Multiaddr, TransportError<io::Error>)>),
+    /// The communication system was shut down before the dialing attempt resolved.
+    #[error("The network event-loop was shut down.")]
+    Shutdown,
+}
+
+impl TryFrom<DialError> for DialErr {
+    type Error = ();
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        let e = match err {
+            DialError::Banned => DialErr::Banned,
+            DialError::ConnectionLimit(ConnectionLimit { limit, current }) => {
+                DialErr::ConnectionLimit { limit, current }
+            }
+            DialError::LocalPeerId => DialErr::LocalPeerId,
+            DialError::WrongPeerId { obtained, .. } => DialErr::WrongPeerId { obtained },
+            DialError::InvalidPeerId(hash) => DialErr::InvalidPeerId(hash),
+            DialError::DialPeerConditionFalse(_) => return Err(()),
+            DialError::Aborted => DialErr::Aborted,
+            DialError::ConnectionIo(e) => DialErr::ConnectionIo(e),
+            DialError::Transport(addrs) => DialErr::Transport(addrs),
+            DialError::NoAddresses => DialErr::NoAddresses,
+        };
+        Ok(e)
+    }
+}
+
+/// Error on establishing a connection.
+#[derive(Error, Debug)]
+pub enum ConnectionErr {
+    /// An I/O error occurred on the connection.
+    #[error("I/O error: {0}")]
+    Io(io::Error),
+    /// The peer identity obtained on the connection did not
+    /// match the one that was expected.
+    #[error("Wrong peer Id, obtained: {obtained:?}")]
+    WrongPeerId { obtained: PeerId },
+
+    /// An error occurred while negotiating the transport protocol(s).
+    #[error("Transport error: {0}")]
+    Transport(TransportErr),
+    /// The connection was dropped because the connection limit
+    /// for a peer has been reached.
+    #[error("Connection limit: `{limit}`/`{current}`.")]
+    ConnectionLimit { limit: u32, current: u32 },
+    /// Pending connection attempt has been aborted.
+    #[error("Pending connection attempt has been aborted.")]
+    Aborted,
+}
+
+impl From<PendingConnectionError<TransportError<io::Error>>> for ConnectionErr {
+    fn from(value: PendingConnectionError<TransportError<io::Error>>) -> Self {
+        match value {
+            PendingConnectionError::Transport(TransportError::Other(e)) | PendingConnectionError::IO(e) => {
+                ConnectionErr::Io(e)
+            }
+            PendingConnectionError::WrongPeerId { obtained, .. } => ConnectionErr::WrongPeerId { obtained },
+            PendingConnectionError::ConnectionLimit(ConnectionLimit { limit, current }) => {
+                ConnectionErr::ConnectionLimit { limit, current }
+            }
+            PendingConnectionError::Transport(err) => ConnectionErr::Transport(err.into()),
+            PendingConnectionError::Aborted => ConnectionErr::Aborted,
+        }
+    }
+}
+
+/// Error on the [Transport][libp2p::Transport].
+#[derive(Error, Debug)]
+pub enum TransportErr {
+    /// The address is not supported.
+    #[error("Multiaddress not supported: {0}")]
+    MultiaddrNotSupported(Multiaddr),
+    /// An I/O Error occurred.
+    #[error("I/O error: {0}")]
+    Io(io::Error),
+}
+
+impl From<TransportError<io::Error>> for TransportErr {
+    fn from(err: TransportError<io::Error>) -> Self {
+        match err {
+            TransportError::MultiaddrNotSupported(addr) => TransportErr::MultiaddrNotSupported(addr),
+            TransportError::Other(err) => TransportErr::Io(err),
+        }
+    }
+}
+
+/// Error on listening on an address.
+#[derive(Error, Debug)]
+pub enum ListenErr {
+    /// Listening on the address failed on the transport layer.
+    #[error("Transport error: {0}")]
+    Transport(TransportErr),
+    /// The communication system was shut down before the listening attempt resolved.
+    #[error("The network event-loop was shut down.")]
+    Shutdown,
+}
+
+impl From<TransportError<io::Error>> for ListenErr {
+    fn from(err: TransportError<io::Error>) -> Self {
+        ListenErr::Transport(err.into())
+    }
+}
+
+/// Error on listening on a relayed address.
+#[derive(Error, Debug)]
+pub enum ListenRelayErr {
+    /// The relay protocol is not supported.
+    #[error("Relay Protocol not enabled.")]
+    ProtocolNotSupported,
+    /// Establishing a connection to the relay failed.
+    #[error("Dial Relay Error: {0}")]
+    DialRelay(#[from] DialErr),
+    /// Error on listening on an address.
+    #[error("Listening Error: {0}")]
+    Listen(ListenErr),
+}
+
+impl TryFrom<DialError> for ListenRelayErr {
+    type Error = <DialErr as TryFrom<DialError>>::Error;
+    fn try_from(err: DialError) -> Result<Self, Self::Error> {
+        DialErr::try_from(err).map(ListenRelayErr::DialRelay)
+    }
+}
+
+impl From<TransportError<io::Error>> for ListenRelayErr {
+    fn from(err: TransportError<io::Error>) -> Self {
+        ListenRelayErr::Listen(err.into())
     }
 }

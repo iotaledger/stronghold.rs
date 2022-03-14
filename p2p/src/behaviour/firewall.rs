@@ -17,7 +17,7 @@ impl<T: Clone + Send + 'static, U: Borrow<T>> FwRequest<U> for T {
     }
 }
 
-/// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
+/// Requests for approval and rules that are not covered by the current [`FirewallRules`].
 pub enum FirewallRequest<TRq> {
     /// Query for a peer specific rule.
     /// This is necessary if there is neither a default- nor a peer-specific rule for that peer.
@@ -25,17 +25,17 @@ pub enum FirewallRequest<TRq> {
         /// The remote peer for which the rule is required.
         peer: PeerId,
         /// Channel for returning the new firewall rule.
-        /// If the Sender is dropped, all request that are awaiting the rule will be rejected.
+        /// If the `Sender` is dropped, all request that are awaiting the rule will be rejected.
         rule_tx: oneshot::Sender<Rule<TRq>>,
     },
     /// Request approval for a specific request due a [`Rule::Ask`] setting.
     RequestApproval {
-        /// The peer from / to which the request is send.
+        /// The peer from which the request is received.
         peer: PeerId,
         /// The request message.
         request: TRq,
         /// Channel for returning the approval.
-        /// If the Sender is dropped, the request will be rejected.
+        /// If the `Sender` is dropped, the request will be rejected.
         approval_tx: oneshot::Sender<bool>,
     },
 }
@@ -52,7 +52,7 @@ pub enum Rule<TRq> {
         _maker: PhantomData<TRq>,
     },
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
-    /// firewall-channel provided to the `NetBehaviour`.
+    /// firewall-channel.
     Ask,
 }
 
@@ -81,83 +81,79 @@ impl<TRq> Clone for Rule<TRq> {
     }
 }
 
-/// Configuration for the firewall of the `NetBehaviour`.
-/// This config specifies what inbound requests from which peer are allowed.
-/// If there are neither a default rule, nor a peer specific one for a request from a peer,
+/// Rules for the firewall of [`StrongholdP2p`][crate::StrongholdP2p].
+/// These rules specifies what inbound requests from which peer are allowed.
+/// If there is neither a default rule, nor a peer specific one for a request from a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
 ///
 /// Per default no rule is set.
 #[derive(Debug)]
-pub struct FirewallConfiguration<TRq> {
-    /// Default rule that is used if there are no peer-specific ones for a peer.
-    pub default: Option<Rule<TRq>>,
+pub struct FirewallRules<TRq> {
+    /// Default rule that is used if there is no peer-specific one for a peer.
+    default: Option<Rule<TRq>>,
     /// Peer specific rules.
-    pub peer_rules: HashMap<PeerId, Rule<TRq>>,
+    peer_rules: HashMap<PeerId, Rule<TRq>>,
 }
 
-impl<TRq> Default for FirewallConfiguration<TRq> {
+impl<TRq> Default for FirewallRules<TRq> {
     fn default() -> Self {
-        FirewallConfiguration {
+        FirewallRules {
             default: None,
             peer_rules: HashMap::new(),
         }
     }
 }
 
-impl<TRq> Clone for FirewallConfiguration<TRq> {
+impl<TRq> Clone for FirewallRules<TRq> {
     fn clone(&self) -> Self {
-        FirewallConfiguration {
+        FirewallRules {
             default: self.default.clone(),
             peer_rules: self.peer_rules.clone(),
         }
     }
 }
 
-impl<TRq> FirewallConfiguration<TRq> {
+impl<TRq> FirewallRules<TRq> {
+    /// Create a new instance with the given default rule.
+    /// If no  is set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
+    /// inbound requests.
+    pub fn new(default: Option<Rule<TRq>>, peer_rules: HashMap<PeerId, Rule<TRq>>) -> Self {
+        FirewallRules { default, peer_rules }
+    }
+
     /// Don't set any rules.
     /// In case of an inbound request, a [`FirewallRequest::PeerSpecificRule`] request is sent through the
     /// `firewall_channel` to specify the rule for the remote peer.
     pub fn empty() -> Self {
-        FirewallConfiguration {
+        FirewallRules {
             default: None,
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Create a new instance with the given default rule.
-    /// If no  is set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
-    /// inbound **and outbound** requests.
-    pub fn new(default: Option<Rule<TRq>>) -> Self {
-        FirewallConfiguration {
-            default,
-            peer_rules: HashMap::new(),
-        }
-    }
-
-    /// Create a new instance with default configuration allowing all requests.
+    /// Create a new instance with default rules that allow all requests.
     pub fn allow_all() -> Self {
-        FirewallConfiguration {
+        FirewallRules {
             default: Some(Rule::AllowAll),
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Create a new instance with default configuration rejecting all requests.
+    /// Create a new instance with default rules that reject all requests.
     pub fn allow_none() -> Self {
-        FirewallConfiguration {
+        FirewallRules {
             default: Some(Rule::RejectAll),
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Get default firewall rule that are used if there are no peer-specific ones.
+    /// Get default firewall rule.
     pub fn get_default_rule(&self) -> Option<&Rule<TRq>> {
         self.default.as_ref()
     }
 
     /// Set the default rule.
-    /// In case of [`None`], the rule(s) are removed
     pub fn set_default(&mut self, default: Option<Rule<TRq>>) {
         self.default = default
     }
@@ -167,7 +163,7 @@ impl<TRq> FirewallConfiguration<TRq> {
         self.peer_rules.get(peer)
     }
 
-    /// Get effective rule for a peer i.g. peer-specific rule or else the default rule
+    /// Get effective rule for a peer i.e. peer-specific rule or else the default rule.
     pub fn get_effective_rule(&self, peer: &PeerId) -> Option<&Rule<TRq>> {
         self.peer_rules.get(peer).or(self.default.as_ref())
     }

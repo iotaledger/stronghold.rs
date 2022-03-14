@@ -30,10 +30,10 @@ impl Default for PeerAddress {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AddressInfo {
     // Addresses and relay config for each peer.
-    pub peers: HashMap<PeerId, PeerAddress>,
+    peers: HashMap<PeerId, PeerAddress>,
 
     // Known relays to use as fallback for dialing.
-    pub relays: SmallVec<[PeerId; 10]>,
+    relays: SmallVec<[PeerId; 10]>,
 }
 
 impl AddressInfo {
@@ -89,7 +89,7 @@ impl AddressInfo {
         Some(relayed_addr)
     }
 
-    // Move address in the list to the front i.g. the first address that will be tried when dialing the target.
+    // Move address in the list to the front i.e. the first address that will be tried when dialing the target.
     pub fn prioritize_addr(&mut self, peer: PeerId, addr: Multiaddr) {
         let peer_addr = self.peers.entry(peer).or_default();
         if peer_addr.known.front() != Some(&addr) {
@@ -98,7 +98,7 @@ impl AddressInfo {
         }
     }
 
-    // Move address in the list to the back i.g. the last known address that will be tried when dialing the target.
+    // Move address in the list to the back i.e. the last known address that will be tried when dialing the target.
     pub fn deprioritize_addr(&mut self, peer: PeerId, addr: Multiaddr) {
         let peer_addr = self.peers.entry(peer).or_default();
         if peer_addr.known.back() != Some(&addr) {
@@ -108,7 +108,7 @@ impl AddressInfo {
     }
 
     // Get the first address of a relay peer.
-    // Return [`None`] if the peer is not a relay, or no address is known.
+    // Return `None` if the peer is not a relay, or no address is known.
     pub fn get_relay_addr(&self, peer: &PeerId) -> Option<Multiaddr> {
         if !self.relays.contains(peer) {
             return None;
@@ -117,7 +117,7 @@ impl AddressInfo {
     }
 
     // Add a peer as relay peer, optionally add a known address for the peer.
-    // Return [`None`] if no address for the relay is known yet.
+    // Return `None` if no address for the relay is known yet.
     // **Note**: even if no addresses are known, the peer will be added to the dialing relays.
     pub fn add_relay(&mut self, peer: PeerId, address: Option<Multiaddr>) -> Option<Multiaddr> {
         if self.relays.contains(&peer) {

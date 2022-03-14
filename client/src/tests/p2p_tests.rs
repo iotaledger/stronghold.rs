@@ -129,7 +129,7 @@ async fn test_stronghold_p2p() {
     } = spawn_peers(FirewallSetup::default(), None).await;
     let remote_client_clone = remote_client.clone();
 
-    // Channel for signaling that local/ remote is ready i.g. performed a necessary write, before the other ran try
+    // Channel for signaling that local/ remote is ready i.e. performed a necessary write, before the other ran try
     // read.
     let (remote_ready_tx, mut remote_ready_rx) = mpsc::channel(1);
     let (local_ready_tx, mut local_ready_rx) = mpsc::channel(1);
@@ -281,8 +281,7 @@ async fn test_p2p_config() {
     match res {
         Ok(_) => panic!("Request should be rejected."),
         Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),
-        Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
-        | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
+        Err(P2pError::SendRequest(OutboundFailure::DialFailure))
         | Err(P2pError::SendRequest(OutboundFailure::Shutdown))
         | Err(P2pError::SendRequest(OutboundFailure::Timeout)) => panic!("Unexpected error {:?}", res),
         Err(_) => {}
@@ -319,8 +318,7 @@ async fn test_p2p_config() {
     match res {
         Ok(_) => panic!("Request should be rejected."),
         Err(P2pError::Local(e)) => panic!("Unexpected error {}", e),
-        Err(P2pError::SendRequest(OutboundFailure::NotPermitted))
-        | Err(P2pError::SendRequest(OutboundFailure::DialFailure))
+        Err(P2pError::SendRequest(OutboundFailure::DialFailure))
         | Err(P2pError::SendRequest(OutboundFailure::Shutdown))
         | Err(P2pError::SendRequest(OutboundFailure::Timeout)) => panic!("Unexpected error {:?}", res),
         Err(_) => {}

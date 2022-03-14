@@ -20,11 +20,8 @@ pub mod firewall;
 mod handler;
 #[doc(hidden)]
 mod request_manager;
-use self::firewall::FwRequest;
-pub use self::request_manager::{ConnectedPoint, ConnectionId, EstablishedConnections};
-use crate::{InboundFailure, OutboundFailure, RequestId, RqRsMessage};
 pub use addresses::{assemble_relayed_addr, AddressInfo, PeerAddress};
-use firewall::{FirewallConfiguration, FirewallRequest, Rule};
+use firewall::{FirewallRequest, FirewallRules, FwRequest, Rule};
 use futures::{
     channel::{
         mpsc::{self, SendError},
@@ -39,21 +36,30 @@ use futures::{
 pub use handler::MessageProtocol;
 use handler::{Handler, HandlerInEvent, HandlerOutEvent};
 use libp2p::{
-    core::{connection::ListenerId, either::EitherOutput, Multiaddr, PeerId},
+    core::{
+        connection::{ConnectionId, ListenerId},
+        either::EitherOutput,
+        ConnectedPoint, Multiaddr, PeerId,
+    },
     mdns::Mdns,
     relay::v1::Relay,
     swarm::{
         behaviour::toggle::Toggle,
         dial_opts::{DialOpts, PeerCondition},
-        ConnectionHandler, IntoConnectionHandler, IntoConnectionHandlerSelect, NetworkBehaviour,
-        NetworkBehaviourAction, NotifyHandler, PollParameters,
+        ConnectionHandler, IntoConnectionHandler, IntoConnectionHandlerSelect,
+        NetworkBehaviour as Libp2pNetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters,
     },
 };
 use request_manager::{ApprovalStatus, BehaviourAction, RequestManager};
+use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
-    sync::{atomic::AtomicU64, Arc},
+    fmt,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 use wasm_timer::Delay;
@@ -61,89 +67,26 @@ use wasm_timer::Delay;
 type ProtoHandler<Rq, Rs> = IntoConnectionHandlerSelect<
     Handler<Rq, Rs>,
     IntoConnectionHandlerSelect<
-        <Toggle<Mdns> as NetworkBehaviour>::ConnectionHandler,
-        <Toggle<Relay> as NetworkBehaviour>::ConnectionHandler,
+        <Toggle<Mdns> as Libp2pNetworkBehaviour>::ConnectionHandler,
+        <Toggle<Relay> as Libp2pNetworkBehaviour>::ConnectionHandler,
     >,
 >;
 
-// Future for a pending response to a sent [`FirewallRequest::PeerSpecificRule`].
+// Future for a pending response to a sent `FirewallRequest::PeerSpecificRule`.
 type PendingPeerRuleRequest<TRq> = BoxFuture<'static, (PeerId, Option<Rule<TRq>>)>;
-// Future for a pending responses to a sent [`FirewallRequest::RequestApproval`].
+// Future for a pending responses to a sent `FirewallRequest::RequestApproval`.
 type PendingApprovalRequest = BoxFuture<'static, (RequestId, bool)>;
 
 const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
 
-/// Requests and failure events emitted by the [`NetBehaviour`].
-#[derive(Debug)]
-pub enum BehaviourEvent<Rq, Rs> {
-    /// An inbound request was received from a remote peer.
-    /// The request was checked and approved by the firewall.
-    ReceivedRequest {
-        request_id: RequestId,
-        peer: PeerId,
-        /// Request from the remote peer.
-        request: Rq,
-        /// Channel for returning the response
-        response_tx: oneshot::Sender<Rs>,
-    },
-    /// A failure occurred in the context of receiving an inbound request and sending a response.
-    InboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: InboundFailure,
-    },
-    /// The response for a previously sent request was received.
-    ReceivedResponse {
-        request_id: RequestId,
-        peer: PeerId,
-        /// Response from the remote peer.
-        response: Rs,
-    },
-    /// A failure occurred in the context of sending an outbound request and receiving a response.
-    OutboundFailure {
-        request_id: RequestId,
-        peer: PeerId,
-        failure: OutboundFailure,
-    },
-}
-
-/// The Relay protocol is not supported.
-#[derive(Debug)]
-pub struct RelayNotSupported;
-
-/// Configuration of the [`NetBehaviour`].
-pub struct NetBehaviourConfig {
-    /// Supported versions of the `MessageProtocol`.
-    pub supported_protocols: SmallVec<[MessageProtocol; 2]>,
-    /// Timeout for inbound and outbound requests.
-    pub request_timeout: Duration,
-    /// Keep-alive timeout of idle connections.
-    pub connection_timeout: Duration,
-    /// Timeout for [`FirewallRequest`]s send through the firewall-channel.
-    ///
-    /// See [`StrongholdP2p`][super::StrongholdP2p] docs for more info.
-    pub firewall_timeout: Duration,
-}
-
-impl Default for NetBehaviourConfig {
-    fn default() -> Self {
-        Self {
-            supported_protocols: smallvec![MessageProtocol::new_version(1, 0, 0)],
-            connection_timeout: Duration::from_secs(10),
-            request_timeout: Duration::from_secs(10),
-            firewall_timeout: Duration::from_secs(10),
-        }
-    }
-}
-
-/// Protocol for customization for the [`Swarm`][libp2p::Swarm].
+/// Protocol for customization for the `Swarm`[libp2p::Swarm].
 ///
-/// The protocol is based on the [`RequestResponse`][<https://docs.rs/libp2p-request-response>] protocol from libp2p
-/// and optionally integrates the libp2p [`Relay`][libp2p::relay::v1::Relay] and [`Mdns`][libp2p::mdns::Mdns] protocols.
+/// The protocol is based on the `RequestResponse`[<https://docs.rs/libp2p-request-response>] protocol from libp2p
+/// and optionally integrates the libp2p `Relay`[libp2p::relay::v1::Relay] and `Mdns`[libp2p::mdns::Mdns] protocols.
 ///
 /// This allows sending request messages to remote peers, handling of inbound requests and failures, and additionally
 /// the configuration of a firewall to set permissions individually for different peers and request types.
-pub struct NetBehaviour<Rq, Rs, TRq = Rq>
+pub struct NetworkBehaviour<Rq, Rs, TRq = Rq>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
@@ -156,7 +99,7 @@ where
     relay: Toggle<Relay>,
 
     // Timeout and protocol configurations.
-    config: NetBehaviourConfig,
+    config: ConfigConfig,
 
     // ID assigned to the next request.
     next_request_id: Arc<AtomicU64>,
@@ -166,17 +109,17 @@ where
     // Address information and relay settings for known peers.
     addresses: AddressInfo,
     // Configuration of the firewall.
-    // Each inbound/ outbound request is checked, and only forwarded if the firewall configuration approves the request
+    // Each inbound request is checked, and only forwarded if the firewall configuration approves the request
     // for this peer.
-    firewall: FirewallConfiguration<TRq>,
+    firewall: FirewallRules<TRq>,
 
     // Channel for firewall requests.
     // The channel is used if there is no rule set for a peer, or if the configuration demands individual approval for
     // each request.
     permission_req_channel: mpsc::Sender<FirewallRequest<TRq>>,
-    // Futures for pending responses to sent [`FirewallRequest::PeerSpecificRule`]s.
+    // Futures for pending responses to sent `FirewallRequest::PeerSpecificRule`s.
     pending_rule_rqs: FuturesUnordered<PendingPeerRuleRequest<TRq>>,
-    // Futures for pending responses to sent [`FirewallRequest::RequestApproval`]s.
+    // Futures for pending responses to sent `FirewallRequest::RequestApproval`s.
     pending_approval_rqs: FuturesUnordered<PendingApprovalRequest>,
 
     // Handles to pending firewall rule request. If the handle is dropped, the future is aborted.
@@ -186,65 +129,22 @@ where
     approval_rq_handles: HashMap<RequestId, oneshot::Sender<()>>,
 }
 
-impl<Rq, Rs, TRq> NetBehaviour<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> NetworkBehaviour<Rq, Rs, TRq>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
     TRq: FwRequest<Rq>,
 {
-    /// Create a new instance of a NetBehaviour to customize the [`Swarm`][libp2p::Swarm].
-    /// ```
-    /// # use std::error::Error;
-    /// use p2p::behaviour::{
-    ///     firewall::FirewallConfiguration,
-    ///     AddressInfo, NetBehaviourConfig, NetBehaviour,
-    /// };
-    ///
-    /// use futures::channel::mpsc;
-    /// use libp2p::{
-    ///     core::upgrade,
-    ///     identity::Keypair,
-    ///     mdns::{Mdns, MdnsConfig},
-    ///     noise::{AuthenticKeypair, Keypair as NoiseKeypair, NoiseConfig, X25519Spec},
-    ///     relay::v1::{new_transport_and_behaviour, RelayConfig},
-    ///     tcp::TokioTcpConfig,
-    ///     yamux::YamuxConfig,
-    ///     Swarm, Transport
-    /// };
-    ///
-    /// # async fn test() -> Result<(), Box<dyn Error>> {
-    /// let keypair = Keypair::generate_ed25519();
-    /// let noise_keypair = NoiseKeypair::<X25519Spec>::new().into_authentic(&keypair)?;
-    /// let peer_id = keypair.public().to_peer_id();
-    /// let (relay_transport, relay_behaviour) = new_transport_and_behaviour(RelayConfig::default(), TokioTcpConfig::new());
-    /// let boxed_transport = relay_transport
-    ///         .upgrade(upgrade::Version::V1)
-    ///         .authenticate(NoiseConfig::xx(noise_keypair).into_authenticated())
-    ///         .multiplex(YamuxConfig::default())
-    ///         .boxed();
-    /// let (firewall_tx, firewall_rx) = mpsc::channel(10);
-    ///
-    /// let behaviour = NetBehaviour::<String, String>::new(
-    ///     NetBehaviourConfig::default(),
-    ///     None,
-    ///     Some(relay_behaviour),
-    ///     firewall_tx,
-    ///     FirewallConfiguration::default(),
-    ///     None
-    /// );
-    /// let swarm = Swarm::new(boxed_transport, behaviour, peer_id);
-    /// # Ok(())
-    /// }
-    /// ```
+    /// Create a new NetworkBehaviour for the libp2p swarm.
     pub fn new(
-        config: NetBehaviourConfig,
+        config: ConfigConfig,
         mdns: Option<Mdns>,
         relay: Option<Relay>,
         permission_req_channel: mpsc::Sender<FirewallRequest<TRq>>,
-        firewall: FirewallConfiguration<TRq>,
+        firewall: FirewallRules<TRq>,
         address_info: Option<AddressInfo>,
     ) -> Self {
-        NetBehaviour {
+        NetworkBehaviour {
             mdns: mdns.into(),
             relay: relay.into(),
             config,
@@ -268,7 +168,7 @@ where
     }
 
     /// Get the current default  for the firewall.
-    pub fn get_firewall_config(&self) -> &FirewallConfiguration<TRq> {
+    pub fn get_firewall_config(&self) -> &FirewallRules<TRq> {
         &self.firewall
     }
 
@@ -283,7 +183,7 @@ where
     }
 
     /// Remove a default firewall rule.
-    /// If there is no default rule and no peer-specific rule, a [`FirewallRequest::PeerSpecificRule`]
+    /// If there is no default rule and no peer-specific rule, a `FirewallRequest::PeerSpecificRule`
     /// request will be sent through the firewall channel
     pub fn remove_firewall_default(&mut self) {
         if self.firewall.get_default_rule().is_none() {
@@ -318,17 +218,17 @@ where
         self.addresses.remove_address(peer, address);
     }
 
-    // Export collected info about known relays and peer addresses.
+    /// Export collected info about known relays and peer addresses.
     pub fn export_address_info(&self) -> AddressInfo {
         self.addresses.clone()
     }
 
-    // Get currently established connections.
-    pub fn established_connections(&self) -> Vec<(PeerId, EstablishedConnections)> {
+    /// Get currently established connections.
+    pub fn established_connections(&self) -> Vec<(PeerId, Vec<ConnectedPoint>)> {
         self.request_manager.established_connections()
     }
 
-    // Whether the relay protocol is enabled.
+    /// Whether the relay protocol is enabled.
     pub fn is_relay_enabled(&self) -> bool {
         self.relay.is_enabled()
     }
@@ -423,14 +323,14 @@ where
         )
     }
 
-    fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as NetworkBehaviour>::ConnectionHandler {
+    fn new_handler_for_peer(&mut self, peer: Option<PeerId>) -> <Self as Libp2pNetworkBehaviour>::ConnectionHandler {
         let handler = self.new_request_response_handler(peer);
         let mdns_handler = self.mdns.new_handler();
         let relay_handler = self.relay.new_handler();
         IntoConnectionHandler::select(handler, IntoConnectionHandler::select(mdns_handler, relay_handler))
     }
 
-    // Handle new [`HandlerOutEvent`] emitted by the [`Handler`].
+    // Handle new event emitted by the `Handler`.
     fn handle_handler_event(&mut self, peer: PeerId, connection: ConnectionId, event: HandlerOutEvent<Rq, Rs>) {
         match event {
             HandlerOutEvent::ReceivedRequest {
@@ -510,7 +410,7 @@ where
     }
 
     // Query for individual approval of a requests.
-    // This is necessary if the firewall is configured with [`Rule::Ask`].
+    // This is necessary if the firewall is configured with `Rule::Ask`.
     //
     // A clone of the response-sender is handed. It is polled while a response from the firewall
     // is awaited
@@ -556,7 +456,7 @@ where
         let rule = self.firewall.get_effective_rule(&peer);
         let inbound_support = !matches!(rule, Some(Rule::RejectAll));
         self.request_manager.set_inbound_support(peer, None, inbound_support);
-        // Query for individual request approval due to [`Rule::Ask`].
+        // Query for individual request approval due to `Rule::Ask`.
         if let Some(ask_reqs) = self.request_manager.on_peer_rule(peer, rule.cloned()) {
             ask_reqs.into_iter().for_each(|(id, rq)| {
                 self.query_request_approval(peer, id, rq);
@@ -565,7 +465,7 @@ where
     }
 }
 
-impl<Rq, Rs, TRq> NetworkBehaviour for NetBehaviour<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> Libp2pNetworkBehaviour for NetworkBehaviour<Rq, Rs, TRq>
 where
     Rq: RqRsMessage,
     Rs: RqRsMessage,
@@ -599,7 +499,7 @@ where
         // Drive mdns.
         let _ = self.mdns.poll(cx, _params);
 
-        // Update firewall rule if a peer specific rule was return after a [`FirewallRequest::PeerSpecificRule`] query.
+        // Update firewall rule if a peer specific rule was returned after a `FirewallRequest::PeerSpecificRule` query.
         while let Poll::Ready(Some((peer, rule))) = self.pending_rule_rqs.poll_next_unpin(cx) {
             if let Some(rule) = rule {
                 self.firewall.set_rule(peer, rule);
@@ -607,7 +507,7 @@ where
             self.handle_updated_peer_rule(peer);
         }
 
-        // Handle individual approvals for requests that were returned after a [`FirewallRequest::RequestApproval`]
+        // Handle individual approvals for requests that were returned after a `FirewallRequest::RequestApproval`
         // query.
         while let Poll::Ready(Some((request_id, is_allowed))) = self.pending_approval_rqs.poll_next_unpin(cx) {
             self.request_manager.on_request_approval(request_id, is_allowed);
@@ -720,7 +620,6 @@ where
     }
 
     fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
-        #[allow(unused_mut)]
         let mut addresses = self.addresses.get_addrs(peer);
         if let Some(relay) = self.relay.as_mut() {
             addresses.extend(relay.addresses_of_peer(peer));
@@ -895,6 +794,161 @@ where
         }
     }
 }
+
+/// Trait for the generic request and response messages.
+pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}
+impl<TRq: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static> RqRsMessage for TRq {}
+
+/// Unique Id for each request.
+/// **Note**: This ID is only local and does not match the request's ID at the remote peer.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct RequestId(u64);
+
+impl RequestId {
+    // Adds to the given value, returning the previous value as RequestId.
+    pub(crate) fn next(value: &Arc<AtomicU64>) -> Self {
+        RequestId(value.fetch_add(1, Ordering::Relaxed))
+    }
+
+    pub(crate) fn value(&self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Configuration of the `NetworkBehaviour`.
+pub struct ConfigConfig {
+    /// Supported versions of the `MessageProtocol`.
+    pub supported_protocols: SmallVec<[MessageProtocol; 2]>,
+    /// Timeout for inbound and outbound requests.
+    pub request_timeout: Duration,
+    /// Keep-alive timeout of idle connections.
+    pub connection_timeout: Duration,
+    /// Timeout for `FirewallRequest`s send through the firewall-channel.
+    ///
+    /// See `StrongholdP2p` docs for more info.
+    pub firewall_timeout: Duration,
+}
+
+impl Default for ConfigConfig {
+    fn default() -> Self {
+        Self {
+            supported_protocols: smallvec![MessageProtocol::new_version(1, 0, 0)],
+            connection_timeout: Duration::from_secs(10),
+            request_timeout: Duration::from_secs(10),
+            firewall_timeout: Duration::from_secs(10),
+        }
+    }
+}
+
+/// Requests and failure events emitted by the `NetworkBehaviour`.
+#[derive(Debug)]
+pub enum BehaviourEvent<Rq, Rs> {
+    /// An inbound request was received from a remote peer.
+    /// The request was checked and approved by the firewall.
+    ReceivedRequest {
+        request_id: RequestId,
+        peer: PeerId,
+        /// Request from the remote peer.
+        request: Rq,
+        /// Channel for returning the response
+        response_tx: oneshot::Sender<Rs>,
+    },
+    /// A failure occurred in the context of receiving an inbound request and sending a response.
+    InboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: InboundFailure,
+    },
+    /// The response for a previously sent request was received.
+    ReceivedResponse {
+        request_id: RequestId,
+        peer: PeerId,
+        /// Response from the remote peer.
+        response: Rs,
+    },
+    /// A failure occurred in the context of sending an outbound request and receiving a response.
+    OutboundFailure {
+        request_id: RequestId,
+        peer: PeerId,
+        failure: OutboundFailure,
+    },
+}
+
+/// The Relay protocol is not supported.
+#[derive(Debug)]
+pub struct RelayNotSupported;
+
+/// Possible failures occurring in the context of sending an outbound request and receiving the response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutboundFailure {
+    /// The request timed out before a response was received.
+    ///
+    /// It is not known whether the request may have been
+    /// received (and processed) by the remote peer.
+    Timeout,
+    /// The request could not be sent because a dialing attempt failed.
+    DialFailure,
+    /// The connection closed before a response was received.
+    ///
+    /// It is not known whether the request may have been
+    /// received (and processed) by the remote peer.
+    ConnectionClosed,
+    /// The remote supports none of the requested protocols.
+    UnsupportedProtocols,
+    /// `StrongholdP2p` was shut down before a response was received.
+    Shutdown,
+}
+
+impl fmt::Display for OutboundFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutboundFailure::Timeout => write!(f, "Timeout while waiting for a response"),
+            OutboundFailure::ConnectionClosed => write!(f, "Connection was closed before a response was received"),
+            OutboundFailure::UnsupportedProtocols => {
+                write!(f, "The remote supports none of the requested protocols")
+            }
+            OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
+            OutboundFailure::Shutdown => write!(f, "The local peer was shut down before a response was received."),
+        }
+    }
+}
+
+impl std::error::Error for OutboundFailure {}
+
+/// Possible failures occurring in the context of receiving an inbound request and sending a response.
+///
+/// **Note**: If the firewall is configured to block per se all requests from the remote peer, the protocol for inbound
+/// requests will not be supported in the first place, and inbound requests are rejected without emitting a failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboundFailure {
+    /// The inbound request timed out, either while reading the
+    /// incoming request or before a response is sent through [`RequestMessage.response_tx`].
+    Timeout,
+    /// The local firewall blocked the request.
+    NotPermitted,
+    /// The connection closed before a response could be send.
+    ConnectionClosed,
+}
+
+impl fmt::Display for InboundFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InboundFailure::Timeout => write!(f, "Timeout while receiving request"),
+            InboundFailure::NotPermitted => write!(f, "The firewall blocked the inbound request"),
+            InboundFailure::ConnectionClosed => {
+                write!(f, "The connection closed directly after the request was received")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InboundFailure {}
 
 #[cfg(test)]
 mod test {
@@ -1093,7 +1147,7 @@ mod test {
         }
     }
 
-    async fn init_swarm() -> (PeerId, Swarm<NetBehaviour<Ping, Pong>>) {
+    async fn init_swarm() -> (PeerId, Swarm<NetworkBehaviour<Ping, Pong>>) {
         let id_keys = identity::Keypair::generate_ed25519();
         let peer = id_keys.public().to_peer_id();
         let noise_keys = NoiseKeypair::<X25519Spec>::new().into_authentic(&id_keys).unwrap();
@@ -1110,12 +1164,12 @@ mod test {
             .await
             .expect("Failed to create mdns behaviour.");
         let (dummy_tx, _) = mpsc::channel(10);
-        let behaviour = NetBehaviour::new(
-            NetBehaviourConfig::default(),
+        let behaviour = NetworkBehaviour::new(
+            ConfigConfig::default(),
             Some(mdns),
             Some(relay_behaviour),
             dummy_tx,
-            FirewallConfiguration::allow_all(),
+            FirewallRules::allow_all(),
             None,
         );
         let builder = SwarmBuilder::new(transport, behaviour, peer).executor(Box::new(|fut| {

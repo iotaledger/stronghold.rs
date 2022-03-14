@@ -212,7 +212,7 @@ pub mod messages {
     use crate::state::p2p::Permissions;
 
     use super::*;
-    use p2p::{EstablishedConnections, Listener, Multiaddr, PeerId};
+    use p2p::{ConnectedPoint, Listener, Multiaddr, PeerId};
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -228,7 +228,7 @@ pub mod messages {
     pub struct SwarmInfo {
         pub local_peer_id: PeerId,
         pub listeners: Vec<Listener>,
-        pub connections: Vec<(PeerId, EstablishedConnections)>,
+        pub connections: Vec<(PeerId, Vec<ConnectedPoint>)>,
     }
 
     #[derive(Message)]

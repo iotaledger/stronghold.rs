@@ -8,8 +8,8 @@ use futures::{
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
-    assemble_relayed_addr, firewall::FirewallConfiguration, ChannelSinkConfig, EventChannel, Multiaddr, NetworkEvent,
-    PeerId, StrongholdP2p, StrongholdP2pBuilder,
+    assemble_relayed_addr, firewall::FirewallRules, ChannelSinkConfig, EventChannel, Multiaddr, NetworkEvent, PeerId,
+    StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -32,7 +32,7 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
         dummy_fw_tx,
         dummy_rq_channel,
         Some(event_channel),
-        FirewallConfiguration::allow_all(),
+        FirewallRules::allow_all(),
     )
     .with_mdns_support(false)
     .with_connection_timeout(Duration::from_millis(1));

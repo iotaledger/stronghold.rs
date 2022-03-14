@@ -116,7 +116,6 @@ where
     Rs: RqRsMessage,
 {
     // Supported protocols for outbound requests.
-    // Rejects all outbound requests if empty.
     pub protocols: SmallVec<[MessageProtocol; 2]>,
     // Outbound request.
     pub request: Rq,

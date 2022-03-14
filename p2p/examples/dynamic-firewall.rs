@@ -65,7 +65,7 @@ use futures::{channel::mpsc, FutureExt, StreamExt};
 use p2p::{
     firewall::{
         permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-        FirewallConfiguration, FirewallRequest, FwRequest, Rule,
+        FirewallRequest, FirewallRules, FwRequest, Rule,
     },
     ChannelSinkConfig, EventChannel, PeerId, ReceiveRequest, StrongholdP2p,
 };
@@ -196,7 +196,6 @@ async fn on_firewall_request(
             loop {
                 // Return rule through `rule_tx` oneshot channel.
                 // This rule will now apply for all inbound requests from this peer.
-                // Skip setting a rule for outbound requests, as it is per default already set to `AllowAll`.
                 match stdin.next_line().await?.unwrap().as_str() {
                     "yes" => break rule_tx.send(Rule::AllowAll).unwrap(),
                     "no" => break rule_tx.send(Rule::RejectAll).unwrap(),
@@ -261,9 +260,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Channel through which approved inbound requests are forwarded.
     let (request_tx, mut request_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
 
-    let mut firewall_config = FirewallConfiguration::default();
-    firewall_config.set_default(Some(Rule::AllowAll));
-    let mut network = StrongholdP2p::new(firewall_tx, request_tx, None, firewall_config).await?;
+    let mut rules = FirewallRules::default();
+    rules.set_default(Some(Rule::AllowAll));
+    let mut network = StrongholdP2p::new(firewall_tx, request_tx, None, rules).await?;
 
     network.start_listening("/ip4/0.0.0.0/tcp/0".parse()?).await?;
     println!("\nLocal Peer Id: {}", network.peer_id());
