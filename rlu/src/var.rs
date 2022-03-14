@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{guard::BaseGuard, Result, TransactionError, RLU};
+use log::*;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex, RwLock,
@@ -26,6 +27,7 @@ where
 
     /// Tries to get a [`BaseGuard`]
     pub fn try_inner(&self) -> Result<BaseGuard<'_, T>> {
+        info!("Locking inner data");
         match self.inner.data.lock() {
             Ok(guard) => Ok(BaseGuard::new(guard, None)),
             Err(e) => Err(TransactionError::Inner(e.to_string())),
@@ -99,17 +101,27 @@ where
     /// # Safety
     ///
     /// This method is safe, as dereferencing ptr to original will be checked against null
-    pub(crate) fn write_back(&self) {
-        let data_guard = self.data.read().expect("cannot get lock in copy -> data");
+    pub(crate) fn write_back(&self) -> Result<()> {
+        let lock_id = self
+            .locked_thread_id
+            .as_ref()
+            .map_or(-1, |inner| inner.load(Ordering::SeqCst) as isize);
+
+        info!("({}) Locking data read", lock_id);
+        let data_guard = self.data.try_read().expect("cannot get lock in copy -> data");
         let copy = data_guard.clone();
+        info!("({}) Unlocking data read", lock_id);
         drop(data_guard);
 
-        let mut guard = self.original.data.lock().expect("");
+        info!("({}) Locking original data", lock_id);
+        let mut guard = self.original.data.try_lock().map_err(|e| TransactionError::Blocking)?;
 
         *guard = copy;
 
-        // // manually dropping guard?
+        info!("({}) Unlocking original data", lock_id);
         drop(guard);
+
+        Ok(())
     }
 }
 

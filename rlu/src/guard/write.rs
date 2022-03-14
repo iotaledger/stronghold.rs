@@ -1,6 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 use crate::{var::InnerVarCopy, InnerVar, RluContext};
+use log::*;
 use std::{
     ops::{Deref, DerefMut},
     sync::{
@@ -88,6 +89,8 @@ where
 {
     fn drop(&mut self) {
         let inner = &self.inner;
+
+        info!("Locking context log");
         let mut guard = self.context.log.lock().expect("Log could not be released");
         match inner {
             WriteGuardType::Mutex(m) => {
@@ -106,6 +109,8 @@ where
                     };
 
                     guard.push(Arc::new(copy));
+
+                    info!("Unlocking rlu log");
                     drop(guard);
                 }
             }
@@ -116,11 +121,16 @@ where
 
                     guard.push(Arc::new(inner.clone()))
                 }
+                info!("Unlocking rlu log");
                 drop(guard);
             }
         };
 
+        info!("successfully written data to copy");
         // end RLU section
-        self.context.read_unlock();
+        if let Err(err) = self.context.read_unlock() {
+            let id = self.context.id.load(Ordering::SeqCst);
+            info!("({}) Read unlock for writeguard failed: {:?}", id, err);
+        }
     }
 }

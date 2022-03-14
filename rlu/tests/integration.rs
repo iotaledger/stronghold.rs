@@ -3,6 +3,8 @@
 #![allow(unused_imports)]
 
 use lazy_static::__Deref;
+use log::*;
+use rand_utils::random as rnd;
 use rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use std::{
     cell::RefCell,
@@ -13,14 +15,15 @@ use std::{
 use stronghold_rlu as rlu;
 
 /// This function will run before any of the tests
-#[cfg(test)]
-#[ctor::ctor]
-fn init_logger() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Debug)
-        .try_init();
-}
+// #[ignore]
+// #[cfg(test)]
+// #[ctor::ctor]
+// fn init_logger() {
+//     let _ = env_logger::builder()
+//         .is_test(true)
+//         .filter_level(log::LevelFilter::Debug)
+//         .try_init();
+// }
 
 #[test]
 fn reference_impl() {
@@ -58,47 +61,81 @@ fn reference_impl() {
 
 #[test]
 fn reference_concurrent() {
-    let mut map = HashMap::new();
-    map.insert(1234567, "hello, world");
-    let rlu = RLU::with_strategy(RLUStrategy::Abort);
+    let map = HashMap::new();
+    // map.insert(1234567, "hello, world");
+    let mut keys = Vec::new();
+
+    let rlu = RLU::with_strategy(RLUStrategy::Retry);
     let rlu_var = rlu.create(map);
 
-    let v1 = rlu_var.clone();
-    let v2 = rlu_var.clone();
-    let r1 = rlu.clone();
-    let r2 = rlu.clone();
+    for _ in 0..50 {
+        let v1 = rlu_var.clone();
+        let v2 = rlu_var.clone();
+        let r1 = rlu.clone();
+        let r2 = rlu.clone();
 
-    let j0 = std::thread::spawn(move || {
-        r1.execute(|ctx| {
-            {
-                let mut write = ctx.get_mut(&v1)?;
-                (*write).insert(2344, "testtest");
-                drop(write);
-            }
+        let key = rnd::usize(256);
 
-            Ok(())
-        })
-        .is_ok()
-    });
+        let j0 = std::thread::spawn(move || {
+            r1.execute(|ctx| {
+                {
+                    let mut write = ctx.get_mut(&v1)?;
+                    (*write).insert(key, "testtest");
+                    drop(write);
+                }
 
-    // is this cheating?
-    std::thread::sleep(Duration::from_millis(50));
+                Ok(())
+            })
+            .is_ok()
+        });
 
-    let j1 = std::thread::spawn(move || {
-        r2.execute(|ctx| {
-            let read = ctx.get(&v2)?;
-            match read.contains_key(&2344) {
-                true => Ok(()),
-                false => Err(TransactionError::Abort),
-            }
-        })
-        .is_ok()
-    });
+        // this effectively serializes the write / read operation, which is not intended
+        std::thread::sleep(Duration::from_millis(5));
 
-    assert!(j0.join().expect(""));
-    assert!(j1.join().expect(""));
+        let j1 = std::thread::spawn(move || {
+            r2.execute(|ctx| {
+                // ctx.read_lock();
+
+                let read = match ctx.get(&v2) {
+                    Ok(read) => read,
+                    Err(err) => {
+                        error!("Read Thread. Error = {:?}", err);
+                        return Err(err);
+                    }
+                };
+
+                // ctx.read_unlock()?;
+
+                let result = match read.contains_key(&key) {
+                    true => Ok(()),
+                    false => {
+                        info!("shall retry. no key present");
+                        Err(TransactionError::Inner("Key not present".to_string()))
+                    }
+                };
+
+                drop(read);
+
+                result
+            })
+            .is_ok()
+        });
+
+        keys.push(key);
+
+        // normally, this could be reduced to `assert!(j0.join().is_ok())`, but we would like to see a
+        // potential error being rendered.
+        assert!(j0.join().is_ok());
+        assert!(j1.join().is_ok());
+    }
+
+    let inner = rlu_var.get();
+    for k in keys.iter() {
+        assert!(inner.contains_key(k));
+    }
 }
 
+#[ignore]
 #[test]
 fn test_multiple_readers_single_writer() {
     const EXPECTED: usize = 15usize;
@@ -126,10 +163,13 @@ fn test_multiple_readers_single_writer() {
         assert!(c1
             .execute(|context| {
                 let data = context.get(&r1)?;
-                match *data {
+                let result = match *data {
                     d if d == EXPECTED => Ok(()),
                     _ => Err(TransactionError::Failed),
-                }
+                };
+                drop(data);
+
+                result
             })
             .is_ok());
     }

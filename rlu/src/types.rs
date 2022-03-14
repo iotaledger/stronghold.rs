@@ -40,13 +40,8 @@ where
     ///
     /// // via the controller we can spawn a thread safe context
     /// ctrl.execute(move |context| {
-    ///     let inner = context.get(&var_1);
-    ///     match *inner {
-    ///         Ok(inner) => {
-    ///             assert_eq!(**inner, 6);
-    ///         }
-    ///         _ => return Err(TransactionError::Failed),
-    ///     }
+    ///     let inner = context.get(&var_1)?;
+    ///     assert_eq!(*inner, 6);
     ///     Ok(())
     /// });
     /// ```
@@ -89,7 +84,7 @@ where
     ///     Ok(())
     /// });
     ///
-    /// assert_eq!(*rlu_var.get(), 16);
+    /// assert_eq!(rlu_var.get(), 16);
     /// ```
     fn get_mut<'a>(&'a self, var: &'a RLUVar<T>) -> Result<WriteGuard<'a, T>>;
 }
