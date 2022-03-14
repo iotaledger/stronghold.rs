@@ -1,7 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use futures::{channel::mpsc, future::join, FutureExt, StreamExt};
+//! Simple example where Alice sends a Ping to Bob and Bob responds with a Pong.
+
+use futures::{channel::mpsc, future::join, StreamExt};
 #[cfg(not(feature = "tcp-transport"))]
 use libp2p::tcp::TokioTcpConfig;
 use p2p::{
@@ -9,24 +11,14 @@ use p2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tokio::time::sleep;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum Request {
-    Ping,
-    Other,
-}
+struct Ping;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-enum Response {
-    Pong,
-    Other,
-}
+struct Pong;
 
-async fn init_peer() -> (
-    mpsc::Receiver<ReceiveRequest<Request, Response>>,
-    StrongholdP2p<Request, Response>,
-) {
+async fn init_peer() -> (mpsc::Receiver<ReceiveRequest<Ping, Pong>>, StrongholdP2p<Ping, Pong>) {
     let (dummy_tx, _) = mpsc::channel(10);
     let (request_channel, rq_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
 
@@ -45,8 +37,8 @@ async fn init_peer() -> (
     (rq_rx, peer)
 }
 
-#[tokio::test]
-async fn test_send_req() {
+#[tokio::main]
+async fn main() {
     let (mut bob_request_rx, mut bob) = init_peer().await;
     let bob_id = bob.peer_id();
     let bob_addr = bob
@@ -56,11 +48,15 @@ async fn test_send_req() {
 
     let (_, mut alice) = init_peer().await;
 
-    // Alice adds Bob's address and sends a request.
+    // Alice adds Bob's address.
     alice.add_address(bob_id, bob_addr).await;
 
     // Alice sends a request.
-    let alice_send_req = alice.send_request(bob_id, Request::Ping);
+    let alice_send_req = async {
+        println!("[Alice] Sending Ping to Bob.");
+        let res = alice.send_request(bob_id, Ping).await;
+        println!("[Alice] Result: {:?}.", res);
+    };
 
     // Bob receives the request and sends a response.
     let bob_recv_req = async {
@@ -68,21 +64,10 @@ async fn test_send_req() {
             response_tx: bob_response_tx,
             ..
         } = bob_request_rx.next().await.unwrap();
-        bob_response_tx.send(Response::Pong).unwrap();
+        println!("[Bob] Received Ping from Alice.");
+        bob_response_tx.send(Pong).unwrap();
+        println!("[Bob] Sending Pong back to Alice.");
     };
 
-    futures::select! {
-         (res, ()) = join(alice_send_req, bob_recv_req).fuse() => {
-        match res {
-            Ok(_) => {}
-            Err(e) => panic!("Unexpected error: {}", e),
-        }
-
-        // Drop Bob, expect bob's incoming-requests channel to close
-        drop(bob);
-        assert!(bob_request_rx.next().await.is_none());
-
-         },
-        _ = sleep(Duration::from_secs(60)).fuse() => panic!("Test timed out"),
-    }
+    join(alice_send_req, bob_recv_req).await;
 }
