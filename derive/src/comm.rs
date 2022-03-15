@@ -40,7 +40,7 @@ pub fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -
             let ident = variant.ident.clone();
             let fields = match_fields(&variant.fields);
             quote! {
-                #input::#ident#fields => &#name::#ident,
+                #input::#ident #fields => &#name::#ident,
             }
         })
         .collect::<TokenStream>();

@@ -9,7 +9,6 @@ use serde::{
 };
 use std::{
     cmp::Ordering,
-    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
     ops::{Add, AddAssign},
@@ -46,7 +45,7 @@ pub struct ChainId([u8; 24]);
 #[derive(Copy, Clone, Hash, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Id([u8; 24]);
 
-/// A blob identifier used to refer to a [`SealedBlob`].
+/// A blob identifier used to refer to a `SealedBlob`.
 /// The [`BlobId`] for a record changes each time its data is updated.
 #[repr(transparent)]
 #[derive(Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]

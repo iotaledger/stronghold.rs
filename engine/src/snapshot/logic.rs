@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    convert::TryInto,
     fs::{rename, File, OpenOptions},
     io::{Read, Write},
     path::Path,

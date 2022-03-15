@@ -22,7 +22,7 @@ use libp2p::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::{convert::TryFrom, fmt, io, num::NonZeroU32};
+use std::{fmt, io, num::NonZeroU32};
 
 /// Trait for the generic request and response messages.
 pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}

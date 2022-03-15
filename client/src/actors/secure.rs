@@ -10,7 +10,7 @@
 
 use crate::{
     internals::Provider,
-    procedures::{CollectedOutput, Procedure, ProcedureError, Runner},
+    procedures::{Procedure, ProcedureError, ProcedureOutput, Runner},
     state::secure::SecureClient,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
@@ -39,7 +39,7 @@ pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 pub mod messages {
 
     use super::*;
-    use crate::{internals, Location};
+    use crate::{internals, procedures::StrongholdProcedure, Location};
     use serde::{Deserialize, Serialize};
     use std::time::Duration;
 
@@ -164,6 +164,23 @@ pub mod messages {
             DbView<internals::Provider>,
             Store,
         )>;
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct Procedures {
+        pub procedures: Vec<StrongholdProcedure>,
+    }
+
+    impl Message for Procedures {
+        type Result = Result<Vec<ProcedureOutput>, ProcedureError>;
+    }
+
+    impl<T: Into<StrongholdProcedure>> From<T> for Procedures {
+        fn from(proc: T) -> Self {
+            Procedures {
+                procedures: vec![proc.into()],
+            }
+        }
     }
 }
 
@@ -352,11 +369,29 @@ impl_handler!(
     }
 );
 
-impl Handler<Procedure> for SecureClient {
-    type Result = Result<CollectedOutput, ProcedureError>;
+impl Handler<messages::Procedures> for SecureClient {
+    type Result = Result<Vec<ProcedureOutput>, ProcedureError>;
 
-    fn handle(&mut self, proc: Procedure, _: &mut Self::Context) -> Self::Result {
-        proc.run(self)
+    fn handle(&mut self, msg: messages::Procedures, _: &mut Self::Context) -> Self::Result {
+        let mut out = Vec::new();
+        let mut log = Vec::new();
+        // Execute the procedures sequentially.
+        for proc in msg.procedures {
+            if let Some(output) = proc.output() {
+                log.push(output);
+            }
+            let output = match proc.execute(self) {
+                Ok(o) => o,
+                Err(e) => {
+                    for location in log {
+                        let _ = self.revoke_data(&location);
+                    }
+                    return Err(e);
+                }
+            };
+            out.push(output);
+        }
+        Ok(out)
     }
 }
 

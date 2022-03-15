@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! Trait and macros that may be used in the firewall rule [`Rule::Restricted`] to restrict request
+//! Trait and macros that may be used in the firewall rule [`Rule::Restricted`][super::Rule] to restrict request
 //! enums based on the variant.
 //!
 //! A [`PermissionValue`] value is a u32 integer value that is some power of 2, e.g. 1, 2, 4, 8, ..etc.

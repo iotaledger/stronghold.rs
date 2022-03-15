@@ -33,7 +33,7 @@ pub trait MergeLayer<'a> {
 
     /// Compare a hierarchy of entries with the local hierarchy.
     /// Returns the entries from `other` that self does not have.
-    /// If a path exists both, in `self` and `other`, include the entry depending on the [`MergePolicy`].
+    /// If a path exists both, in `self` and `other`, include the entry depending on [`Self::MergePolicy`].
     /// If the [`MergeLayer::Path`] differs between `self` and `other` for the same record, a mapper has to be provided
     /// to allow proper comparison.
     fn get_diff(

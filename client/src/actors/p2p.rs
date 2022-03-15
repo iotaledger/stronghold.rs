@@ -8,7 +8,6 @@ use crate::{
         GetTarget, RecordError, Registry,
     },
     enum_from_inner,
-    procedures::{CollectedOutput, Procedure},
 };
 use actix::prelude::*;
 use futures::{channel::mpsc, FutureExt, TryFutureExt};
@@ -19,11 +18,7 @@ use p2p::{
     Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::{TryFrom, TryInto},
-    io,
-    time::Duration,
-};
+use std::{io, time::Duration};
 
 use super::GetSnapshot;
 
@@ -60,7 +55,7 @@ macro_rules! sh_request_dispatch {
             ClientRequest::GarbageCollect($inner) => $body
             ClientRequest::ListIds($inner) => $body
             ClientRequest::ClearCache($inner) => $body
-            ClientRequest::Procedure($inner) => $body
+            ClientRequest::Procedures($inner) => $body
         }
     };
     (snapshot, $request:ident => |$inner: ident| $body:block) => {
@@ -371,8 +366,10 @@ pub mod messages {
 
     use super::*;
     use crate::{
-        actors::VaultError, procedures::ProcedureError, sync::SnapshotStateHierarchy, Location, MergeError, RecordHint,
-        RecordId,
+        actors::{secure_messages::Procedures, VaultError},
+        procedures::{ProcedureError, ProcedureOutput},
+        sync::SnapshotStateHierarchy,
+        Location, MergeError, RecordHint, RecordId,
     };
     use crypto::keys::x25519;
     use engine::vault::VaultId;
@@ -589,7 +586,7 @@ pub mod messages {
         Bool(bool),
         WriteRemoteVault(Result<(), RemoteRecordError>),
         ListIds(Vec<(RecordId, RecordHint)>),
-        Proc(Result<CollectedOutput, ProcedureError>),
+        Proc(Result<Vec<ProcedureOutput>, ProcedureError>),
         Hierarchy(Result<SnapshotStateHierarchy, RemoteVaultError>),
         Exported(Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError>),
     }
@@ -598,7 +595,7 @@ pub mod messages {
     sh_result_mapping!(ShResult::Bool => bool);
     sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
     sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
-    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
+    sh_result_mapping!(ShResult::Proc => Result<Vec<ProcedureOutput>, ProcedureError>);
 
     impl From<Result<(), RecordError>> for ShResult {
         fn from(inner: Result<(), RecordError>) -> Self {
@@ -664,7 +661,7 @@ pub mod messages {
         DeleteFromStore(DeleteFromStore),
         GarbageCollect(GarbageCollect),
         ClearCache(ClearCache),
-        Procedure(Procedure),
+        Procedures(Procedures),
     }
 
     enum_from_inner!(ShRequest::Client, ClientRequest::CheckVault from CheckVault);
@@ -677,7 +674,7 @@ pub mod messages {
     enum_from_inner!(ShRequest::Client, ClientRequest::DeleteFromStore from DeleteFromStore);
     enum_from_inner!(ShRequest::Client, ClientRequest::GarbageCollect from GarbageCollect);
     enum_from_inner!(ShRequest::Client, ClientRequest::ClearCache from ClearCache);
-    enum_from_inner!(ShRequest::Client, ClientRequest::Procedure from Procedure);
+    enum_from_inner!(ShRequest::Client, ClientRequest::Procedures from Procedures);
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub enum SnapshotRequest {

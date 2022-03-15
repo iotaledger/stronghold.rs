@@ -10,14 +10,14 @@
 use crate::{
     actors::{
         secure_messages::{
-            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
-            ReloadData, RevokeData, WriteToStore, WriteToVault,
+            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, Procedures,
+            ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         snapshot_messages::{FillSnapshot, LoadFromState, MergeClients, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget, VaultError,
     },
-    procedures::{CollectedOutput, Procedure, ProcedureError},
+    procedures::{Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
     state::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
@@ -298,13 +298,24 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a [`Procedure`].
-    pub async fn runtime_exec<P>(&self, control_request: P) -> StrongholdResult<Result<CollectedOutput, ProcedureError>>
+    /// Executes a runtime command given a single [`StrongholdProcedure`]s
+    pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<P::Output, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Procedure + Into<StrongholdProcedure>,
     {
+        let res = self.runtime_exec_chained(vec![procedure.into()]).await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
+    }
+
+    /// Sequentially execute multiple [`StrongholdProcedure`]s.
+    pub async fn runtime_exec_chained(
+        &self,
+        procedures: Vec<StrongholdProcedure>,
+    ) -> StrongholdResult<Result<Vec<ProcedureOutput>, ProcedureError>> {
         let target = self.target().await?;
-        let result = target.send::<Procedure>(control_request.into()).await?;
+        let message = Procedures { procedures };
+        let result = target.send(message).await?;
         Ok(result)
     }
 
@@ -344,12 +355,11 @@ impl Stronghold {
         // this feature resembles the functionality given by the former riker
         // system dependence. if there is a former client id path present,
         // the new actor is being changed into the former one ( see old ReloadData impl.)
-        let target;
-        if let Some(id) = former_client_id {
-            target = self.switch_client(id).await?;
+        let target = if let Some(id) = former_client_id {
+            self.switch_client(id).await?
         } else {
-            target = self.target().await?;
-        }
+            self.target().await?
+        };
 
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
@@ -523,20 +533,17 @@ impl Stronghold {
     /// set via [`Stronghold::switch_actor_target`], before any following operations can be performed.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StrongholdResult<()> {
         let client_id = ClientId::load_from_path(&client_path.clone(), &client_path);
-        let client;
-        if kill_actor {
-            client = self
-                .registry
+        let client = if kill_actor {
+            self.registry
                 .send(RemoveClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
+                .ok_or(ActorError::TargetNotFound)?
         } else {
-            client = self
-                .registry
+            self.registry
                 .send(GetClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
-        }
+                .ok_or(ActorError::TargetNotFound)?
+        };
         client.send(ClearCache).await?;
         Ok(())
     }
@@ -895,16 +902,26 @@ impl Stronghold {
     pub async fn remote_runtime_exec<P>(
         &self,
         peer: PeerId,
-        control_request: P,
-    ) -> P2pResult<Result<CollectedOutput, ProcedureError>>
+        procedure: P,
+    ) -> P2pResult<Result<P::Output, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Procedure + Into<StrongholdProcedure>,
     {
+        let res = self.remote_runtime_exec_chained(peer, vec![procedure.into()]).await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
+    }
+
+    /// Executes multiple runtime commands at a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
+    pub async fn remote_runtime_exec_chained(
+        &self,
+        peer: PeerId,
+        procedures: Vec<StrongholdProcedure>,
+    ) -> P2pResult<Result<Vec<ProcedureOutput>, ProcedureError>> {
         let actor = self.network_actor().await?;
-        let send_request = network_messages::SendRequest::<Procedure> {
-            peer,
-            request: control_request.into(),
-        };
+        let request = Procedures { procedures };
+        let send_request = network_messages::SendRequest { peer, request };
         let result = actor.send(send_request).await??;
         Ok(result)
     }
