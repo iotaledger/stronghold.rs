@@ -28,10 +28,14 @@ async fn init_peer() -> (mpsc::Receiver<NetworkEvent>, TestPeer) {
     let (dummy_fw_tx, _) = mpsc::channel(10);
     let (dummy_rq_channel, _) = EventChannel::new(10, ChannelSinkConfig::DropLatest);
     let (event_channel, event_rx) = EventChannel::new(10, ChannelSinkConfig::Block);
-    let builder = StrongholdP2pBuilder::new(dummy_fw_tx, dummy_rq_channel, Some(event_channel))
-        .with_firewall_default(FirewallRules::allow_all())
-        .with_mdns_support(false)
-        .with_connection_timeout(Duration::from_millis(1));
+    let builder = StrongholdP2pBuilder::new(
+        dummy_fw_tx,
+        dummy_rq_channel,
+        Some(event_channel),
+        FirewallRules::allow_all(),
+    )
+    .with_mdns_support(false)
+    .with_connection_timeout(Duration::from_millis(1));
     #[cfg(not(feature = "tcp-transport"))]
     let peer = {
         let executor = |fut| {
@@ -161,7 +165,7 @@ impl TestConfig {
                 .await
                 .unwrap();
 
-            let mut target_listeners = self.target_peer.get_listeners().await;
+            let mut target_listeners = self.target_peer.listeners().await;
             assert_eq!(target_listeners.len(), 1);
             let target_listener = target_listeners.pop().unwrap();
             assert!(target_listener.uses_relay.is_none());
@@ -176,7 +180,7 @@ impl TestConfig {
                 .await
                 .unwrap();
 
-            let target_listeners = self.target_peer.get_listeners().await;
+            let target_listeners = self.target_peer.listeners().await;
             let mut expected_len = 1;
             self.target_config.listening_plain.then(|| expected_len = 2);
             assert_eq!(target_listeners.len(), expected_len);
@@ -337,7 +341,7 @@ async fn test_dialing() {
             .start_listening("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .await
             .unwrap();
-        let mut relay_listeners = relay_peer.get_listeners().await;
+        let mut relay_listeners = relay_peer.listeners().await;
         assert_eq!(relay_listeners.len(), 1);
         let relay_listener = relay_listeners.pop().unwrap();
         assert!(relay_listener.uses_relay.is_none());
