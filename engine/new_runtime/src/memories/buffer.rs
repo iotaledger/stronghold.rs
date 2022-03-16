@@ -254,9 +254,6 @@ where
     where
         E: SeqAccess<'de>,
     {
-        // extern crate alloc;
-        // use alloc::vec::Vec;
-
         let mut seq = Vec::<T>::with_capacity(access.size_hint().unwrap_or(0));
 
         while let Some(e) = access.next_element()? {

@@ -4,9 +4,15 @@
 use crate::{
     locked_memory::LockedMemory, memories::buffer::Buffer, types::ContiguousBytes, utils::*, MemoryError::*, *,
 };
-use core::fmt::{self, Debug, Formatter};
+use core::{
+    fmt::{self, Debug, Formatter},
+    marker::PhantomData,
+};
 use dirs::{data_local_dir, home_dir};
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, Serializer},
+};
 use std::{
     fs::{self, File},
     io::{self, prelude::*},
@@ -19,7 +25,6 @@ const FILENAME_SIZE: usize = 16;
 
 /// Data is stored into files in clear or encrypted.
 /// Basic security of this file includes files access control and
-#[derive(Serialize, Deserialize)]
 pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: PathBuf,
@@ -209,6 +214,58 @@ impl Clone for FileMemory {
         };
         fm.lock_file().expect(error_msg);
         fm
+    }
+}
+
+impl Serialize for FileMemory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let buf = self.unlock().expect("Failed to unlock file memory for serialization");
+        buf.serialize(serializer)
+    }
+}
+
+struct FileMemoryVisitor {
+    marker: PhantomData<fn() -> FileMemory>,
+}
+
+impl FileMemoryVisitor {
+    fn new() -> Self {
+        FileMemoryVisitor { marker: PhantomData }
+    }
+}
+
+impl<'de> Visitor<'de> for FileMemoryVisitor {
+    type Value = FileMemory;
+
+    fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("FileMemory not found")
+    }
+
+    fn visit_seq<E>(self, mut access: E) -> Result<Self::Value, E::Error>
+    where
+        E: SeqAccess<'de>,
+    {
+        let mut seq = Vec::<u8>::with_capacity(access.size_hint().unwrap_or(0));
+
+        while let Some(e) = access.next_element()? {
+            seq.push(e);
+        }
+
+        let seq = FileMemory::alloc(seq.as_slice(), seq.len()).expect("Failed to deserialize file memory");
+
+        Ok(seq)
+    }
+}
+
+impl<'de> Deserialize<'de> for FileMemory {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(FileMemoryVisitor::new())
     }
 }
 

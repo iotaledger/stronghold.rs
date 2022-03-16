@@ -8,17 +8,24 @@ use crate::{
     MemoryError::*,
     *,
 };
-use core::fmt::{self, Debug, Formatter};
+use core::{
+    fmt::{self, Debug, Formatter},
+    marker::PhantomData,
+};
 use crypto::hashes::sha;
-use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
+
+use serde::{
+    de::{Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, Serializer},
+};
 
 static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
 
 // Currently we only support data of 32 bytes in noncontiguous memory
 pub const NC_DATA_SIZE: usize = 32;
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NCConfig {
     FullFile,
     FullRam,
@@ -28,7 +35,7 @@ use NCConfig::*;
 
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 enum MemoryShard {
     FileShard(FileMemory),
     RamShard(RamMemory),
@@ -37,7 +44,7 @@ use MemoryShard::*;
 
 /// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to
 /// store keys hence the size of the data depends on the chosen box provider
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct NonContiguousMemory {
     shard1: MemoryShard,
     shard2: MemoryShard,
@@ -179,6 +186,62 @@ impl ZeroizeOnDrop for NonContiguousMemory {}
 impl Drop for NonContiguousMemory {
     fn drop(&mut self) {
         self.zeroize()
+    }
+}
+
+impl Serialize for NonContiguousMemory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let buf = self
+            .unlock()
+            .expect("Failed to unlock NonContiguousMemory for serialization");
+        buf.serialize(serializer)
+    }
+}
+
+struct NonContiguousMemoryVisitor {
+    marker: PhantomData<fn() -> NonContiguousMemory>,
+}
+
+impl NonContiguousMemoryVisitor {
+    fn new() -> Self {
+        NonContiguousMemoryVisitor { marker: PhantomData }
+    }
+}
+
+impl<'de> Visitor<'de> for NonContiguousMemoryVisitor {
+    type Value = NonContiguousMemory;
+
+    fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("NonContiguousMemory not found")
+    }
+
+    fn visit_seq<E>(self, mut access: E) -> Result<Self::Value, E::Error>
+    where
+        E: SeqAccess<'de>,
+    {
+        let mut seq = Vec::<u8>::with_capacity(access.size_hint().unwrap_or(0));
+
+        while let Some(e) = access.next_element()? {
+            seq.push(e);
+        }
+
+        // TODO we need to get back the previous config
+        let seq = NonContiguousMemory::alloc(seq.as_slice(), seq.len(), FullRam)
+            .expect("Failed to allocate NonContiguousMemory during deserialization");
+
+        Ok(seq)
+    }
+}
+
+impl<'de> Deserialize<'de> for NonContiguousMemory {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(NonContiguousMemoryVisitor::new())
     }
 }
 

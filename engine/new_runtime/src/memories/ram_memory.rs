@@ -88,16 +88,12 @@ unsafe impl Send for RamMemory {}
 unsafe impl Sync for RamMemory {}
 
 impl Serialize for RamMemory {
-    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        todo!();
-        // let mut state = serializer.serialize_seq(Some(self.len()))?;
-        // for e in self.borrow().iter() {
-        //     state.serialize_element(e)?;
-        // }
-        // state.end()
+        let buf = self.unlock().expect("Failed to unlock RamMemory for serialization");
+        buf.serialize(serializer)
     }
 }
 
@@ -115,26 +111,23 @@ impl<'de> Visitor<'de> for RamMemoryVisitor {
     type Value = RamMemory;
 
     fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
-        formatter.write_str("GuardedVec not found")
+        formatter.write_str("RamMemory not found")
     }
 
-    fn visit_seq<E>(self, mut _access: E) -> Result<Self::Value, E::Error>
+    fn visit_seq<E>(self, mut access: E) -> Result<Self::Value, E::Error>
     where
         E: SeqAccess<'de>,
     {
-        todo!()
-        // extern crate alloc;
-        // use alloc::vec::Vec;
+        let mut seq = Vec::<u8>::with_capacity(access.size_hint().unwrap_or(0));
 
-        // let mut seq = Vec::<T>::with_capacity(access.size_hint().unwrap_or(0));
+        while let Some(e) = access.next_element()? {
+            seq.push(e);
+        }
 
-        // while let Some(e) = access.next_element()? {
-        //     seq.push(e);
-        // }
+        let seq =
+            RamMemory::alloc(seq.as_slice(), seq.len()).expect("Failed to allocate RamMemory during deserialization");
 
-        // let seq = RamMemory::new(seq.len(), |s| s.copy_from_slice(seq.as_slice()));
-
-        // Ok(seq)
+        Ok(seq)
     }
 }
 
