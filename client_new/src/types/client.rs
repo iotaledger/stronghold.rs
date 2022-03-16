@@ -5,7 +5,7 @@ use std::{error::Error, sync::Arc};
 use crate::{Store, Vault};
 
 pub struct Client {
-    store: Option<Arc<Store<Vec<u8>, Vec<u8>>>>,
+    store: Option<Arc<Store>>,
     vault: Option<Arc<Vault>>,
 }
 
@@ -16,6 +16,17 @@ impl Default for Client {
 }
 
 impl Client {
+    pub async fn store(&self) -> Store {
+        todo!()
+    }
+
+    pub async fn vault<P>(&self, path: P) -> Vault
+    where
+        P: AsRef<Vec<u8>>,
+    {
+        todo!()
+    }
+
     /// Returns ok, if a vault exists
     pub async fn check_vault(&self) -> Result<(), Box<dyn Error>> {
         todo!()

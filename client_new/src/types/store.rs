@@ -3,21 +3,24 @@
 
 use std::error::Error;
 
-pub struct Store<K, V> {
-    key: K,
-    value: V,
+use crate::Cache;
+
+pub struct Store {
+    cache: Cache<Vec<u8>, Vec<u8>>,
 }
 
-impl<K, V> Store<K, V> {
+impl Store {
     /// Inserts a value into the store
-    pub async fn insert(&self, key: K, value: V) {}
-
-    ///
-    pub async fn get(&self, key: &K) -> Option<&V> {
+    pub async fn insert(&self, key: Vec<u8>, value: Vec<u8>) {
         todo!()
     }
 
-    pub async fn delete(&self, key: &K) -> Result<V, Box<dyn Error>> {
+    ///
+    pub async fn get(&self, key: Vec<u8>) -> Option<&Vec<u8>> {
+        todo!()
+    }
+
+    pub async fn delete(&self, key: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
         todo!()
     }
 }
