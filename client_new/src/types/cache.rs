@@ -7,7 +7,7 @@ use std::{
     collections::HashMap,
     hash::Hash,
     ops::Deref,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard},
     time::{Duration, SystemTime},
 };
 
@@ -20,72 +20,99 @@ where
 {
     // data field.
     pub val: Arc<RwLock<T>>,
+
     // expiration time.
     expiration: Option<SystemTime>,
 }
 
-// impl<T> Deref for Value<T>
-// where
-//     T: Clone,
-// {
-//     type Target = usize;
+pub struct ValueReadGuard<'a, T>
+where
+    T: Clone,
+{
+    guard: RwLockReadGuard<'a, T>,
+}
 
-//     fn deref(&self) -> &Self::Target {
-//         &self.val
-//     }
-// }
+impl<'a, T> ValueReadGuard<'a, T>
+where
+    T: Clone,
+{
+    pub(crate) fn new(guard: RwLockReadGuard<'a, T>) -> Self {
+        Self { guard }
+    }
+}
 
-// impl<T> Value<T>
-// where
-//     T: Clone,
-// {
-//     /// Create a new [`Value`] with a specified expiration.
-//     pub fn new(val: T, duration: Option<Duration>) -> Self {
-//         Value {
-//             val: val.into(),
-//             expiration: duration.map(|d| SystemTime::now() + d),
-//         }
-//     }
+impl<'a, T> Deref for ValueReadGuard<'a, T>
+where
+    T: Clone,
+{
+    type Target = T;
 
-//     /// Checks to see if the [`Value`] has expired.
-//     pub fn has_expired(&self, time_now: SystemTime) -> bool {
-//         self.expiration.map_or(false, |time| time_now >= time)
-//     }
-// }
+    fn deref(&self) -> &Self::Target {
+        self.guard.deref()
+    }
+}
+
+impl<T> Value<T>
+where
+    T: Clone,
+{
+    /// Returns a [`ValueGuard`] to access the immutable value.
+    pub fn get(&self) -> ValueReadGuard<'_, T> {
+        ValueReadGuard::new(self.val.read().expect("Cannot get read lock"))
+    }
+}
+
+impl<T> Value<T>
+where
+    T: Clone,
+{
+    /// Create a new [`Value`] with a specified expiration.
+    pub fn new(val: T, duration: Option<Duration>) -> Self {
+        Value {
+            val: Arc::new(RwLock::new(val)),
+            expiration: duration.map(|d| SystemTime::now() + d),
+        }
+    }
+
+    /// Checks to see if the [`Value`] has expired.
+    pub fn has_expired(&self, time_now: SystemTime) -> bool {
+        self.expiration.map_or(false, |time| time_now >= time)
+    }
+}
 
 // An evicting cache data structure.
 //
 // *NOTE*: this is a port to an RLU based data structure from runtime
-// #[derive(Clone)]
-// pub struct Cache<K, V>
-// where
-//     K: Eq + Clone,
-//     V: Clone,
-// {
-//     // the inner table data
-//     inner: RLUObject<HashMap<K, Value<V>>>,
-//     // the scan frequency for removing data based on the expiration time.
-//     scan_freq: Option<Duration>,
-//     // a created at timestamp.
-//     created_at: SystemTime,
-//     // a last scan timestamp.
-//     last_scan_at: Option<SystemTime>,
-// }
+#[derive(Clone)]
+pub struct Cache<K, V>
+where
+    K: Eq + Clone,
+    V: Clone,
+{
+    // the inner table data
+    inner: Arc<RwLock<HashMap<K, Value<V>>>>,
+    // the scan frequency for removing data based on the expiration time.
+    scan_freq: Option<Duration>,
+    // a created at timestamp.
+    created_at: SystemTime,
+    // a last scan timestamp.
+    last_scan_at: Option<SystemTime>,
+}
 
-// impl<K, V> Default for Cache<K, V>
-// where
-//     K: Eq + Hash + Clone,
-//     V: Clone,
-// {
-//     fn default() -> Self {
-//         Self {
-//             inner: HashMap::<K, V>::new().into(),
-//             scan_freq: None,
-//             created_at: SystemTime::now(),
-//             last_scan_at: None,
-//         }
-//     }
-// }
+impl<K, V> Default for Cache<K, V>
+where
+    K: Eq + Hash + Clone,
+    V: Clone,
+{
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::<K, Value<V>>::new())),
+            scan_freq: None,
+            created_at: SystemTime::now(),
+            last_scan_at: None,
+        }
+    }
+}
 
 // impl<K, V> Cache<K, V>
 // where

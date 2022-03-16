@@ -1,4 +1,4 @@
-// Copyright 2020-2021 IOTA Stiftung
+// Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 //! # Stronghold Client Interface
@@ -16,70 +16,17 @@ mod stronghold_std {
 
     pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
 
-    pub struct Client {
-        store: Option<Arc<Store>>,
-        vault: Option<Arc<Vault>>,
-    }
+    /// The Stronghold is a secure storage for sensitive data. Secrets that are stored inside
+    /// a Stronghold can never be read, but only be accessed via cryptographic procedures. Data inside
+    /// a Stronghold is heavily protected by the [`Runtime`] by either being encrypted at rest, having
+    /// kernel supplied memory guards, that prevent memory dumps, or a combination of both. The Stronghold
+    /// also persists data written into a Stronghold by creating Snapshots of the current state. The
+    /// Snapshot itself is encrypted and can be accessed by a key.
+    /// TODO: more epic description
+    pub struct Stronghold {}
 
-    pub struct Store {}
-
-    pub struct Vault {}
-
-    pub struct Snapshot {}
-
-    impl Store {
-        pub async fn write(&self, payload: Vec<u8>) {
-            todo!()
-        }
-
-        pub async fn read(&self) -> Option<Vec<u8>> {
-            todo!()
-        }
-    }
-
-    impl Snapshot {
-        pub async fn named(name: String) {
-            todo!()
-        }
-
-        pub async fn path<P>(path: P) -> Self
-        where
-            P: AsRef<Path>,
-        {
-            todo!()
-        }
-    }
-
-    impl Client {
-        /// Returns ok, if a vault exists
-        pub async fn check_vault(&self) -> Result<()> {
-            todo!()
-        }
-
-        /// Returns Ok, if the record exists
-        pub async fn check_record(&self) -> Result<()> {
-            todo!()
-        }
-    }
-
-    impl Vault {
-        pub async fn write_secret(&self, location: Vec<u8>, payload: Vec<u8>, hint: Vec<u8>) {
-            todo!()
-        }
-
-        pub async fn delete_secret(&self, location: Vec<u8>) {
-            todo!()
-        }
-
-        pub async fn revoke_secret(&self, location: Vec<u8>) {
-            todo!()
-        }
-
-        pub async fn garbage_collect(&self) {
-            todo!()
-        }
-
-        pub async fn execute_procedure() -> Result<()> {
+    impl Default for Stronghold {
+        fn default() -> Self {
             todo!()
         }
     }
