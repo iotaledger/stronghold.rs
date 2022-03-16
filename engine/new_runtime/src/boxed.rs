@@ -60,6 +60,7 @@ impl<T: Bytes> Boxed<T> {
         boxed
     }
 
+    #[allow(dead_code)]
     pub(crate) fn try_new<R, E, F>(len: usize, init: F) -> Result<Self, E>
     where
         F: FnOnce(&mut Self) -> Result<R, E>,
@@ -105,6 +106,7 @@ impl<T: Bytes> Boxed<T> {
         self.release()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn as_ref(&self) -> &T {
         assert!(!self.is_empty(), "Attempted to dereference a zero-length pointer");
 
@@ -206,12 +208,14 @@ impl<T: Bytes> Boxed<T> {
 }
 
 impl<T: Bytes + Randomized> Boxed<T> {
+    #[allow(dead_code)]
     pub(crate) fn random(len: usize) -> Self {
         Self::new(len, |b| b.as_mut_slice().randomize())
     }
 }
 
 impl<T: Bytes + Zeroed> Boxed<T> {
+    #[allow(dead_code)]
     pub(crate) fn zero(len: usize) -> Self {
         Self::new(len, |b| b.as_mut_slice().zero())
     }
@@ -320,6 +324,21 @@ mod test {
 
     use super::*;
     use libsodium_sys::randombytes_buf;
+
+    #[test]
+    fn boxed_zeroize() {
+        let mut boxed = Boxed::<u8>::random(4);
+        let ptr = unsafe { core::slice::from_raw_parts(boxed.ptr.as_ptr(), 4) };
+        boxed.unlock();
+        assert_ne!(ptr, [0u8; 4]);
+        boxed.lock();
+
+        boxed.zeroize();
+
+        boxed.unlock();
+        assert_eq!(ptr, [0u8; 4]);
+        boxed.lock();
+    }
 
     #[test]
     fn test_init_with_garbage() {

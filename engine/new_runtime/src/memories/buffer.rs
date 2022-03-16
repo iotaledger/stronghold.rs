@@ -1,13 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     boxed::Boxed,
-    locked_memory::{
-        MemoryError::{self, *},
-        ProtectedConfiguration::{self, *},
-        ProtectedMemory,
-    },
     types::{Bytes, ConstEq, Randomized, Zeroed},
+    DEBUG_MSG,
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -15,7 +12,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -37,28 +34,23 @@ pub struct RefMut<'a, T: Bytes> {
     boxed: &'a mut Boxed<T>,
 }
 
-impl<T: Bytes> ProtectedMemory<T> for Buffer<T> {
-    fn alloc(payload: &[T], config: ProtectedConfiguration) -> Result<Self, MemoryError> {
-        match config {
-            BufferConfig(size) => Ok(Buffer {
-                boxed: Boxed::new(size, |b| b.as_mut_slice().copy_from_slice(payload)),
-            }),
-
-            // We don't allow any other configurations for Buffer
-            _ => Err(ConfigurationNotAllowed),
+impl<T: Bytes> Buffer<T> {
+    pub fn alloc(payload: &[T], size: usize) -> Self {
+        Buffer {
+            boxed: Boxed::new(size, |b| b.as_mut_slice().copy_from_slice(payload)),
         }
     }
-}
 
-impl<T: Bytes> Buffer<T> {
     pub fn len(&self) -> usize {
         self.boxed.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.boxed.is_empty()
     }
 
+    #[allow(dead_code)]
     pub fn size(&self) -> usize {
         self.boxed.size()
     }
@@ -67,22 +59,18 @@ impl<T: Bytes> Buffer<T> {
         Ref::new(&self.boxed)
     }
 
+    #[allow(dead_code)]
     pub fn borrow_mut(&mut self) -> RefMut<'_, T> {
         RefMut::new(&mut self.boxed)
     }
 }
 
 impl<T: Bytes + Randomized> Buffer<T> {
+    #[allow(dead_code)]
     pub fn random(len: usize) -> Self {
         Self {
             boxed: Boxed::random(len),
         }
-    }
-}
-
-impl<T: Bytes> Drop for Buffer<T> {
-    fn drop(&mut self) {
-        self.zeroize()
     }
 }
 
@@ -92,7 +80,16 @@ impl<T: Bytes> Zeroize for Buffer<T> {
     }
 }
 
+impl<T: Bytes> Drop for Buffer<T> {
+    fn drop(&mut self) {
+        self.boxed.zeroize()
+    }
+}
+
+impl<T: Bytes> ZeroizeOnDrop for Buffer<T> {}
+
 impl<T: Bytes + Zeroed> Buffer<T> {
+    #[allow(dead_code)]
     pub fn zero(len: usize) -> Self {
         Self {
             boxed: Boxed::zero(len),
@@ -108,7 +105,7 @@ impl<T: Bytes + Zeroed> From<&mut [T]> for Buffer<T> {
 
 impl<T: Bytes> Debug for Buffer<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -148,7 +145,7 @@ impl<T: Bytes> Deref for Ref<'_, T> {
 
 impl<T: Bytes> Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -196,7 +193,7 @@ impl<T: Bytes> DerefMut for RefMut<'_, T> {
 
 impl<T: Bytes> Debug for RefMut<'_, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.boxed.fmt(f)
+        write!(f, "{}", DEBUG_MSG)
     }
 }
 
@@ -266,8 +263,7 @@ where
             seq.push(e);
         }
 
-        let seq = Buffer::alloc(seq.as_slice(), BufferConfig(seq.len()))
-            .expect("Buffer could not be allocated, this should not happen here");
+        let seq = Buffer::alloc(seq.as_slice(), seq.len());
 
         Ok(seq)
     }
@@ -290,17 +286,14 @@ mod tests {
     extern crate alloc;
     use super::*;
 
-    use alloc::format;
-
     #[test]
-    fn test_init() {
-        let buf = Buffer::<u64>::alloc(&[1, 2, 3, 4, 5, 6][..], BufferConfig(6));
-        assert!(buf.is_ok());
-        assert_eq!((*buf.unwrap().borrow()), [1, 2, 3, 4, 5, 6]);
+    fn buffer_init() {
+        let buf = Buffer::<u64>::alloc(&[1, 2, 3, 4, 5, 6][..], 6);
+        assert_eq!((*buf.borrow()), [1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
-    fn test_borrow() {
+    fn buffer_borrow() {
         let vec = Buffer::<u64>::zero(2);
         let v = vec.borrow();
 
@@ -313,34 +306,19 @@ mod tests {
 
         assert_eq!(*v, [7, 1]);
 
-        let vec = Buffer::<[u8; 2]>::alloc(&[[1, 2], [3, 4]][..], BufferConfig(2));
-        assert!(vec.is_ok());
-        assert_eq!(*vec.unwrap().borrow(), [[1, 2], [3, 4]]);
+        let vec = Buffer::<[u8; 2]>::alloc(&[[1, 2], [3, 4]][..], 2);
+        assert_eq!(*vec.borrow(), [[1, 2], [3, 4]]);
     }
 
     #[test]
-    fn test_properties() {
+    fn buffer_properties() {
         let vec = Buffer::<[u64; 4]>::zero(64);
         assert_eq!(vec.len(), 64);
         assert_eq!(vec.size(), 2048);
     }
 
     #[test]
-    fn test_guard() {
-        let mut guard = Buffer::<u64>::random(32);
-
-        assert_eq!(format!("{{ size: {}, hidden }}", 256), format!("{:?}", guard),);
-
-        assert_eq!(format!("{{ size: {}, hidden }}", 256), format!("{:?}", guard.borrow()),);
-
-        assert_eq!(
-            format!("{{ size: {}, hidden }}", 256),
-            format!("{:?}", guard.borrow_mut()),
-        );
-    }
-
-    #[test]
-    fn test_moving_and_cloning() {
+    fn buffer_moving_and_cloning() {
         let guard = Buffer::<u8>::zero(1);
 
         let moved = guard;
@@ -356,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_comparisons() {
+    fn buffer_comparisons() {
         let guard = Buffer::<u8>::from(&mut [1, 2, 3][..]);
 
         let clone = guard.clone();
@@ -375,5 +353,26 @@ mod tests {
         assert_eq!(guard.borrow_mut(), clone.borrow());
         assert_eq!(guard.borrow_mut(), clone.borrow());
         assert_eq!(guard.borrow(), clone.borrow_mut());
+    }
+
+    #[test]
+    #[should_panic]
+    fn buffer_zeroize() {
+        let mut buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
+        buf.zeroize();
+        assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
+
+        // Using zeroized buffer should panic
+        let mut v = buf.borrow_mut();
+        v.copy_from_slice(&[7, 1][..]);
+    }
+
+    // We should not be able to access memory without borrow/borrow_mut
+    #[test]
+    #[should_panic]
+    fn buffer_security() {
+        let buf = Buffer::<u8>::from(&mut [1, 2, 3][..]);
+        println!("{:?}", buf.boxed.as_slice());
     }
 }

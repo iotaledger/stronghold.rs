@@ -1,10 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    locked_memory::{ProtectedConfiguration, ProtectedMemory},
-    memories::buffer::Buffer,
-};
+use crate::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -12,9 +9,10 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+use zeroize::Zeroize;
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
+pub trait BoxProvider: 'static + Sized + Ord + PartialOrd + Zeroize + Clone {
     type Error: Debug;
 
     /// defines the key length for the [`BoxProvider`].
@@ -59,9 +57,8 @@ impl<T: BoxProvider> Key<T> {
                 T::random_vec(T::box_key_len())
                     .expect("failed to generate random key")
                     .as_slice(),
-                ProtectedConfiguration::BufferConfig(T::box_key_len()),
-            )
-            .expect("Failed to generate buffer"),
+                T::box_key_len(),
+            ),
             _box_provider: PhantomData,
         }
     }
@@ -69,11 +66,11 @@ impl<T: BoxProvider> Key<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
+    #[allow(dead_code)]
     pub fn load(key: Vec<u8>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
-                key: Buffer::alloc(key.as_slice(), ProtectedConfiguration::BufferConfig(T::box_key_len()))
-                    .expect("Failed to generate Buffer"),
+                key: Buffer::alloc(key.as_slice(), T::box_key_len()),
                 _box_provider: PhantomData,
             })
         } else {
@@ -85,6 +82,12 @@ impl<T: BoxProvider> Key<T> {
     pub fn bytes(&self) -> Vec<u8> {
         // hacks the guarded type.  Probably not the best solution.
         (*self.key.borrow()).to_vec()
+    }
+}
+
+impl<T: BoxProvider> Zeroize for Key<T> {
+    fn zeroize(&mut self) {
+        self.key.zeroize()
     }
 }
 
@@ -140,6 +143,7 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum DecryptError<E: Debug> {
     Invalid,
     Provider(E),
