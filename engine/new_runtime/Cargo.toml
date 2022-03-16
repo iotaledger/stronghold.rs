@@ -13,10 +13,10 @@ name = "new_runtime"
 zeroize = { version = "1.5.2" }
 libsodium-sys = "0.2"
 serde = { version = "1.0", features = [ "derive" ] }
-rand_ascii = { package = "rand", version = "0.8.4" }
+random = { package = "rand", version = "0.8.4" }
 dirs = "4.0.0"
 
-# [dependencies.iota-crypto]
-# version = "0.8.0"
-# features = [ "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
+[dependencies.iota-crypto]
+version = "0.8.0"
+features = [ "sha" ]
 

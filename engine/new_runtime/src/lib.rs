@@ -5,10 +5,10 @@
 // #![no_std]
 
 mod boxed;
-// pub mod crypto_utils;
-// pub mod locked_memory;
+pub mod locked_memory;
 pub mod memories;
 mod types;
+pub mod utils;
 
 pub use types::Bytes;
 
