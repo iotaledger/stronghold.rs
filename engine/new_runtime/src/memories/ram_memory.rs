@@ -5,13 +5,13 @@ use crate::{
     locked_memory::LockedMemory,
     memories::buffer::Buffer,
     MemoryError::{self, *},
-    DEBUG_MSG,
+    ZeroizeOnDrop, DEBUG_MSG,
 };
 use core::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
 };
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},

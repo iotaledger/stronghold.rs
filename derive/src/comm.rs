@@ -17,7 +17,7 @@ pub fn build_plain(name: &Ident, data_enum: &DataEnum) -> TokenStream {
         })
         .collect::<TokenStream>();
     quote! {
-            #[derive(Clone, Debug)]
+            #[derive(Debug, Clone)]
             pub enum #name {
                 #plain_variants
             }
@@ -40,14 +40,14 @@ pub fn impl_to_permissioned(input: &Ident, name: &Ident, data_enum: &DataEnum) -
             let ident = variant.ident.clone();
             let fields = match_fields(&variant.fields);
             quote! {
-                #input::#ident#fields => &#name::#ident,
+                #input::#ident #fields => #name::#ident,
             }
         })
         .collect::<TokenStream>();
     quote! {
-        impl Borrow<#name> for #input {
-            fn borrow(&self) -> &#name {
-                match self {
+        impl FwRequest<#input> for #name {
+            fn from_request(request: &#input) -> Self {
+                match request {
                     #match_variants
                 }
             }

@@ -7,19 +7,17 @@
 //! are provided in an asynchronous way, and should be run by the
 //! actor's system [`SystemRunner`].
 
-#[cfg(feature = "p2p")]
-use crate::procedures::FatalProcedureError;
 use crate::{
     actors::{
         secure_messages::{
-            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, ReadFromStore,
-            ReloadData, RevokeData, WriteToStore, WriteToVault,
+            CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, Procedures,
+            ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
         snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
-    procedures::{CollectedOutput, Procedure, ProcedureError},
+    procedures::{Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
     state::{
         secure::SecureClient,
         snapshot::{ReadError, WriteError},
@@ -28,8 +26,6 @@ use crate::{
     Location,
 };
 use engine::vault::{ClientId, RecordHint, RecordId};
-#[cfg(feature = "p2p")]
-use p2p::{identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, OutboundFailure, RelayNotSupported};
 
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -41,23 +37,27 @@ use zeroize::Zeroize;
 use crate::actors::secure_testing::ReadFromVault;
 
 #[cfg(feature = "p2p")]
-use crate::actors::{
-    client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
-    network_messages,
-    network_messages::{ShRequest, SwarmInfo},
-    GetNetwork, InsertNetwork, NetworkActor, NetworkConfig, RemoveNetwork,
+use crate::{
+    actors::{
+        client_p2p_messages::{DeriveNoiseKeypair, GenerateP2pKeypair, WriteP2pKeypair},
+        network_messages,
+        network_messages::SwarmInfo,
+        GetNetwork, InsertNetwork, RemoveNetwork,
+    },
+    procedures::FatalProcedureError,
+    state::p2p::{FirewallChannelSender, Network, NetworkConfig, Permissions, WriteToRemoteVault},
 };
 #[cfg(feature = "p2p")]
 use p2p::{
-    firewall::{Rule, RuleDirection},
-    Multiaddr, PeerId,
+    identity::Keypair, DialErr, InitKeypair, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, PeerId,
+    RelayNotSupported,
 };
 #[cfg(feature = "p2p")]
 use std::io;
 
 pub type StrongholdResult<T> = Result<T, ActorError>;
 
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone)]
 pub enum ActorError {
     #[error("actor mailbox error: {0}")]
     Mailbox(#[from] MailboxError),
@@ -65,11 +65,28 @@ pub enum ActorError {
     TargetNotFound,
 }
 
+impl PartialEq<ActorError> for ActorError {
+    fn eq(&self, other: &ActorError) -> bool {
+        matches!(
+            (self, other),
+            (ActorError::TargetNotFound, ActorError::TargetNotFound)
+                | (
+                    ActorError::Mailbox(MailboxError::Closed),
+                    ActorError::Mailbox(MailboxError::Closed)
+                )
+                | (
+                    ActorError::Mailbox(MailboxError::Timeout),
+                    ActorError::Mailbox(MailboxError::Timeout)
+                )
+        )
+    }
+}
+
 #[cfg(feature = "p2p")]
 pub type P2pResult<T> = Result<T, P2pError>;
 
 #[cfg(feature = "p2p")]
-#[derive(DeriveError, Debug)]
+#[derive(DeriveError, Debug, Clone, PartialEq)]
 pub enum P2pError {
     #[error("local actor error: {0}")]
     Local(#[from] ActorError),
@@ -290,13 +307,24 @@ impl Stronghold {
         Ok(list)
     }
 
-    /// Executes a runtime command given a [`Procedure`].
-    pub async fn runtime_exec<P>(&self, control_request: P) -> StrongholdResult<Result<CollectedOutput, ProcedureError>>
+    /// Executes a runtime command given a single [`StrongholdProcedure`]s
+    pub async fn runtime_exec<P>(&self, procedure: P) -> StrongholdResult<Result<P::Output, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Procedure + Into<StrongholdProcedure>,
     {
+        let res = self.runtime_exec_chained(vec![procedure.into()]).await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
+    }
+
+    /// Sequentially execute multiple [`StrongholdProcedure`]s.
+    pub async fn runtime_exec_chained(
+        &self,
+        procedures: Vec<StrongholdProcedure>,
+    ) -> StrongholdResult<Result<Vec<ProcedureOutput>, ProcedureError>> {
         let target = self.target().await?;
-        let result = target.send::<Procedure>(control_request.into()).await?;
+        let message = Procedures { procedures };
+        let result = target.send(message).await?;
         Ok(result)
     }
 
@@ -336,12 +364,11 @@ impl Stronghold {
         // this feature resembles the functionality given by the former riker
         // system dependence. if there is a former client id path present,
         // the new actor is being changed into the former one ( see old ReloadData impl.)
-        let target;
-        if let Some(id) = former_client_id {
-            target = self.switch_client(id).await?;
+        let target = if let Some(id) = former_client_id {
+            self.switch_client(id).await?
         } else {
-            target = self.target().await?;
-        }
+            self.target().await?
+        };
 
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
@@ -417,20 +444,17 @@ impl Stronghold {
     /// set via [`Stronghold::switch_actor_target`], before any following operations can be performed.
     pub async fn kill_stronghold(&mut self, client_path: Vec<u8>, kill_actor: bool) -> StrongholdResult<()> {
         let client_id = ClientId::load_from_path(&client_path.clone(), &client_path);
-        let client;
-        if kill_actor {
-            client = self
-                .registry
+        let client = if kill_actor {
+            self.registry
                 .send(RemoveClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
+                .ok_or(ActorError::TargetNotFound)?
         } else {
-            client = self
-                .registry
+            self.registry
                 .send(GetClient { id: client_id })
                 .await?
-                .ok_or(ActorError::TargetNotFound)?;
-        }
+                .ok_or(ActorError::TargetNotFound)?
+        };
         client.send(ClearCache).await?;
         Ok(())
     }
@@ -490,7 +514,7 @@ impl Stronghold {
             }
             None => None,
         };
-        let addr = NetworkActor::new(self.registry.clone(), network_config, keypair)
+        let addr = Network::new(self.registry.clone(), network_config, keypair)
             .await?
             .start();
         self.registry.send(InsertNetwork { addr }).await?;
@@ -498,22 +522,26 @@ impl Stronghold {
     }
 
     /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
-    /// The `key` parameter species the location in which in the config is stored, i.g.
+    /// The `key` parameter species the location in which in the config is stored, i.e.
     /// the key that was set on [`Stronghold::stop_p2p`].
     ///
-    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
-    /// they will be skipped and have to be added manually.
+    /// Optionally pass a [`FirewallChannelSender`] for asynchronous firewall interaction.
+    /// See [`NetworkConfig::with_async_firewall`] for more info.
     pub async fn spawn_p2p_load_config(
         &mut self,
         key: Vec<u8>,
         keypair: Option<Location>,
+        firewall_sender: Option<FirewallChannelSender>,
     ) -> Result<(), SpawnNetworkError> {
         let config_bytes = self
             .read_from_store(key.clone())
             .await?
             .ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", key)))?;
-        let config = bincode::deserialize(&config_bytes)
+        let mut config: NetworkConfig = bincode::deserialize(&config_bytes)
             .map_err(|e| SpawnNetworkError::LoadConfig(format!("Deserializing state failed: {}", e)))?;
+        if let Some(tx) = firewall_sender {
+            config = config.with_async_firewall(tx);
+        }
         self.spawn_p2p(config, keypair).await
     }
 
@@ -558,9 +586,6 @@ impl Stronghold {
     /// Return `false` if there is no active network actor.
     /// Optionally store the current config (known addresses of remote peers and firewall rules) in the store
     /// at the specified `key`.
-    ///
-    /// **Note**: Firewall rules with [`Rule::Restricted`] can not be serialized / deserialized, hence
-    /// they will be skipped and have to be added manually again after init.
     pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> StrongholdResult<bincode::Result<()>> {
         let actor = self
             .registry
@@ -578,7 +603,7 @@ impl Stronghold {
         Ok(Ok(()))
     }
 
-    // Export the config and state of the p2p-layer.
+    /// Export the config and state of the p2p-layer.
     pub async fn export_config(&mut self) -> StrongholdResult<NetworkConfig> {
         let actor = self.network_actor().await?;
         let config = actor.send(network_messages::ExportConfig).await?;
@@ -666,49 +691,35 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Change the firewall rule for specific peers, optionally also set it as the default rule, which applies if there
-    /// are no specific rules for a peer. All inbound requests from the peers that this rule applies to, will be
+    /// Change the default firewall rule. All inbound requests from peers without an individual rule will be
     /// approved/ rejected based on this rule.
-    pub async fn set_firewall_rule(
-        &self,
-        rule: Rule<ShRequest>,
-        peers: Vec<PeerId>,
-        set_default: bool,
-    ) -> StrongholdResult<()> {
+    ///
+    /// **Note:** This rule is only active if the [`NetworkConfig::with_async_firewall`] was **not** enabled on init.
+    pub async fn set_default_permission(&self, permissions: Permissions) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
-
-        if set_default {
-            actor
-                .send(network_messages::SetFirewallDefault {
-                    direction: RuleDirection::Inbound,
-                    rule: rule.clone(),
-                })
-                .await?;
-        }
-
-        for peer in peers {
-            actor
-                .send(network_messages::SetFirewallRule {
-                    peer,
-                    direction: RuleDirection::Inbound,
-                    rule: rule.clone(),
-                })
-                .await?;
-        }
+        actor
+            .send(network_messages::SetFirewallDefault {
+                permissions: permissions.clone(),
+            })
+            .await?;
         Ok(())
     }
 
-    /// Remove peer specific rules from the firewall configuration.
-    pub async fn remove_firewall_rules(&self, peers: Vec<PeerId>) -> StrongholdResult<()> {
+    /// Change the firewall rule for an individual peer. All inbound requests from this peer will be
+    /// approved/ rejected based on this rule.
+    pub async fn set_peer_permissions(&self, permissions: Permissions, peer: PeerId) -> StrongholdResult<()> {
         let actor = self.network_actor().await?;
-        for peer in peers {
-            actor
-                .send(network_messages::RemoveFirewallRule {
-                    peer,
-                    direction: RuleDirection::Inbound,
-                })
-                .await?;
-        }
+        actor
+            .send(network_messages::SetFirewallRule { peer, permissions })
+            .await?;
+        Ok(())
+    }
+
+    /// Remove the individual firewall rule of an peer, Instead the default rule will be used,
+    /// or the `FirewallChannel` in case of [`NetworkConfig::with_async_firewall`].
+    pub async fn remove_peer_permissions(&self, peer: PeerId) -> StrongholdResult<()> {
+        let actor = self.network_actor().await?;
+        actor.send(network_messages::RemoveFirewallRule { peer }).await?;
         Ok(())
     }
 
@@ -716,6 +727,7 @@ impl Stronghold {
     pub async fn write_remote_vault(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         location: Location,
         payload: Vec<u8>,
         hint: RecordHint,
@@ -725,8 +737,9 @@ impl Stronghold {
 
         // write data
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
-            request: network_messages::WriteToRemoteVault {
+            request: WriteToRemoteVault {
                 location: location.clone(),
                 payload: payload.clone(),
                 hint,
@@ -743,12 +756,14 @@ impl Stronghold {
     pub async fn write_to_remote_store(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         key: Vec<u8>,
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: WriteToStore { key, payload, lifetime },
         };
@@ -757,9 +772,15 @@ impl Stronghold {
     }
 
     /// Read from the store of a remote Stronghold.
-    pub async fn read_from_remote_store(&self, peer: PeerId, key: Vec<u8>) -> P2pResult<Option<Vec<u8>>> {
+    pub async fn read_from_remote_store(
+        &self,
+        peer: PeerId,
+        client_path: Vec<u8>,
+        key: Vec<u8>,
+    ) -> P2pResult<Option<Vec<u8>>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: ReadFromStore { key },
         };
@@ -771,10 +792,12 @@ impl Stronghold {
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer: PeerId,
+        client_path: Vec<u8>,
         vault_path: V,
     ) -> P2pResult<Vec<(RecordId, RecordHint)>> {
         let actor = self.network_actor().await?;
         let send_request = network_messages::SendRequest {
+            client_path,
             peer,
             request: ListIds {
                 vault_path: vault_path.into(),
@@ -789,21 +812,39 @@ impl Stronghold {
     pub async fn remote_runtime_exec<P>(
         &self,
         peer: PeerId,
-        control_request: P,
-    ) -> P2pResult<Result<CollectedOutput, ProcedureError>>
+        client_path: Vec<u8>,
+        procedure: P,
+    ) -> P2pResult<Result<P::Output, ProcedureError>>
     where
-        P: Into<Procedure>,
+        P: Procedure + Into<StrongholdProcedure>,
     {
+        let res = self
+            .remote_runtime_exec_chained(peer, client_path, vec![procedure.into()])
+            .await?;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        Ok(mapped)
+    }
+
+    /// Executes multiple runtime commands at a remote Stronghold.
+    /// It is required that the peer has successfully been added with the `add_peer` method.
+    pub async fn remote_runtime_exec_chained(
+        &self,
+        peer: PeerId,
+        client_path: Vec<u8>,
+        procedures: Vec<StrongholdProcedure>,
+    ) -> P2pResult<Result<Vec<ProcedureOutput>, ProcedureError>> {
         let actor = self.network_actor().await?;
-        let send_request = network_messages::SendRequest::<Procedure> {
+        let request = Procedures { procedures };
+        let send_request = network_messages::SendRequest {
+            client_path,
             peer,
-            request: control_request.into(),
+            request,
         };
         let result = actor.send(send_request).await??;
         Ok(result)
     }
 
-    async fn network_actor(&self) -> StrongholdResult<Addr<NetworkActor>> {
+    async fn network_actor(&self) -> StrongholdResult<Addr<Network>> {
         self.registry.send(GetNetwork).await?.ok_or(ActorError::TargetNotFound)
     }
 }

@@ -2,28 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actors::{secure_messages::WriteToVault, GetTarget, RecordError, Registry},
-    enum_from_inner,
-    procedures::{CollectedOutput, Procedure},
+    actors::{secure_messages::WriteToVault, GetClient},
+    state::p2p::{Network, NetworkConfig, Request, ShRequest, ShResult},
+    utils::LoadFromPath,
 };
 use actix::prelude::*;
-use futures::{channel::mpsc, FutureExt, TryFutureExt};
+use engine::vault::ClientId;
+use futures::{FutureExt, TryFutureExt};
 use messages::*;
-use p2p::{
-    firewall::{FirewallRules, Rule},
-    BehaviourState, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
-    Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    convert::{TryFrom, TryInto},
-    io,
-    time::Duration,
-};
+use p2p::{DialErr, ListenErr, ListenRelayErr, Multiaddr, OutboundFailure, ReceiveRequest, RelayNotSupported};
 
 macro_rules! impl_handler {
     ($mty:ty => $rty:ty, |$cid:ident, $mid:ident| $body:stmt ) => {
-        impl Handler<$mty> for NetworkActor {
+        impl Handler<$mty> for Network {
             type Result = ResponseActFuture<Self, $rty>;
             fn handle(&mut self, $mid: $mty, _: &mut Self::Context) -> Self::Result {
                 let mut $cid = self.network.clone();
@@ -36,103 +27,25 @@ macro_rules! impl_handler {
 macro_rules! sh_request_dispatch {
     ($request:ident => |$inner: ident| $body:block) => {
         match $request {
-            ShRequest::CheckVault($inner) => $body
-            ShRequest::CheckRecord($inner) => $body
-            ShRequest::WriteToStore($inner) => $body
-            ShRequest::ReadFromStore($inner) => $body
-            ShRequest::DeleteFromStore($inner) => $body
-            ShRequest::WriteToRemoteVault($inner) =>  {
+            Request::CheckVault($inner) => $body
+            Request::CheckRecord($inner) => $body
+            Request::WriteToStore($inner) => $body
+            Request::ReadFromStore($inner) => $body
+            Request::DeleteFromStore($inner) => $body
+            Request::WriteToRemoteVault($inner) =>  {
                 let $inner: WriteToVault = $inner.into();
                 $body
             }
             #[cfg(test)]
-            ShRequest::ReadFromVault($inner) => $body
-            ShRequest::GarbageCollect($inner) => $body
-            ShRequest::ListIds($inner) => $body
-            ShRequest::ClearCache($inner) => $body
-            ShRequest::Procedure($inner) => $body
+            Request::ReadFromVault($inner) => $body
+            Request::RevokeData($inner) => $body
+            Request::ListIds($inner) => $body
+            Request::Procedures($inner) => $body
         }
     }
 }
 
-macro_rules! sh_result_mapping {
-    ($enum:ident::$variant:ident => $inner:ty) => {
-        impl From<$inner> for $enum {
-            fn from(i: $inner) -> Self {
-                $enum::$variant(i)
-            }
-        }
-        impl TryFrom<$enum> for $inner {
-            type Error = ();
-            fn try_from(t: $enum) -> Result<Self, Self::Error> {
-                if let $enum::$variant(v) = t {
-                    Ok(v)
-                } else {
-                    Err(())
-                }
-            }
-        }
-    };
-}
-
-/// Actor that handles all network interaction.
-///
-/// On [`NetworkActor::new`] a new [`StrongholdP2p`] is created, which will spawn
-/// a libp2p Swarm and continuously poll it.
-pub struct NetworkActor {
-    // Interface of stronghold-p2p for all network interaction.
-    network: StrongholdP2p<ShRequest, ShResult>,
-    // Actor registry from which the address of the target client and snapshot actor can be queried.
-    registry: Addr<Registry>,
-    // Channel through which inbound requests are received.
-    // This channel is only inserted temporary on [`NetworkActor::new`], and is handed
-    // to the stream handler in `<Self as Actor>::started`.
-    _inbound_request_rx: Option<mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
-    // Cache the network config so it can be returned on `ExportConfig`.
-    _config: NetworkConfig,
-}
-
-impl NetworkActor {
-    pub async fn new(
-        registry: Addr<Registry>,
-        mut network_config: NetworkConfig,
-        keypair: Option<InitKeypair>,
-    ) -> Result<Self, io::Error> {
-        let (firewall_tx, _) = mpsc::channel(0);
-        let (inbound_request_tx, inbound_request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
-        let mut builder = StrongholdP2pBuilder::new(firewall_tx, inbound_request_tx, None)
-            .with_mdns_support(network_config.enable_mdns)
-            .with_relay_support(network_config.enable_relay);
-        if let Some(state) = network_config.state.take() {
-            builder = builder.load_state(state);
-        } else {
-            builder = builder.with_firewall_default(FirewallRules::allow_all())
-        }
-        if let Some(timeout) = network_config.request_timeout {
-            builder = builder.with_request_timeout(timeout)
-        }
-        if let Some(timeout) = network_config.connection_timeout {
-            builder = builder.with_connection_timeout(timeout)
-        }
-        if let Some(ref limit) = network_config.connections_limit {
-            builder = builder.with_connections_limit(limit.clone())
-        }
-        if let Some(keypair) = keypair {
-            builder = builder.with_keys(keypair);
-        }
-
-        let network = builder.build().await?;
-        let actor = Self {
-            network,
-            _inbound_request_rx: Some(inbound_request_rx),
-            registry,
-            _config: network_config,
-        };
-        Ok(actor)
-    }
-}
-
-impl Actor for NetworkActor {
+impl Actor for Network {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
@@ -141,14 +54,16 @@ impl Actor for NetworkActor {
     }
 }
 
-impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
+impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for Network {
     fn handle(&mut self, item: ReceiveRequest<ShRequest, ShResult>, ctx: &mut Self::Context) {
         let ReceiveRequest {
             request, response_tx, ..
         } = item;
+        let ShRequest { client_path, request } = request;
+        let client_id = ClientId::load_from_path(&client_path, &client_path);
         sh_request_dispatch!(request => |inner| {
             let fut = self.registry
-                .send(GetTarget)
+                .send(GetClient {id: client_id})
                 .and_then(|client| async { match client {
                     Some(client) => client.send(inner).await,
                     _ => Err(MailboxError::Closed)
@@ -161,9 +76,9 @@ impl StreamHandler<ReceiveRequest<ShRequest, ShResult>> for NetworkActor {
     }
 }
 
-impl<Rq> Handler<SendRequest<Rq>> for NetworkActor
+impl<Rq> Handler<SendRequest<Rq>> for Network
 where
-    Rq: Into<ShRequest> + Message + 'static,
+    Rq: Into<Request> + Message + 'static,
     Rq::Result: TryFrom<ShResult, Error = ()>,
 {
     type Result = ResponseActFuture<Self, Result<Rq::Result, OutboundFailure>>;
@@ -171,8 +86,11 @@ where
     fn handle(&mut self, msg: SendRequest<Rq>, _: &mut Self::Context) -> Self::Result {
         let mut network = self.network.clone();
         async move {
-            let request: ShRequest = msg.request.into();
-            let res = network.send_request(msg.peer, request).await;
+            let sh_request = ShRequest {
+                client_path: msg.client_path,
+                request: msg.request.into(),
+            };
+            let res = network.send_request(msg.peer, sh_request).await;
             res.map(|wrapper| {
                 let res: Rq::Result = wrapper.try_into().unwrap();
                 res
@@ -183,25 +101,64 @@ where
     }
 }
 
-impl Handler<ExportConfig> for NetworkActor {
+impl Handler<ExportConfig> for Network {
     type Result = ResponseActFuture<Self, NetworkConfig>;
 
     fn handle(&mut self, _: ExportConfig, _: &mut Self::Context) -> Self::Result {
         let mut network = self.network.clone();
         let config = self._config.clone();
         async move {
-            let state = network.export_state().await;
-            config.load_state(state)
+            let address_info = network.export_address_info().await;
+            config.with_address_info(address_info)
         }
         .into_actor(self)
         .boxed_local()
     }
 }
 
+impl Handler<SetFirewallDefault> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: SetFirewallDefault, _: &mut Self::Context) -> Self::Result {
+        let default_permissions = self._config.permissions_default_mut();
+        *default_permissions = msg.permissions.clone();
+        let mut network = self.network.clone();
+        async move { network.set_firewall_default(Some(msg.permissions.into_rule())).await }
+            .into_actor(self)
+            .boxed_local()
+    }
+}
+
+impl Handler<SetFirewallRule> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: SetFirewallRule, _: &mut Self::Context) -> Self::Result {
+        self._config
+            .peer_permissions_mut()
+            .insert(msg.peer, msg.permissions.clone());
+        let mut network = self.network.clone();
+        async move { network.set_peer_rule(msg.peer, msg.permissions.into_rule()).await }
+            .into_actor(self)
+            .boxed_local()
+    }
+}
+
+impl Handler<RemoveFirewallRule> for Network {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, msg: RemoveFirewallRule, _: &mut Self::Context) -> Self::Result {
+        self._config.peer_permissions_mut().remove(&msg.peer);
+        let mut network = self.network.clone();
+        async move { network.remove_peer_rule(msg.peer).await }
+            .into_actor(self)
+            .boxed_local()
+    }
+}
+
 impl_handler!(GetSwarmInfo => SwarmInfo, |network, _msg| {
-    let listeners = network.get_listeners().await;
+    let listeners = network.listeners().await;
     let local_peer_id = network.peer_id();
-    let connections = network.get_connections().await;
+    let connections = network.established_connections().await;
     SwarmInfo { local_peer_id, listeners, connections}
 });
 
@@ -230,30 +187,6 @@ impl_handler!(ConnectPeer => Result<Multiaddr, DialErr>, |network, msg| {
     network.connect_peer(msg.peer).await
 });
 
-impl_handler!(GetFirewallDefault => FirewallRules<ShRequest>, |network, _msg| {
-    network.get_firewall_default().await
-});
-
-impl_handler!(SetFirewallDefault<ShRequest> => (), |network, msg| {
-    network.set_firewall_default(msg.direction, msg.rule).await
-});
-
-impl_handler!(RemoveFirewallDefault => (), |network, msg| {
-    network.remove_firewall_default(msg.direction).await
-});
-
-impl_handler!(GetFirewallRules => FirewallRules<ShRequest>, |network, msg| {
-    network.get_peer_rules(msg.peer).await
-});
-
-impl_handler!(SetFirewallRule<ShRequest> => (), |network, msg| {
-    network.set_peer_rule(msg.peer, msg.direction, msg.rule).await
-});
-
-impl_handler!(RemoveFirewallRule => (), |network, msg| {
-    network.remove_peer_rule(msg.peer, msg.direction).await
-});
-
 impl_handler!(GetPeerAddrs => Vec<Multiaddr>, |network, msg| {
     network.get_addrs(msg.peer).await
 });
@@ -274,79 +207,12 @@ impl_handler!(RemoveDialingRelay => bool, |network, msg| {
     network.remove_dialing_relay(msg.relay).await
 });
 
-// Config for the new network.
-/// Default behaviour:
-/// - No limit for simultaneous connections.
-/// - Request-timeout and Connection-timeout are 10s.
-/// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to
-///   the local network.
-/// - [`Relay`][`libp2p::relay`] functionality is disabled.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct NetworkConfig {
-    request_timeout: Option<Duration>,
-    connection_timeout: Option<Duration>,
-    connections_limit: Option<ConnectionLimits>,
-    enable_mdns: bool,
-    enable_relay: bool,
-    state: Option<BehaviourState<ShRequest>>,
-}
-
-impl NetworkConfig {
-    /// Set a timeout for receiving a response after a request was sent.
-    ///
-    /// This applies for inbound and outbound requests.
-    pub fn with_request_timeout(mut self, t: Duration) -> Self {
-        self.request_timeout = Some(t);
-        self
-    }
-
-    /// Set the limit for simultaneous connections.
-    /// By default no connection limits apply.
-    pub fn with_connections_limit(mut self, limit: ConnectionLimits) -> Self {
-        self.connections_limit = Some(limit);
-        self
-    }
-
-    /// Set the timeout for a idle connection to a remote peer.
-    pub fn with_connection_timeout(mut self, t: Duration) -> Self {
-        self.connection_timeout = Some(t);
-        self
-    }
-
-    /// Enable / Disable [`Mdns`][`libp2p::mdns`] protocol.
-    /// **Note**: Enabling mdns will broadcast our own address and id to the local network.
-    pub fn with_mdns_enabled(mut self, is_enabled: bool) -> Self {
-        self.enable_mdns = is_enabled;
-        self
-    }
-
-    /// Enable / Disable [`Relay`][`libp2p::relay`] functionality.
-    /// This also means that other peers can use us as relay/
-    pub fn with_relay_enabled(mut self, is_enabled: bool) -> Self {
-        self.enable_relay = is_enabled;
-        self
-    }
-
-    /// Import state exported from a past network actor.
-    pub fn load_state(mut self, state: BehaviourState<ShRequest>) -> Self {
-        self.state = Some(state);
-        self
-    }
-}
-
 pub mod messages {
 
-    use super::*;
-    use crate::{procedures::ProcedureError, Location, RecordHint, RecordId};
-    use p2p::{firewall::RuleDirection, EstablishedConnections, Listener, Multiaddr, PeerId};
-    use serde::{Deserialize, Serialize};
+    use crate::state::p2p::Permissions;
 
-    use crate::actors::secure_messages::{
-        CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, ListIds, ReadFromStore, WriteToStore,
-        WriteToVault,
-    };
-    #[cfg(test)]
-    use crate::actors::secure_testing::ReadFromVault;
+    use super::*;
+    use p2p::{ConnectedPoint, Listener, Multiaddr, PeerId};
 
     #[derive(Message)]
     #[rtype(result = "Result<Rq::Result, OutboundFailure>")]
@@ -355,13 +221,14 @@ pub mod messages {
         Rq: Message,
     {
         pub peer: PeerId,
+        pub client_path: Vec<u8>,
         pub request: Rq,
     }
 
     pub struct SwarmInfo {
         pub local_peer_id: PeerId,
         pub listeners: Vec<Listener>,
-        pub connections: Vec<(PeerId, EstablishedConnections)>,
+        pub connections: Vec<(PeerId, Vec<ConnectedPoint>)>,
     }
 
     #[derive(Message)]
@@ -404,41 +271,22 @@ pub mod messages {
     }
 
     #[derive(Message)]
-    #[rtype(result = "FirewallRules<ShRequest>")]
-    pub struct GetFirewallDefault;
-
-    #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct SetFirewallDefault<ShRequest> {
-        pub direction: RuleDirection,
-        pub rule: Rule<ShRequest>,
+    pub struct SetFirewallDefault {
+        pub permissions: Permissions,
     }
 
     #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct RemoveFirewallDefault {
-        pub direction: RuleDirection,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "FirewallRules<ShRequest>")]
-    pub struct GetFirewallRules {
+    pub struct SetFirewallRule {
         pub peer: PeerId,
-    }
-
-    #[derive(Message)]
-    #[rtype(result = "()")]
-    pub struct SetFirewallRule<ShRequest> {
-        pub peer: PeerId,
-        pub direction: RuleDirection,
-        pub rule: Rule<ShRequest>,
+        pub permissions: Permissions,
     }
 
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct RemoveFirewallRule {
         pub peer: PeerId,
-        pub direction: RuleDirection,
     }
 
     #[derive(Message)]
@@ -477,106 +325,4 @@ pub mod messages {
     #[derive(Message)]
     #[rtype(result = "NetworkConfig")]
     pub struct ExportConfig;
-
-    #[derive(Debug, Message, Clone, Serialize, Deserialize)]
-    #[rtype(result = "Result<(), RemoteRecordError>")]
-    pub struct WriteToRemoteVault {
-        pub location: Location,
-        pub payload: Vec<u8>,
-        pub hint: RecordHint,
-    }
-
-    impl From<WriteToRemoteVault> for WriteToVault {
-        fn from(t: WriteToRemoteVault) -> Self {
-            let WriteToRemoteVault {
-                location,
-                payload,
-                hint,
-            } = t;
-            WriteToVault {
-                location,
-                payload,
-                hint,
-            }
-        }
-    }
-
-    impl From<WriteToVault> for WriteToRemoteVault {
-        fn from(t: WriteToVault) -> Self {
-            let WriteToVault {
-                location,
-                payload,
-                hint,
-            } = t;
-            WriteToRemoteVault {
-                location,
-                payload,
-                hint,
-            }
-        }
-    }
-
-    pub type RemoteRecordError = String;
-
-    // Wrapper for Requests to a remote Secure Client
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub enum ShRequest {
-        CheckVault(CheckVault),
-        CheckRecord(CheckRecord),
-        ListIds(ListIds),
-        #[cfg(test)]
-        ReadFromVault(ReadFromVault),
-        WriteToRemoteVault(WriteToRemoteVault),
-        ReadFromStore(ReadFromStore),
-        WriteToStore(WriteToStore),
-        DeleteFromStore(DeleteFromStore),
-        GarbageCollect(GarbageCollect),
-        ClearCache(ClearCache),
-        Procedure(Procedure),
-    }
-
-    enum_from_inner!(ShRequest from CheckVault);
-    enum_from_inner!(ShRequest from ListIds);
-    #[cfg(test)]
-    enum_from_inner!(ShRequest from ReadFromVault);
-    enum_from_inner!(ShRequest from WriteToRemoteVault);
-    enum_from_inner!(ShRequest from ReadFromStore);
-    enum_from_inner!(ShRequest from WriteToStore);
-    enum_from_inner!(ShRequest from DeleteFromStore);
-    enum_from_inner!(ShRequest from GarbageCollect);
-    enum_from_inner!(ShRequest from ClearCache);
-    enum_from_inner!(ShRequest from Procedure);
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub enum ShResult {
-        Empty(()),
-        Data(Option<Vec<u8>>),
-        Bool(bool),
-        WriteRemoteVault(Result<(), RemoteRecordError>),
-        ListIds(Vec<(RecordId, RecordHint)>),
-        Proc(Result<CollectedOutput, ProcedureError>),
-    }
-
-    sh_result_mapping!(ShResult::Empty => ());
-    sh_result_mapping!(ShResult::Bool => bool);
-    sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
-    sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
-    sh_result_mapping!(ShResult::Proc => Result<CollectedOutput, ProcedureError>);
-
-    impl From<Result<(), RecordError>> for ShResult {
-        fn from(inner: Result<(), RecordError>) -> Self {
-            ShResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
-        }
-    }
-
-    impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
-        type Error = ();
-        fn try_from(t: ShResult) -> Result<Self, Self::Error> {
-            if let ShResult::WriteRemoteVault(result) = t {
-                Ok(result)
-            } else {
-                Err(())
-            }
-        }
-    }
 }

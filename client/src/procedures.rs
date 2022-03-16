@@ -5,12 +5,11 @@ mod primitives;
 mod types;
 
 pub use primitives::{
-    AeadAlg, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Chain, ChainCode, CopyRecord, Ed25519Sign,
-    GenerateKey, Hash, HashType, Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PrimitiveProcedure, PublicKey,
-    Sha2Hash, Slip10Derive, Slip10Generate, X25519DiffieHellman,
+    AeadCipher, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, Chain, ChainCode, CopyRecord, Ed25519Sign,
+    GarbageCollect, GenerateKey, Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PublicKey, RevokeData, Sha2Hash,
+    Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
 };
 pub use types::{
-    CollectedOutput, FatalProcedureError, InputData, OutputKey, PersistOutput, PersistSecret, Procedure,
-    ProcedureError, ProcedureIo, ProcedureStep,
+    DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureOutput, UseSecret,
 };
 pub(crate) use types::{Products, Runner};

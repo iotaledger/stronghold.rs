@@ -5,13 +5,13 @@ use crate::{
     locked_memory::LockedMemory,
     memories::{buffer::Buffer, file_memory::FileMemory, ram_memory::RamMemory},
     utils::*,
-    MemoryError::{self, *},
-    DEBUG_MSG,
+    MemoryError::*,
+    *,
 };
 use core::fmt::{self, Debug, Formatter};
 use crypto::hashes::sha;
-use zeroize::{Zeroize, ZeroizeOnDrop};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
 

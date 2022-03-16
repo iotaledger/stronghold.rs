@@ -1,8 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-//! Trait and macros that may be used in the firewall rule [`Rule::Restricted`] to restrict request
-//! enums based on the variant.
+//! Trait and macros that may be used in the firewall rule [`Rule::Restricted`][crate::firewall::Rule] to restrict
+//! request enums based on the variant.
 //!
 //! A [`PermissionValue`] value is a u32 integer value that is some power of 2, e.g. 1, 2, 4, 8, ..etc.
 //! Following the same concept as Unix permissions multiple  [`PermissionValue`] can be added to a sum
@@ -18,12 +18,12 @@
 //! # use p2p::{
 //! #   firewall::{
 //! #       permissions::{FirewallPermission, PermissionValue, RequestPermissions, VariantPermission},
-//! #       FirewallRules, Rule,
+//! #       FirewallRules, FwRequest, Rule,
 //! #   },
 //! #   ChannelSinkConfig, EventChannel, StrongholdP2p, StrongholdP2pBuilder,
 //! # };
 //! # use futures::channel::mpsc;
-//! # use std::{borrow::Borrow, error::Error, marker::PhantomData};
+//! # use std::{error::Error, marker::PhantomData, sync::Arc};
 //! # use serde::{Serialize, Deserialize};
 //! # type MessageResponse = String;
 //! #
@@ -49,19 +49,19 @@
 //! assert_eq!(MessagePermission::Other.permission(), 4);
 //!
 //! // Create rule that only permits ping-messages.
+//! let restriction = |rq: &MessagePermission| {
+//!     let allowed_variant = FirewallPermission::none().add_permissions([&MessagePermission::Ping.permission()]);
+//!     allowed_variant.permits(&rq.permission())
+//! };
 //! let rule: Rule<MessagePermission> = Rule::Restricted {
-//!     restriction: |rq: &MessagePermission| {
-//!         let allowed_variant = FirewallPermission::none().add_permissions([&MessagePermission::Ping.permission()]);
-//!         allowed_variant.permits(&rq.permission())
-//!     },
+//!     restriction: Arc::new(restriction),
 //!     _maker: PhantomData,
 //! };
 //!
 //! # let (firewall_tx, firewall_rx) = mpsc::channel(10);
 //! # let (request_tx, request_rx) = EventChannel::new(10, ChannelSinkConfig::BufferLatest);
 //! #
-//! let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None)
-//!     .with_firewall_default(FirewallRules::new(Some(rule), None));
+//! let builder = StrongholdP2pBuilder::new(firewall_tx, request_tx, None, FirewallRules::allow_all());
 //!
 //! // Use `MessagePermissions` in StrongholdP2p as type for firewall requests.
 //! let p2p: StrongholdP2p<Message, MessageResponse, MessagePermission> = builder.build().await?;
@@ -138,7 +138,7 @@ impl FirewallPermission {
         FirewallPermission(p)
     }
 
-    /// Check if the sum includes this [`PermissionValue`] i.g. if a certain bit is set.
+    /// Check if the sum includes this [`PermissionValue`], i.e. if a certain bit is set.
     pub fn permits(&self, v: &PermissionValue) -> bool {
         self.value() & v.value() != 0
     }

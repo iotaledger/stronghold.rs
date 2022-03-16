@@ -4,7 +4,7 @@
 use crate::{
     boxed::Boxed,
     types::{Bytes, ConstEq, Randomized, Zeroed},
-    DEBUG_MSG,
+    ZeroizeOnDrop, DEBUG_MSG,
 };
 use core::{
     fmt::{self, Debug, Formatter},
@@ -12,7 +12,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},

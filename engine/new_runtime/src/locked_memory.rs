@@ -1,9 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{memories::buffer::Buffer, MemoryError};
+use crate::{memories::buffer::Buffer, *};
 use core::fmt::Debug;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 /// Memory that can be locked (unreadable) when storing sensitive data for longer period of time
 // We implement everything on u8 currently because our current encryption code only returns u8. Future improvement may

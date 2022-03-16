@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 pub mod cache;
 
-/// The general value used for the [`Store`].
+/// The general value used for the [`Cache`][cache::Cache].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Value<T> {
     // data field.

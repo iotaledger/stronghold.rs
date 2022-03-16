@@ -2,23 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    locked_memory::LockedMemory,
-    memories::buffer::Buffer,
-    types::ContiguousBytes,
-    utils::*,
-    MemoryError::{self, *},
-    DEBUG_MSG,
+    locked_memory::LockedMemory, memories::buffer::Buffer, types::ContiguousBytes, utils::*, MemoryError::*, *,
 };
 use core::fmt::{self, Debug, Formatter};
 use dirs::{data_local_dir, home_dir};
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
     io::{self, prelude::*},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
-use zeroize::{Zeroize, ZeroizeOnDrop};
-use serde::{Serialize, Deserialize};
+use zeroize::Zeroize;
 
 const FILENAME_SIZE: usize = 16;
 

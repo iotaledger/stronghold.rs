@@ -1,11 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use new_runtime::locked_memory::LockedMemory;
-use new_runtime::memories::{buffer::Buffer, noncontiguous_memory::*};
+use new_runtime::{
+    locked_memory::LockedMemory,
+    memories::{buffer::Buffer, noncontiguous_memory::*},
+};
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryFrom,
     fmt::Debug,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -61,7 +62,7 @@ impl<T: BoxProvider> Key<T> {
                     T::random_vec(T::box_key_len())
                         .expect("failed to generate random key")
                         .as_slice(),
-                    T::box_key_len()
+                    T::box_key_len(),
                 )
             },
             _box_provider: PhantomData,
