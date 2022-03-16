@@ -23,7 +23,7 @@ use engine::{
 };
 
 #[cfg(feature = "p2p")]
-use engine::runtime::GuardedVec;
+use engine::new_runtime::memories::buffer::Buffer;
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 use std::collections::HashMap;
@@ -191,7 +191,7 @@ pub mod p2p_messages {
 
     use super::*;
 
-    // Generate new keypair to use for `StrongholdP2p`.
+    /// Generate new keypair to use for `StrongholdP2p`.
     pub struct GenerateP2pKeypair {
         pub location: Location,
         pub hint: RecordHint,
@@ -211,11 +211,11 @@ pub mod p2p_messages {
         type Result = Result<(), ProcedureError>;
     }
 
-    // Derive a new noise keypair from a stored p2p-keypair.
-    // Returns the new keypair and the `PeerId` that is derived from the public
-    // key of the stored keypair.
-    // **Note**: The keypair differs for each new derivation, the `PeerId`
-    // is consistent.
+    /// Derive a new noise keypair from a stored p2p-keypair.
+    /// Returns the new keypair and the `PeerId` that is derived from the public
+    /// key of the stored keypair.
+    /// **Note**: The keypair differs for each new derivation, the `PeerId`
+    /// is consistent.
     pub struct DeriveNoiseKeypair {
         pub p2p_keypair: Location,
     }
@@ -437,7 +437,7 @@ impl Handler<p2p_messages::DeriveNoiseKeypair> for SecureClient {
 
     fn handle(&mut self, msg: p2p_messages::DeriveNoiseKeypair, _ctx: &mut Self::Context) -> Self::Result {
         let mut id_keys = None;
-        let f = |guard: GuardedVec<u8>| {
+        let f = |guard: Buffer<u8>| {
             let keys = Keypair::from_protobuf_encoding(&*guard.borrow()).map_err(|e| e.to_string())?;
             let _ = id_keys.insert(keys);
             Ok(())

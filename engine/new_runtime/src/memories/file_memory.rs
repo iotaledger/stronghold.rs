@@ -2,54 +2,54 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto_utils::{
-        crypto_box::{BoxProvider, Key},
-        utils::*,
-    },
-    locked_memory::{Lock::*, *},
-    memories::buffer::Buffer,
-    types::ContiguousBytes,
-    MemoryError::{self, *},
-    DEBUG_MSG,
+    locked_memory::LockedMemory, memories::buffer::Buffer, types::ContiguousBytes, utils::*, MemoryError::*, *,
 };
 use core::fmt::{self, Debug, Formatter};
 use dirs::{data_local_dir, home_dir};
-use rand_ascii::{distributions::Alphanumeric, thread_rng, Rng};
+use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
     io::{self, prelude::*},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::Zeroize;
 
 const FILENAME_SIZE: usize = 16;
-const AD_SIZE: usize = 32;
 
 /// Data is stored into files in clear or encrypted.
 /// Basic security of this file includes files access control and
-pub struct FileMemory<P: BoxProvider> {
+#[derive(Serialize, Deserialize)]
+pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: PathBuf,
-    lock: Lock<P>,
     // Noise data to xor with data in file
     noise: Vec<u8>,
-    // Salt for encryption
-    ad: [u8; AD_SIZE],
     // Size of the decrypted data
     size: usize,
 }
 
-impl<P: BoxProvider> FileMemory<P> {
-    // Creates random file name and join it to the storing directory
-    fn random_fname() -> io::Result<PathBuf> {
-        let mut dir = FileMemory::<P>::get_dir()?;
-        let fname: String = thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(FILENAME_SIZE)
-            .map(char::from)
-            .collect();
-        let fname = PathBuf::from(fname);
+impl FileMemory {
+    pub fn alloc(payload: &[u8], size: usize) -> Result<Self, MemoryError> {
+        if size == 0 {
+            return Err(ZeroSizedNotAllowed);
+        }
+
+        // We actually don't want to have plain data in file
+        // therefore we noise it
+        let noise = random_vec(size);
+        let data = xor(payload, &noise, size);
+
+        // Write to file
+        let fname = FileMemory::new_fname().or(Err(FileSystemError))?;
+        let fm = FileMemory { fname, noise, size };
+        fm.write_to_file(&data).or(Err(FileSystemError))?;
+        Ok(fm)
+    }
+
+    fn new_fname() -> io::Result<PathBuf> {
+        let fname = random_fname(FILENAME_SIZE);
+        let mut dir = FileMemory::get_dir()?;
         dir.push(fname);
         Ok(dir)
     }
@@ -148,80 +148,27 @@ impl<P: BoxProvider> FileMemory<P> {
     }
 }
 
-impl<P: BoxProvider> LockedMemory<P> for FileMemory<P> {
-    fn alloc(payload: &[u8], size: usize, lock: Lock<P>) -> Result<Self, MemoryError> {
-        if size == 0 {
-            return Err(ZeroSizedNotAllowed);
-        }
-
-        // We actually don't want to have plain data in file
-        // therefore we noise it
-        let noise = P::random_vec(size).or(Err(EncryptionError))?;
-        let xored_data = xor(payload, &noise, size);
-
-        let mut ad = [0u8; AD_SIZE];
-        P::random_buf(&mut ad).or(Err(EncryptionError))?;
-        let (locked_data, _locked_size, lock) = match lock {
-            Plain => (xored_data, size, lock),
-
-            // Encryption of data
-            // We return a lock with random data rather than the actual key
-            Encryption(ref key) => {
-                let encrypted = P::box_seal(key, &ad, payload).or(Err(EncryptionError))?;
-                let size = encrypted.len();
-                let lock = Encryption(Key::random());
-                (encrypted, size, lock)
-            }
-
-            _ => return Err(LockNotAvailable),
-        };
-
-        // Write to file
-
-        let fname: PathBuf = FileMemory::<P>::random_fname().or(Err(FileSystemError))?;
-        let fm = FileMemory {
-            fname,
-            lock,
-            noise,
-            ad,
-            size,
-        };
-        fm.write_to_file(locked_data.as_bytes()).or(Err(FileSystemError))?;
-        Ok(fm)
-    }
-
+impl LockedMemory for FileMemory {
     /// Locks the memory and possibly reallocates
-    fn update(self, payload: Buffer<u8>, size: usize, lock: Lock<P>) -> Result<Self, MemoryError> {
-        match lock {
-            NonContiguous(_) => Err(LockNotAvailable),
-
-            // The current choice is to allocate a completely new file and
-            // remove the previous one
-            _ => FileMemory::alloc(&payload.borrow(), size, lock),
-        }
+    fn update(self, payload: Buffer<u8>, size: usize) -> Result<Self, MemoryError> {
+        // The current choice is to allocate a completely new file and
+        // remove the previous one
+        FileMemory::alloc(&payload.borrow(), size)
     }
 
     /// Unlocks the memory and returns an unlocked Buffer
-    fn unlock(&self, lock: Lock<P>) -> Result<Buffer<u8>, MemoryError> {
+    fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         if self.size == 0 {
             return Err(ZeroSizedNotAllowed);
         }
-        // Check that given lock corresponds to ours
-        if std::mem::discriminant(&lock) != std::mem::discriminant(&self.lock) {
-            return Err(LockNotAvailable);
-        }
 
         let data = self.read_file().or(Err(FileSystemError))?;
-        let data = match lock {
-            Plain => xor(&data, &self.noise, self.size),
-            Encryption(ref key) => P::box_open(key, &self.ad, &data).or(Err(DecryptionError))?,
-            _ => unreachable!("This should not happened if FileMemory has been allocated properly"),
-        };
+        let data = xor(&data, &self.noise, self.size);
         Ok(Buffer::alloc(&data, self.size))
     }
 }
 
-impl<P: BoxProvider> Zeroize for FileMemory<P> {
+impl Zeroize for FileMemory {
     // Temporary measure, files get deleted multiple times in non contiguous memory,
     // needs to track usage to improve performance
     #[allow(unused_must_use)]
@@ -229,38 +176,34 @@ impl<P: BoxProvider> Zeroize for FileMemory<P> {
         self.clear_and_delete_file();
         // May not be enough
         self.fname.clear();
-        self.lock.zeroize();
         self.size.zeroize();
-        self.ad.zeroize();
     }
 }
 
-impl<P: BoxProvider> ZeroizeOnDrop for FileMemory<P> {}
+impl ZeroizeOnDrop for FileMemory {}
 
-impl<P: BoxProvider> Drop for FileMemory<P> {
+impl Drop for FileMemory {
     fn drop(&mut self) {
         self.zeroize()
     }
 }
 
-impl<P: BoxProvider> Debug for FileMemory<P> {
+impl Debug for FileMemory {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         write!(fmt, "{}", DEBUG_MSG)
     }
 }
 
 /// To clone file memory we make a duplicate of the file containing the data
-impl<P: BoxProvider> Clone for FileMemory<P> {
+impl Clone for FileMemory {
     fn clone(&self) -> Self {
         let error_msg = "Issue while copying file";
-        let fname = FileMemory::<P>::random_fname().expect(error_msg);
+        let fname = FileMemory::new_fname().expect(error_msg);
         self.set_read_only().expect(error_msg);
-        fs::copy(&self.fname, fname.clone()).expect("Error in file copy while cloning file memory");
+        fs::copy(&self.fname, fname.clone()).expect(error_msg);
         self.lock_file().expect(error_msg);
         let fm = FileMemory {
             fname,
-            lock: self.lock.clone(),
-            ad: self.ad,
             noise: self.noise.clone(),
             size: self.size,
         };
@@ -272,11 +215,10 @@ impl<P: BoxProvider> Clone for FileMemory<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto_utils::provider::Provider;
 
     #[test]
     fn file_zeroize() {
-        let fm = FileMemory::<Provider>::alloc(&[1, 2, 3, 4, 5, 6][..], 6, Plain);
+        let fm = FileMemory::alloc(&[1, 2, 3, 4, 5, 6][..], 6);
         assert!(fm.is_ok());
         let mut fm = fm.unwrap();
         let fname = fm.fname.clone();
@@ -285,8 +227,7 @@ mod tests {
         // Check that file has been removed
         assert!(!std::path::Path::new(&fname).exists());
         assert!(fm.fname.as_os_str().is_empty());
-        assert_eq!(fm.ad, [0u8; AD_SIZE]);
-        assert!(fm.unlock(Plain).is_err());
+        assert!(fm.unlock().is_err());
         assert_eq!(fm.size, 0);
     }
 
@@ -294,7 +235,7 @@ mod tests {
     // Check that file content cannot be accessed directly
     fn file_security() {
         let data = [1, 2, 3, 4, 5, 6];
-        let fm = FileMemory::<Provider>::alloc(&data, 6, Plain);
+        let fm = FileMemory::alloc(&data, 6);
         assert!(fm.is_ok());
         let fm = fm.unwrap();
 

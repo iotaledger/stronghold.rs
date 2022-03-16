@@ -12,7 +12,7 @@ use crate::{
     Location,
 };
 use engine::{
-    runtime::GuardedVec,
+    new_runtime::memories::buffer::Buffer,
     store::Cache,
     vault::{ClientId, DbView, RecordHint, RecordId, VaultId},
 };
@@ -141,7 +141,7 @@ impl SecureClient {
 impl Runner for SecureClient {
     fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>,
+        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
     {
         let (vault_id, record_id) = Self::resolve_location(location);
         let key = self
@@ -150,7 +150,7 @@ impl Runner for SecureClient {
             .ok_or(VaultError::VaultNotFound(vault_id))?;
 
         let mut ret = None;
-        let execute_procedure = |guard: GuardedVec<u8>| {
+        let execute_procedure = |guard: Buffer<u8>| {
             ret = Some(f(guard)?);
             Ok(())
         };
@@ -171,7 +171,7 @@ impl Runner for SecureClient {
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>,
+        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>,
     {
         let (vid0, rid0) = Self::resolve_location(location0);
         let (vid1, rid1) = Self::resolve_location(location1);
@@ -179,7 +179,7 @@ impl Runner for SecureClient {
         let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
 
         let mut ret = None;
-        let execute_procedure = |guard: GuardedVec<u8>| {
+        let execute_procedure = |guard: Buffer<u8>| {
             let Products { output: plain, secret } = f(guard)?;
             ret = Some(plain);
             Ok(secret)

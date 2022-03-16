@@ -5,10 +5,10 @@
 // #![no_std]
 
 mod boxed;
-pub mod crypto_utils;
 pub mod locked_memory;
 pub mod memories;
 mod types;
+pub mod utils;
 
 pub use types::Bytes;
 
@@ -25,3 +25,6 @@ pub enum MemoryError {
     FileSystemError,
     ZeroSizedNotAllowed,
 }
+
+/// A simple trait to force the types to call `zeroize()` when dropping
+pub trait ZeroizeOnDrop {}

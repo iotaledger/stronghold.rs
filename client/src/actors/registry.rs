@@ -13,7 +13,7 @@ use engine::vault::ClientId;
 use std::collections::HashMap;
 
 #[cfg(feature = "p2p")]
-use super::p2p::NetworkActor;
+use crate::state::p2p::Network;
 use crate::state::{secure::SecureClient, snapshot::Snapshot};
 
 pub mod messages {
@@ -76,7 +76,7 @@ pub mod p2p_messages {
     use super::*;
 
     pub struct InsertNetwork {
-        pub addr: Addr<NetworkActor>,
+        pub addr: Addr<Network>,
     }
 
     impl Message for InsertNetwork {
@@ -86,13 +86,13 @@ pub mod p2p_messages {
     pub struct GetNetwork;
 
     impl Message for GetNetwork {
-        type Result = Option<Addr<NetworkActor>>;
+        type Result = Option<Addr<Network>>;
     }
 
     pub struct RemoveNetwork;
 
     impl Message for RemoveNetwork {
-        type Result = Option<Addr<NetworkActor>>;
+        type Result = Option<Addr<Network>>;
     }
 }
 
@@ -104,7 +104,7 @@ pub struct Registry {
     current_target: Option<ClientId>,
     snapshot: Option<Addr<Snapshot>>,
     #[cfg(feature = "p2p")]
-    network: Option<Addr<NetworkActor>>,
+    network: Option<Addr<Network>>,
 }
 
 impl Supervised for Registry {}
@@ -192,7 +192,7 @@ impl Handler<p2p_messages::InsertNetwork> for Registry {
 
 #[cfg(feature = "p2p")]
 impl Handler<p2p_messages::GetNetwork> for Registry {
-    type Result = Option<Addr<NetworkActor>>;
+    type Result = Option<Addr<Network>>;
 
     fn handle(&mut self, _: p2p_messages::GetNetwork, _: &mut Self::Context) -> Self::Result {
         self.network.clone()
@@ -201,7 +201,7 @@ impl Handler<p2p_messages::GetNetwork> for Registry {
 
 #[cfg(feature = "p2p")]
 impl Handler<p2p_messages::RemoveNetwork> for Registry {
-    type Result = Option<Addr<NetworkActor>>;
+    type Result = Option<Addr<Network>>;
 
     fn handle(&mut self, _: p2p_messages::RemoveNetwork, _: &mut Self::Context) -> Self::Result {
         // Dropping the only address of the network actor will stop the actor.

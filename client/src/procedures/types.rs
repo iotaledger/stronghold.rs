@@ -6,7 +6,7 @@ use crate::{
     FatalEngineError, Location,
 };
 use engine::{
-    runtime::GuardedVec,
+    new_runtime::memories::buffer::Buffer,
     vault::{RecordHint, VaultId},
 };
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use thiserror::Error as DeriveError;
 pub trait Runner {
     fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>;
+        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
 
     // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
     // written into `location1` and the output is returned.
@@ -29,7 +29,7 @@ pub trait Runner {
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
+        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
 
     fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
 
@@ -47,8 +47,8 @@ pub struct Products<T> {
 }
 
 /// Procedure to create, use or remove secrets from a stronghold vault.
-// The `primitives::procedure` macro may be used to auto-implement this
-// trait for procedures that implement `GenerateSecret`, `DeriveSecret` or `UseSecret`.
+/// The `primitives::procedure` macro may be used to auto-implement this
+/// trait for procedures that implement `GenerateSecret`, `DeriveSecret` or `UseSecret`.
 pub trait Procedure: Sized {
     // Non-secret output type.
     type Output: TryFrom<ProcedureOutput>;
@@ -77,7 +77,7 @@ pub trait GenerateSecret: Sized {
 pub trait DeriveSecret: Sized {
     type Output;
 
-    fn derive(self, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+    fn derive(self, guard: Buffer<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
 
     fn source(&self) -> &Location;
 
@@ -97,7 +97,7 @@ pub trait DeriveSecret: Sized {
 pub trait UseSecret: Sized {
     type Output;
 
-    fn use_secret(self, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
+    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError>;
 
     fn source(&self) -> &Location;
 

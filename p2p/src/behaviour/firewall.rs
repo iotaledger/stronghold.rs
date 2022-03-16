@@ -1,61 +1,91 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod permissions;
-use crate::{serde::SerdeFirewallConfig, RequestDirection};
+//! Firewall in [`StrongholdP2p`][`crate::StrongholdP2p`] for filtering inbound requests.
 
+pub mod permissions;
 use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 
-/// Requests for approval and rules that are not covered by the current [`FirewallConfiguration`].
-pub enum FirewallRequest<TRq: Clone> {
+/// Derive new type from the received request, that only contains firewall-relevant information.
+///
+/// ```
+/// # use serde::{Serialize, Deserialize};
+/// # use p2p::firewall::FwRequest;
+/// #
+/// #[derive(Debug, PartialEq)]
+/// enum Request {
+///     Read { key: Vec<u8> },
+///     Write { key: Vec<u8>, data: Vec<u8> },
+/// }
+///
+/// #[derive(Debug, Clone, PartialEq)]
+/// enum RequestType {
+///     Read,
+///     Write,
+/// }
+///
+/// impl FwRequest<Request> for RequestType {
+///     fn from_request(request: &Request) -> Self {
+///         match request {
+///             Request::Read { .. } => RequestType::Read,
+///             Request::Write { .. } => RequestType::Write,
+///         }
+///     }
+/// }
+/// ```
+pub trait FwRequest<Rq>: Send + 'static {
+    fn from_request(request: &Rq) -> Self;
+}
+
+impl<T: Clone + Send + 'static, U: Borrow<T>> FwRequest<U> for T {
+    fn from_request(request: &U) -> Self {
+        request.borrow().clone()
+    }
+}
+
+/// Requests for approval and rules that are not covered by the current [`FirewallRules`].
+pub enum FirewallRequest<TRq> {
     /// Query for a peer specific rule.
     /// This is necessary if there is neither a default- nor a peer-specific rule for that peer.
     PeerSpecificRule {
         /// The remote peer for which the rule is required.
         peer: PeerId,
         /// Channel for returning the new firewall rule.
-        /// If the Sender is dropped, all request that are awaiting the rule will be rejected.
-        rule_tx: oneshot::Sender<FirewallRules<TRq>>,
+        /// If the `Sender` is dropped, all request that are awaiting the rule will be rejected.
+        rule_tx: oneshot::Sender<Rule<TRq>>,
     },
-    /// Request approval for a specific request due a [`Rule::Ask`] setting for this direction.
+    /// Request approval for a specific request due a [`Rule::Ask`] setting.
     RequestApproval {
-        /// The peer from / to which the request is send.
+        /// The peer from which the request is received.
         peer: PeerId,
-        /// The direction of the request.
-        direction: RequestDirection,
         /// The request message.
         request: TRq,
         /// Channel for returning the approval.
-        /// If the Sender is dropped, the request will be rejected.
+        /// If the `Sender` is dropped, the request will be rejected.
         approval_tx: oneshot::Sender<bool>,
     },
 }
 
-/// Rules for requests in a specific [`RequestDirection`].
-#[derive(Clone)]
-pub enum Rule<TRq, F = fn(&TRq) -> bool>
-where
-    F: Fn(&TRq) -> bool,
-{
+/// Rules for inbound requests.
+pub enum Rule<TRq> {
     /// Allow all requests
     AllowAll,
     /// Reject all requests
     RejectAll,
     /// Approve /  Reject request based on the set function.
-    Restricted { restriction: F, _maker: PhantomData<TRq> },
+    Restricted {
+        restriction: Arc<dyn Fn(&TRq) -> bool + Send + Sync>,
+        _maker: PhantomData<TRq>,
+    },
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
-    /// firewall-channel provided to the `NetBehaviour`.
+    /// firewall-channel.
     Ask,
 }
 
-impl<TRq, F> fmt::Debug for Rule<TRq, F>
-where
-    F: Fn(&TRq) -> bool,
-{
+impl<TRq> fmt::Debug for Rule<TRq> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Rule::AllowAll { .. } => write!(f, "Rule::AllowAll"),
@@ -66,174 +96,114 @@ where
     }
 }
 
-/// The direction for which a rule is applicable.
-#[derive(Debug, Clone, Copy)]
-pub enum RuleDirection {
-    /// Only inbound requests.
-    Inbound,
-    /// Only outbound requests.
-    Outbound,
-    /// All requests.
-    Both,
-}
-
-impl RuleDirection {
-    /// Check if the rule is applicable for inbound requests.
-    pub fn is_inbound(&self) -> bool {
-        matches!(self, RuleDirection::Inbound | RuleDirection::Both)
-    }
-
-    /// Check if the rule is applicable for outbound requests.
-    pub fn is_outbound(&self) -> bool {
-        matches!(self, RuleDirection::Outbound | RuleDirection::Both)
-    }
-}
-
-/// Rule configuration for inbound and outbound requests.
-#[derive(Debug, Clone)]
-pub struct FirewallRules<TRq: Clone> {
-    /// Rule for inbound requests.
-    pub inbound: Option<Rule<TRq>>,
-    /// Rule for outbound requests.
-    pub outbound: Option<Rule<TRq>>,
-}
-
-impl<TRq: Clone> FirewallRules<TRq> {
-    /// Create a new instance with no rules.
-    pub fn empty() -> Self {
-        FirewallRules {
-            inbound: None,
-            outbound: None,
+impl<TRq> Clone for Rule<TRq> {
+    fn clone(&self) -> Self {
+        match self {
+            Rule::AllowAll => Rule::AllowAll,
+            Rule::RejectAll => Rule::RejectAll,
+            Rule::Restricted { restriction, _maker } => Rule::Restricted {
+                restriction: restriction.clone(),
+                _maker: *_maker,
+            },
+            Rule::Ask => Rule::Ask,
         }
     }
-
-    /// Create a new instance that permits all inbound and outbound requests.
-    pub fn allow_all() -> Self {
-        FirewallRules {
-            inbound: Some(Rule::AllowAll),
-            outbound: Some(Rule::AllowAll),
-        }
-    }
-
-    /// Create a new instance with the given rules.
-    pub fn new(inbound: Option<Rule<TRq>>, outbound: Option<Rule<TRq>>) -> Self {
-        FirewallRules { inbound, outbound }
-    }
-
-    /// Change one or both rules to the new rule.
-    pub fn set_rule(&mut self, rule: Option<Rule<TRq>>, direction: RuleDirection) {
-        direction.is_inbound().then(|| self.inbound = rule.clone());
-        direction.is_outbound().then(|| self.outbound = rule);
-    }
 }
 
-/// Configuration for the firewall of the `NetBehaviour`.
-/// This config specifies what inbound and requests from/ to which peer are allowed.
-/// If there are neither default rules, nor a peer specific rule for a request from/ to a peer,
+/// Rules for the firewall of [`StrongholdP2p`][crate::StrongholdP2p].
+/// These rules specifies what inbound requests from which peers are allowed.
+/// If there is neither a default rule, nor a peer specific one for a request from a peer,
 /// a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel that is passed to
 /// `StrongholdP2p`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(try_from = "SerdeFirewallConfig")]
-#[serde(into = "SerdeFirewallConfig")]
-pub struct FirewallConfiguration<TRq: Clone> {
-    /// Default rules that are used if there are no peer-specific ones for a peer.
-    pub default: FirewallRules<TRq>,
+///
+/// Per default no rule is set.
+#[derive(Debug)]
+pub struct FirewallRules<TRq> {
+    /// Default rule that is used if there is no peer-specific one for a peer.
+    default: Option<Rule<TRq>>,
     /// Peer specific rules.
-    pub peer_rules: HashMap<PeerId, FirewallRules<TRq>>,
+    peer_rules: HashMap<PeerId, Rule<TRq>>,
 }
 
-impl<TRq: Clone> Default for FirewallConfiguration<TRq> {
+impl<TRq> Default for FirewallRules<TRq> {
     fn default() -> Self {
-        FirewallConfiguration {
-            default: FirewallRules::empty(),
+        FirewallRules {
+            default: None,
             peer_rules: HashMap::new(),
         }
     }
 }
 
-impl<TRq: Clone> FirewallConfiguration<TRq> {
-    /// Create a new instance with the given default rules.
-    /// If no rules are set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
-    /// inbound **and outbound** requests.
-    pub fn new(default_in: Option<Rule<TRq>>, default_out: Option<Rule<TRq>>) -> Self {
-        FirewallConfiguration {
-            default: FirewallRules {
-                inbound: default_in,
-                outbound: default_out,
-            },
+impl<TRq> Clone for FirewallRules<TRq> {
+    fn clone(&self) -> Self {
+        FirewallRules {
+            default: self.default.clone(),
+            peer_rules: self.peer_rules.clone(),
+        }
+    }
+}
+
+impl<TRq> FirewallRules<TRq> {
+    /// Create a new instance with the given default rule.
+    /// If no  is set, a a [`FirewallRequest::PeerSpecificRule`] will be sent through the firewall-channel on
+    /// inbound requests.
+    pub fn new(default: Option<Rule<TRq>>, peer_rules: HashMap<PeerId, Rule<TRq>>) -> Self {
+        FirewallRules { default, peer_rules }
+    }
+
+    /// Don't set any rules.
+    /// In case of an inbound request, a [`FirewallRequest::PeerSpecificRule`] request is sent through the
+    /// `firewall_channel` to specify the rule for the remote peer.
+    pub fn empty() -> Self {
+        FirewallRules {
+            default: None,
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Create a new instance with default configuration allowing all requests.
+    /// Create a new instance with default rules that allow all requests.
     pub fn allow_all() -> Self {
-        FirewallConfiguration {
-            default: FirewallRules {
-                inbound: Some(Rule::AllowAll),
-                outbound: Some(Rule::AllowAll),
-            },
+        FirewallRules {
+            default: Some(Rule::AllowAll),
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Create a new instance with default configuration rejecting all requests.
-    pub fn reject_all() -> Self {
-        FirewallConfiguration {
-            default: FirewallRules {
-                inbound: Some(Rule::RejectAll),
-                outbound: Some(Rule::RejectAll),
-            },
+    /// Create a new instance with default rules that reject all requests.
+    pub fn allow_none() -> Self {
+        FirewallRules {
+            default: Some(Rule::RejectAll),
             peer_rules: HashMap::new(),
         }
     }
 
-    /// Get default firewall rules that are used if there are no peer-specific ones for a direction.
-    pub fn get_default_rules(&self) -> &FirewallRules<TRq> {
-        &self.default
+    /// Get default firewall rule.
+    pub fn get_default_rule(&self) -> Option<&Rule<TRq>> {
+        self.default.as_ref()
     }
 
-    /// Set the default rules for one or both directions.
-    /// In case of [`None`], the rule(s) are removed
-    pub fn set_default(&mut self, default: Option<Rule<TRq>>, direction: RuleDirection) {
-        self.default.set_rule(default, direction);
+    /// Set the default rule.
+    pub fn set_default(&mut self, default: Option<Rule<TRq>>) {
+        self.default = default
     }
 
-    /// Get the peer specific rules.
-    pub fn get_rules(&self, peer: &PeerId) -> Option<&FirewallRules<TRq>> {
+    /// Get the peer specific rule.
+    pub fn get_rule(&self, peer: &PeerId) -> Option<&Rule<TRq>> {
         self.peer_rules.get(peer)
     }
 
-    /// Get effective rules for a peer i.g. peer-specific rules or else the default rules for each direction.
-    pub fn get_effective_rules(&self, peer: &PeerId) -> FirewallRules<TRq> {
-        let rules = self.peer_rules.get(peer);
-        let inbound = rules
-            .and_then(|r| r.inbound.clone())
-            .or_else(|| self.default.inbound.clone());
-        let outbound = rules
-            .and_then(|r| r.outbound.clone())
-            .or_else(|| self.default.outbound.clone());
-        FirewallRules::new(inbound, outbound)
+    /// Get effective rule for a peer, which is the peer-specific rule or else the default rule.
+    pub fn get_effective_rule(&self, peer: &PeerId) -> Option<&Rule<TRq>> {
+        self.peer_rules.get(peer).or(self.default.as_ref())
     }
 
-    /// Set one or both rules for a specific peer.
-    /// In case of [`None`], the rule(s) are removed.
-    pub fn set_rule(&mut self, peer: PeerId, rule: Option<Rule<TRq>>, direction: RuleDirection) {
-        let rules = self.peer_rules.entry(peer).or_insert_with(FirewallRules::empty);
-        if rule.is_some() {
-            rules.set_rule(rule, direction);
-        } else {
-            match direction {
-                RuleDirection::Both => {
-                    self.peer_rules.remove(&peer);
-                }
-                RuleDirection::Inbound if rules.outbound.is_none() => {
-                    self.peer_rules.remove(&peer);
-                }
-                RuleDirection::Outbound if rules.inbound.is_none() => {
-                    self.peer_rules.remove(&peer);
-                }
-                _ => rules.set_rule(rule, direction),
-            };
-        }
+    /// Set the rule for a specific peer.
+    pub fn set_rule(&mut self, peer: PeerId, rule: Rule<TRq>) {
+        self.peer_rules.insert(peer, rule);
+    }
+
+    /// Remove the rule for a specific peer.
+    pub fn remove_rule(&mut self, peer: &PeerId) {
+        self.peer_rules.remove(peer);
     }
 }

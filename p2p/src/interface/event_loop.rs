@@ -3,170 +3,162 @@
 
 use crate::{
     assemble_relayed_addr,
-    behaviour::{BehaviourState, EstablishedConnections},
-    firewall::FirewallRules,
-    RelayNotSupported,
+    behaviour::{BehaviourEvent, NetworkBehaviour},
+    firewall::{FirewallRules, FwRequest, Rule},
+    interface::NetworkEvent,
+    AddressInfo, DialErr, EventChannel, ListenErr, ListenRelayErr, Listener, OutboundFailure, ReceiveRequest,
+    RelayNotSupported, RequestId, RqRsMessage,
 };
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
 use libp2p::{
-    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
+    core::{connection::ListenerId, ConnectedPoint},
+    swarm::{NetworkBehaviour as Libp2pNetworkBehaviour, Swarm, SwarmEvent},
     Multiaddr, PeerId,
 };
 use smallvec::SmallVec;
-use std::{borrow::Borrow, collections::HashMap};
-
-use super::{errors::*, types::*, BehaviourEvent, EventChannel, ListenerId, NetBehaviour, Rule, RuleDirection};
+use std::collections::HashMap;
 
 pub type Ack = ();
 
-// Perform actions on the Swarm.
-// The return value is sent back through the `tx_yield` oneshot channel.
-pub enum SwarmOperation<Rq, Rs, TRq: Clone> {
+/// Perform actions on the Swarm.
+/// The return value is sent back through the `return_tx` oneshot channel.
+pub enum SwarmCommand<Rq, Rs, TRq> {
     SendRequest {
         peer: PeerId,
         request: Rq,
-        tx_yield: oneshot::Sender<Result<Rs, OutboundFailure>>,
+        return_tx: oneshot::Sender<Result<Rs, OutboundFailure>>,
     },
 
     ConnectPeer {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Result<Multiaddr, DialErr>>,
+        return_tx: oneshot::Sender<Result<Multiaddr, DialErr>>,
     },
     GetIsConnected {
         peer: PeerId,
-        tx_yield: oneshot::Sender<bool>,
+        return_tx: oneshot::Sender<bool>,
     },
     GetConnections {
-        tx_yield: oneshot::Sender<Vec<(PeerId, EstablishedConnections)>>,
+        return_tx: oneshot::Sender<Vec<(PeerId, Vec<ConnectedPoint>)>>,
     },
 
     StartListening {
         address: Multiaddr,
-        tx_yield: oneshot::Sender<Result<Multiaddr, ListenErr>>,
+        return_tx: oneshot::Sender<Result<Multiaddr, ListenErr>>,
     },
     StartRelayedListening {
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-        tx_yield: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
+        return_tx: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
     },
     GetListeners {
-        tx_yield: oneshot::Sender<Vec<Listener>>,
+        return_tx: oneshot::Sender<Vec<Listener>>,
     },
     StopListening {
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
     StopListeningAddr {
         address: Multiaddr,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
     StopListeningRelay {
         relay: PeerId,
-        tx_yield: oneshot::Sender<bool>,
+        return_tx: oneshot::Sender<bool>,
     },
 
     GetPeerAddrs {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Vec<Multiaddr>>,
+        return_tx: oneshot::Sender<Vec<Multiaddr>>,
     },
     AddPeerAddr {
         peer: PeerId,
         address: Multiaddr,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
     RemovePeerAddr {
         peer: PeerId,
         address: Multiaddr,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
 
     AddDialingRelay {
         peer: PeerId,
         address: Option<Multiaddr>,
-        tx_yield: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
+        return_tx: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
     },
     RemoveDialingRelay {
         peer: PeerId,
-        tx_yield: oneshot::Sender<bool>,
+        return_tx: oneshot::Sender<bool>,
     },
     SetRelayFallback {
         peer: PeerId,
         use_relay_fallback: bool,
-        tx_yield: oneshot::Sender<Result<(), RelayNotSupported>>,
+        return_tx: oneshot::Sender<Result<(), RelayNotSupported>>,
     },
     UseSpecificRelay {
         target: PeerId,
         relay: PeerId,
         is_exclusive: bool,
-        tx_yield: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
+        return_tx: oneshot::Sender<Result<Option<Multiaddr>, RelayNotSupported>>,
     },
 
-    GetFirewallDefault {
-        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
+    GetFirewallConfig {
+        return_tx: oneshot::Sender<FirewallRules<TRq>>,
     },
     SetFirewallDefault {
-        direction: RuleDirection,
-        default: Rule<TRq>,
-        tx_yield: oneshot::Sender<Ack>,
+        default: Option<Rule<TRq>>,
+        return_tx: oneshot::Sender<Ack>,
     },
     RemoveFirewallDefault {
-        direction: RuleDirection,
-        tx_yield: oneshot::Sender<Ack>,
-    },
-    GetPeerRules {
-        peer: PeerId,
-        tx_yield: oneshot::Sender<FirewallRules<TRq>>,
+        return_tx: oneshot::Sender<Ack>,
     },
     SetPeerRule {
         peer: PeerId,
-        direction: RuleDirection,
         rule: Rule<TRq>,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
     RemovePeerRule {
         peer: PeerId,
-        direction: RuleDirection,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
 
     BanPeer {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
     UnbanPeer {
         peer: PeerId,
-        tx_yield: oneshot::Sender<Ack>,
+        return_tx: oneshot::Sender<Ack>,
     },
 
-    ExportConfig {
-        tx_yield: oneshot::Sender<BehaviourState<TRq>>,
+    ExportAddressInfo {
+        return_tx: oneshot::Sender<AddressInfo>,
     },
 }
 
-// Central task that is responsible for all Swarm interaction.
-// Drives the [`Swarm`] by continuously polling for the next [`SwarmEvent`].
-//
-// Operations on the Swarm are performed based on the [`SwarmOperation`]s that are received through the `command_rx`
-// channel. The outcome for each operation is returned through the oneshot channel that is included in the
-// [`SwarmOperation`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
-pub struct SwarmTask<Rq, Rs, TRq>
+/// Central loop that is responsible for all [`Swarm`] interaction.
+/// Drives the `Swarm` by continuously polling for the next `SwarmEvent`.
+///
+/// Operations on the Swarm are performed based on the [`SwarmCommand`]s that are received through the `command_rx`
+/// channel. The outcome for each operation is returned through the oneshot channel that is included in the
+/// [`SwarmCommand`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
+pub struct EventLoop<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
-    // libp2p [`Swarm`][libp2p::Swarm] that uses `NetBehaviour` as network behaviour protocol.
-    swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
+    // libp2p `Swarm` that uses `NetworkBehaviour` as network behaviour protocol.
+    swarm: Swarm<NetworkBehaviour<Rq, Rs, TRq>>,
 
-    // Channel for to receiving [`SwarmOperation`].
-    // This will trigger and according action on the Swarm.
+    // Channel for to receiving `SwarmCommand`.
+    // This will trigger an according action on the Swarm.
     // The result of an operation is send via the oneshot Sender that is included in each type.
-    command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
+    command_rx: mpsc::Receiver<SwarmCommand<Rq, Rs, TRq>>,
 
     // Channel for forwarding inbound requests.
-    // [`ReceiveRequest`] includes a oneshot Sender for returning a response.
     request_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
     // Optional channel for forwarding all events on the swarm on listeners and connections.
     event_channel: Option<EventChannel<NetworkEvent>>,
@@ -175,7 +167,7 @@ where
     listeners: HashMap<ListenerId, Listener>,
 
     // Response channels for sent outbound requests.
-    // The channels are cached until a response was received or [`OutboundFailure`] occurred.
+    // The channels are cached until a response was received or `OutboundFailure` occurred.
     await_response: HashMap<RequestId, oneshot::Sender<Result<Rs, OutboundFailure>>>,
     // Response channels for the connection attempts to a remote peer.
     // A result if returned once the remote connected or the dial attempt failed.
@@ -190,20 +182,20 @@ where
     await_relayed_listen: HashMap<ListenerId, (PeerId, oneshot::Sender<Result<Multiaddr, ListenRelayErr>>)>,
 }
 
-impl<Rq, Rs, TRq> SwarmTask<Rq, Rs, TRq>
+impl<Rq, Rs, TRq> EventLoop<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage + Borrow<TRq>,
+    Rq: RqRsMessage,
     Rs: RqRsMessage,
-    TRq: Clone + Send + 'static,
+    TRq: FwRequest<Rq>,
 {
-    // Create new instance of a swarm-task.
+    /// Create new instance of en event-loop
     pub fn new(
-        swarm: Swarm<NetBehaviour<Rq, Rs, TRq>>,
-        command_rx: mpsc::Receiver<SwarmOperation<Rq, Rs, TRq>>,
+        swarm: Swarm<NetworkBehaviour<Rq, Rs, TRq>>,
+        command_rx: mpsc::Receiver<SwarmCommand<Rq, Rs, TRq>>,
         request_channel: EventChannel<ReceiveRequest<Rq, Rs>>,
         event_channel: Option<EventChannel<NetworkEvent>>,
     ) -> Self {
-        SwarmTask {
+        EventLoop {
             swarm,
             command_rx,
             request_channel,
@@ -216,19 +208,19 @@ where
         }
     }
 
-    // Central loop:
-    // - Drive the [`Swarm`] by polling it for events.
-    // - Poll the commands-channel for [`SwarmOperation`]s that are sent from [`StrongholdP2p`].
-    //
-    // If all [`StrongholdP2p`] clones are dropped, the command-channel will return `None` and [`SwarmTask`] will shut
-    // down.
+    /// Central loop:
+    /// - Drive the `Swarm` by polling it for events.
+    /// - Poll the commands-channel for [`SwarmCommand`]s that are sent from `StrongholdP2p`.
+    ///
+    /// If all `StrongholdP2p` clones are dropped, the command-channel will return `None` and `EventLoop` will shut
+    /// down.
     pub async fn run(mut self) {
         loop {
             if let Some(event_channel) = self.event_channel.as_mut() {
                 futures::select_biased! {
                     // Drive the swarm and handle events
                     event = self.swarm.select_next_some() => self.handle_swarm_event(event).await,
-                    // Receive [`SwarmOperation`]s to initiate operations on the [`Swarm`].
+                   // Receive `SwarmCommand`s to initiate operations on the `Swarm`.
                     command = self.command_rx.next().fuse() => {
                         if let Some(c) = command {
                             self.handle_command(c)
@@ -258,8 +250,8 @@ where
         self.shutdown();
     }
 
-    // Check if the swarm events yields a result for a previously initiated operation.
-    // Optionally forward a [`NetworkEvent`] for the event.
+    // Check if the swarm event yields a result for a previously initiated operation.
+    // Optionally forward a `NetworkEvent` for the event.
     async fn handle_swarm_event<THandleErr>(&mut self, event: SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>) {
         match event {
             SwarmEvent::Behaviour(BehaviourEvent::ReceivedRequest {
@@ -356,169 +348,152 @@ where
         }
     }
 
-    // Perform an operation on the Swarm / NetBehaviour.
+    // Perform an operation on the Swarm / NetworkBehaviour.
     //
-    // Return the outcome with the oneshot `tx_yield` channel.
-    // Cache `tx_yield` if the outcome depends on receiving a `SwarmEvent`.
-    fn handle_command(&mut self, command: SwarmOperation<Rq, Rs, TRq>) {
+    // Return the outcome with the oneshot `return_tx` channel.
+    // Cache `return_tx` if the outcome depends on receiving a `SwarmEvent`.
+    fn handle_command(&mut self, command: SwarmCommand<Rq, Rs, TRq>) {
         match command {
-            SwarmOperation::SendRequest {
+            SwarmCommand::SendRequest {
                 peer,
                 request,
-                tx_yield,
+                return_tx,
             } => {
                 let request_id = self.swarm.behaviour_mut().send_request(peer, request);
-                self.await_response.insert(request_id, tx_yield);
+                self.await_response.insert(request_id, return_tx);
             }
-            SwarmOperation::ConnectPeer { peer, tx_yield } => match self.swarm.dial(peer) {
+            SwarmCommand::ConnectPeer { peer, return_tx } => match self.swarm.dial(peer) {
                 Ok(_) => {
-                    self.await_connection.insert(peer, tx_yield);
+                    self.await_connection.insert(peer, return_tx);
                 }
                 Err(e) => {
                     // Conversion only fails on variant `DialError::DialPeerConditionFalse`,
                     // which is never returned by `Swarm::dial`.
                     let err = DialErr::try_from(e).expect("Conversion can not fail.");
-                    let _ = tx_yield.send(Err(err));
+                    let _ = return_tx.send(Err(err));
                 }
             },
-            SwarmOperation::GetIsConnected { peer, tx_yield } => {
+            SwarmCommand::GetIsConnected { peer, return_tx } => {
                 let is_connected = self.swarm.is_connected(&peer);
-                let _ = tx_yield.send(is_connected);
+                let _ = return_tx.send(is_connected);
             }
-            SwarmOperation::GetConnections { tx_yield } => {
-                let connections = self.swarm.behaviour().get_established_connections();
-                let _ = tx_yield.send(connections);
+            SwarmCommand::GetConnections { return_tx } => {
+                let connections = self.swarm.behaviour().established_connections();
+                let _ = return_tx.send(connections);
             }
-            SwarmOperation::StartListening { address, tx_yield } => self.start_listening(address, tx_yield),
-            SwarmOperation::StartRelayedListening {
+            SwarmCommand::StartListening { address, return_tx } => self.start_listening(address, return_tx),
+            SwarmCommand::StartRelayedListening {
                 relay,
                 relay_addr,
-                tx_yield,
-            } => self.start_relayed_listening(relay, relay_addr, tx_yield),
-            SwarmOperation::GetListeners { tx_yield } => {
+                return_tx,
+            } => self.start_relayed_listening(relay, relay_addr, return_tx),
+            SwarmCommand::GetListeners { return_tx } => {
                 let listeners = self.listeners.values().cloned().collect();
-                let _ = tx_yield.send(listeners);
+                let _ = return_tx.send(listeners);
             }
-            SwarmOperation::StopListening { tx_yield } => {
+            SwarmCommand::StopListening { return_tx } => {
                 self.remove_listener(|_| true);
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::StopListeningAddr { address, tx_yield } => {
+            SwarmCommand::StopListeningAddr { address, return_tx } => {
                 self.remove_listener(|l: &Listener| l.addrs.contains(&address));
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::StopListeningRelay { relay, tx_yield } => {
+            SwarmCommand::StopListeningRelay { relay, return_tx } => {
                 let had_relay = self.remove_listener(|l: &Listener| l.uses_relay == Some(relay));
-                let _ = tx_yield.send(had_relay);
+                let _ = return_tx.send(had_relay);
             }
-            SwarmOperation::GetPeerAddrs { peer, tx_yield } => {
+            SwarmCommand::GetPeerAddrs { peer, return_tx } => {
                 let addrs = self.swarm.behaviour_mut().addresses_of_peer(&peer);
-                let _ = tx_yield.send(addrs);
+                let _ = return_tx.send(addrs);
             }
-            SwarmOperation::AddPeerAddr {
+            SwarmCommand::AddPeerAddr {
                 peer,
                 address,
-                tx_yield,
+                return_tx,
             } => {
                 self.swarm.behaviour_mut().add_address(peer, address);
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::RemovePeerAddr {
+            SwarmCommand::RemovePeerAddr {
                 peer,
                 address,
-                tx_yield,
+                return_tx,
             } => {
                 self.swarm.behaviour_mut().remove_address(&peer, &address);
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::AddDialingRelay {
+            SwarmCommand::AddDialingRelay {
                 peer,
                 address,
-                tx_yield,
+                return_tx,
             } => {
                 let relayed_addr = self.swarm.behaviour_mut().add_dialing_relay(peer, address);
-                let _ = tx_yield.send(relayed_addr);
+                let _ = return_tx.send(relayed_addr);
             }
-            SwarmOperation::RemoveDialingRelay { peer, tx_yield } => {
+            SwarmCommand::RemoveDialingRelay { peer, return_tx } => {
                 let was_relay = self.swarm.behaviour_mut().remove_dialing_relay(&peer);
-                let _ = tx_yield.send(was_relay);
+                let _ = return_tx.send(was_relay);
             }
-            SwarmOperation::SetRelayFallback {
+            SwarmCommand::SetRelayFallback {
                 peer,
                 use_relay_fallback,
-                tx_yield,
+                return_tx,
             } => {
                 let res = self.swarm.behaviour_mut().set_relay_fallback(peer, use_relay_fallback);
-                let _ = tx_yield.send(res);
+                let _ = return_tx.send(res);
             }
-            SwarmOperation::UseSpecificRelay {
+            SwarmCommand::UseSpecificRelay {
                 target,
                 relay,
                 is_exclusive,
-                tx_yield,
+                return_tx,
             } => {
                 let relayed_addr = self
                     .swarm
                     .behaviour_mut()
                     .use_specific_relay(target, relay, is_exclusive);
-                let _ = tx_yield.send(relayed_addr);
+                let _ = return_tx.send(relayed_addr);
             }
-            SwarmOperation::GetFirewallDefault { tx_yield } => {
-                let fw_default = self.swarm.behaviour().get_firewall_default().clone();
-                let _ = tx_yield.send(fw_default);
+            SwarmCommand::GetFirewallConfig { return_tx } => {
+                let fw_default = self.swarm.behaviour().get_firewall_config().clone();
+                let _ = return_tx.send(fw_default);
             }
-            SwarmOperation::SetFirewallDefault {
-                direction,
-                default,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().set_firewall_default(direction, default);
-                let _ = tx_yield.send(());
+            SwarmCommand::SetFirewallDefault { default, return_tx } => {
+                self.swarm.behaviour_mut().set_firewall_default(default);
+                let _ = return_tx.send(());
             }
-            SwarmOperation::RemoveFirewallDefault { direction, tx_yield } => {
-                self.swarm.behaviour_mut().remove_firewall_default(direction);
-                let _ = tx_yield.send(());
+            SwarmCommand::RemoveFirewallDefault { return_tx } => {
+                self.swarm.behaviour_mut().remove_firewall_default();
+                let _ = return_tx.send(());
             }
-            SwarmOperation::GetPeerRules { peer, tx_yield } => {
-                let fw_rules = self.swarm.behaviour().get_peer_rules(&peer).cloned();
-                let _ = tx_yield.send(fw_rules.unwrap_or_else(FirewallRules::empty));
+            SwarmCommand::SetPeerRule { peer, rule, return_tx } => {
+                self.swarm.behaviour_mut().set_peer_rule(peer, rule);
+                let _ = return_tx.send(());
             }
-            SwarmOperation::SetPeerRule {
-                peer,
-                direction,
-                rule,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().set_peer_rule(peer, direction, rule);
-                let _ = tx_yield.send(());
+            SwarmCommand::RemovePeerRule { peer, return_tx } => {
+                self.swarm.behaviour_mut().remove_peer_rule(peer);
+                let _ = return_tx.send(());
             }
-            SwarmOperation::RemovePeerRule {
-                peer,
-                direction,
-                tx_yield,
-            } => {
-                self.swarm.behaviour_mut().remove_peer_rule(peer, direction);
-                let _ = tx_yield.send(());
-            }
-            SwarmOperation::BanPeer { peer, tx_yield } => {
+            SwarmCommand::BanPeer { peer, return_tx } => {
                 self.swarm.ban_peer_id(peer);
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::UnbanPeer { peer, tx_yield } => {
+            SwarmCommand::UnbanPeer { peer, return_tx } => {
                 self.swarm.unban_peer_id(peer);
-                let _ = tx_yield.send(());
+                let _ = return_tx.send(());
             }
-            SwarmOperation::ExportConfig { tx_yield } => {
-                let state = self.swarm.behaviour_mut().export_state();
-                let _ = tx_yield.send(state);
+            SwarmCommand::ExportAddressInfo { return_tx } => {
+                let state = self.swarm.behaviour_mut().export_address_info();
+                let _ = return_tx.send(state);
             }
         }
     }
 
-    fn start_listening(&mut self, address: Multiaddr, tx_yield: oneshot::Sender<Result<Multiaddr, ListenErr>>) {
+    fn start_listening(&mut self, address: Multiaddr, return_tx: oneshot::Sender<Result<Multiaddr, ListenErr>>) {
         match self.swarm.listen_on(address) {
             Ok(listener_id) => {
-                self.await_listen.insert(listener_id, tx_yield);
+                self.await_listen.insert(listener_id, return_tx);
                 let new_listener = Listener {
                     addrs: SmallVec::new(),
                     uses_relay: None,
@@ -526,7 +501,7 @@ where
                 self.listeners.insert(listener_id, new_listener);
             }
             Err(err) => {
-                let _ = tx_yield.send(Err(ListenErr::from(err)));
+                let _ = return_tx.send(Err(ListenErr::from(err)));
             }
         }
     }
@@ -536,11 +511,11 @@ where
         &mut self,
         relay: PeerId,
         relay_addr: Option<Multiaddr>,
-        tx_yield: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
+        return_tx: oneshot::Sender<Result<Multiaddr, ListenRelayErr>>,
     ) {
         if !self.swarm.behaviour().is_relay_enabled() {
             let err = ListenRelayErr::ProtocolNotSupported;
-            let _ = tx_yield.send(Err(err));
+            let _ = return_tx.send(Err(err));
             return;
         }
 
@@ -552,14 +527,14 @@ where
             Some(a) => assemble_relayed_addr(*self.swarm.local_peer_id(), relay, a),
             None => {
                 let err = ListenRelayErr::DialRelay(DialErr::NoAddresses);
-                let _ = tx_yield.send(Err(err));
+                let _ = return_tx.send(Err(err));
                 return;
             }
         };
         let listen = self.swarm.listen_on(relayed_addr).map_err(ListenRelayErr::from);
         match listen {
             Ok(listener_id) => {
-                self.await_relayed_listen.insert(listener_id, (relay, tx_yield));
+                self.await_relayed_listen.insert(listener_id, (relay, return_tx));
                 let new_listener = Listener {
                     addrs: SmallVec::new(),
                     uses_relay: Some(relay),
@@ -567,7 +542,7 @@ where
                 self.listeners.insert(listener_id, new_listener);
             }
             Err(err) => {
-                let _ = tx_yield.send(Err(err));
+                let _ = return_tx.send(Err(err));
             }
         }
     }
@@ -591,19 +566,19 @@ where
         removed_one
     }
 
-    // Shutdown the task, send errors for all pending operations.
+    // Shutdown the event-loop, send errors for all pending operations.
     fn shutdown(mut self) {
-        for (_, tx_yield) in self.await_response.drain() {
-            let _ = tx_yield.send(Err(OutboundFailure::Shutdown));
+        for (_, return_tx) in self.await_response.drain() {
+            let _ = return_tx.send(Err(OutboundFailure::Shutdown));
         }
-        for (_, tx_yield) in self.await_connection.drain() {
-            let _ = tx_yield.send(Err(DialErr::Shutdown));
+        for (_, return_tx) in self.await_connection.drain() {
+            let _ = return_tx.send(Err(DialErr::Shutdown));
         }
-        for (_, tx_yield) in self.await_listen.drain() {
-            let _ = tx_yield.send(Err(ListenErr::Shutdown));
+        for (_, return_tx) in self.await_listen.drain() {
+            let _ = return_tx.send(Err(ListenErr::Shutdown));
         }
-        for (_, (_, tx_yield)) in self.await_relayed_listen.drain() {
-            let _ = tx_yield.send(Err(ListenRelayErr::Listen(ListenErr::Shutdown)));
+        for (_, (_, return_tx)) in self.await_relayed_listen.drain() {
+            let _ = return_tx.send(Err(ListenRelayErr::Listen(ListenErr::Shutdown)));
         }
     }
 }
