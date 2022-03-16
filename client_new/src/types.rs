@@ -4,6 +4,7 @@
 // modules
 mod cache;
 mod client;
+mod keyprovider;
 mod snapshot;
 mod store;
 mod vault;
@@ -12,6 +13,7 @@ mod view;
 // re-export imports
 pub use cache::*;
 pub use client::*;
+pub use keyprovider::*;
 pub use snapshot::*;
 pub use store::*;
 pub use vault::*;

@@ -115,26 +115,24 @@ impl<P: BoxProvider> NonContiguousMemory<P> {
         let data_of_old_shard1 = &buf_of_old_shard1.borrow();
         let new_data1 = xor(data_of_old_shard1, &random, NC_DATA_SIZE);
         let new_shard1 = RamShard(RamMemory::alloc(&new_data1, NC_DATA_SIZE, Plain)?);
-
-        let new_shard2;
         let mut hash_of_old_shard1 = [0u8; NC_DATA_SIZE];
         let mut hash_of_new_shard1 = [0u8; NC_DATA_SIZE];
         sha::SHA256(data_of_old_shard1, &mut hash_of_old_shard1);
         sha::SHA256(&new_data1, &mut hash_of_new_shard1);
 
-        match &self.shard2 {
+        let new_shard2 = match &self.shard2 {
             RamShard(ram2) => {
                 let buf = ram2.unlock(Plain)?;
                 let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1, NC_DATA_SIZE);
                 let new_data2 = xor(&new_data2, &hash_of_new_shard1, NC_DATA_SIZE);
-                new_shard2 = RamShard(RamMemory::alloc(&new_data2, NC_DATA_SIZE, Plain)?);
+                RamShard(RamMemory::alloc(&new_data2, NC_DATA_SIZE, Plain)?)
             }
             FileShard(fm) => {
                 let buf = fm.unlock(Plain)?;
                 let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1, NC_DATA_SIZE);
                 let new_data2 = xor(&new_data2, &hash_of_new_shard1, NC_DATA_SIZE);
                 let new_fm = FileMemory::alloc(&new_data2, NC_DATA_SIZE, Plain)?;
-                new_shard2 = FileShard(new_fm);
+                FileShard(new_fm)
             }
         };
 
