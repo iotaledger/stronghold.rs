@@ -21,6 +21,8 @@ log         = "0.4.14"
 zeroize     = { version = "1.4.3", features = ["zeroize_derive"] }
 serde       = { version = "1.0",   features = [ "derive" ] }
 rlu         = { package = "stronghold-rlu", path = "../rlu/"}
+engine      = { package = "stronghold_engine", path = "../engine" }
+iota-crypto = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519", ]}
 
 [dev-dependencies]
 rand_utils  = { package = "stronghold-utils", path = "../utils/" }

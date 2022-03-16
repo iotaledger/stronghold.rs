@@ -27,7 +27,8 @@ impl Snapshot {
 async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let vault_path = b"vault_path".to_vec();
     let client_path = b"client_path".to_vec();
-    let keyprovider: KeyProvider = b"secret".to_vec().into();
+
+    let keyprovider = KeyProvider::try_from(b"secret".to_vec()).map_err(|e| format!("Error {:?}", e))?;
     let snapshot_path = "/path/to/snapshot";
 
     let stronghold = Stronghold::default();
