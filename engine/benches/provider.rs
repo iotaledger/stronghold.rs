@@ -7,7 +7,8 @@ use crypto::{
 };
 
 use engine::vault::{BoxProvider, Key};
-#[derive(Ord, PartialEq, Eq, PartialOrd)]
+use zeroize::Zeroize;
+#[derive(Ord, PartialEq, Eq, PartialOrd, Zeroize, Clone)]
 pub struct Provider;
 impl Provider {
     const NONCE_LEN: usize = XChaCha20Poly1305::NONCE_LENGTH;

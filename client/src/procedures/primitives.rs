@@ -24,7 +24,7 @@ use crypto::{
     signatures::ed25519,
     utils::rand::fill,
 };
-use engine::runtime::GuardedVec;
+use engine::new_runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::convert::{From, Into, TryFrom};
 use stronghold_derive::{execute_procedure, Procedure};
@@ -35,7 +35,7 @@ use stronghold_utils::GuardDebug;
 // ==========================
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.
-///  
+///
 /// A procedure performs a (cryptographic) operation on a secret in the vault and/
 /// or generates a new secret.
 ///
@@ -135,7 +135,7 @@ impl DeriveSecret for CopyRecord {
     type Input = ();
     type Output = ();
 
-    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, _: Self::Input, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
         let products = Products {
             secret: (*guard.borrow()).to_vec(),
             output: (),
@@ -392,7 +392,7 @@ impl DeriveSecret for Slip10Derive {
     type Input = ();
     type Output = ChainCode;
 
-    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<ChainCode>, FatalProcedureError> {
+    fn derive(self, _: Self::Input, guard: Buffer<u8>) -> Result<Products<ChainCode>, FatalProcedureError> {
         let dk = match self.parent_ty {
             Slip10ParentType::Key => {
                 slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
@@ -408,7 +408,7 @@ impl DeriveSecret for Slip10Derive {
     }
 }
 
-fn x25519_secret_key(guard: GuardedVec<u8>) -> Result<x25519::SecretKey, crypto::Error> {
+fn x25519_secret_key(guard: Buffer<u8>) -> Result<x25519::SecretKey, crypto::Error> {
     let raw = guard.borrow();
     let raw = (*raw).to_vec();
     if raw.len() != x25519::SECRET_KEY_LENGTH {
@@ -422,7 +422,7 @@ fn x25519_secret_key(guard: GuardedVec<u8>) -> Result<x25519::SecretKey, crypto:
     x25519::SecretKey::try_from_slice(&raw)
 }
 
-fn ed25519_secret_key(guard: GuardedVec<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
+fn ed25519_secret_key(guard: Buffer<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
     let raw = guard.borrow();
     let mut raw = (*raw).to_vec();
     if raw.len() < ed25519::SECRET_KEY_LENGTH {
@@ -499,7 +499,7 @@ impl UseSecret for PublicKey {
     type Input = ();
     type Output = Vec<u8>;
 
-    fn use_secret(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, _: Self::Input, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             KeyType::Ed25519 => {
                 let sk = ed25519_secret_key(guard)?;
@@ -547,7 +547,7 @@ impl UseSecret for Ed25519Sign {
     type Input = Vec<u8>;
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
-    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, msg: Self::Input, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
         let sk = ed25519_secret_key(guard)?;
         let sig = sk.sign(&msg);
         Ok(sig.to_bytes())
@@ -580,7 +580,7 @@ impl DeriveSecret for X25519DiffieHellman {
     type Input = ();
     type Output = ();
 
-    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, _: Self::Input, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
         let sk = x25519_secret_key(guard)?;
         let public = x25519::PublicKey::from_bytes(self.public_key);
         let shared_key = sk.diffie_hellman(&public);
@@ -680,7 +680,7 @@ impl UseSecret for Hmac {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
 
-    fn use_secret(self, msg: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, msg: Self::Input, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             Sha2Hash::Sha256 => {
                 let mut mac = [0; SHA256_LEN];
@@ -732,7 +732,7 @@ impl DeriveSecret for Hkdf {
     type Input = ();
     type Output = ();
 
-    fn derive(self, _: Self::Input, guard: GuardedVec<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, _: Self::Input, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
         let secret = match self.ty {
             Sha2Hash::Sha256 => {
                 let mut okm = [0; SHA256_LEN];
@@ -916,7 +916,7 @@ impl ProcedureStep for AeadEncrypt {
         };
 
         let alg = self.alg;
-        let f = |key: GuardedVec<u8>| {
+        let f = |key: Buffer<u8>| {
             let f = match alg {
                 AeadAlg::Aes256Gcm => Aes256Gcm::try_encrypt,
                 AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_encrypt,
@@ -1026,7 +1026,7 @@ impl ProcedureStep for AeadDecrypt {
         let mut ptx = vec![0; ciphertext.len()];
 
         let alg = self.alg;
-        let f = |key: GuardedVec<u8>| {
+        let f = |key: Buffer<u8>| {
             let f = match alg {
                 AeadAlg::Aes256Gcm => Aes256Gcm::try_decrypt,
                 AeadAlg::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,

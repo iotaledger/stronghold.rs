@@ -6,12 +6,14 @@ use crypto::{
     utils::rand::fill,
 };
 
+use zeroize::Zeroize;
+
 use engine::vault::{BoxProvider, Key};
 
 use serde::{Deserialize, Serialize};
 
 /// An implementation of the Vault's [`BoxProvider`] type.  Used to encrypt and decrypt the data in this Stronghold.
-#[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default, Zeroize)]
 
 pub struct Provider;
 impl Provider {

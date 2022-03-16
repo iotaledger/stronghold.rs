@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use runtime::GuardedVec;
+use new_runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -9,9 +9,10 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+use zeroize::Zeroize;
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
-pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
+pub trait BoxProvider: 'static + Sized + Ord + PartialOrd + Zeroize + Clone {
     type Error: Debug;
 
     /// defines the key length for the [`BoxProvider`].
@@ -37,11 +38,11 @@ pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
 }
 
 /// A key to the crypto box.  [`Key`] is stored on the heap which makes it easier to erase. Makes use of the
-/// [`GuardedVec<u8>`] type to protect the data.
+/// [`Buffer<u8>`] type to protect the data.
 #[derive(Serialize, Deserialize)]
 pub struct Key<T: BoxProvider> {
     /// the guarded raw bytes that make up the key
-    pub key: GuardedVec<u8>,
+    pub key: Buffer<u8>,
 
     /// phantom data to call to the provider.
     #[serde(skip_serializing, skip_deserializing)]
@@ -52,14 +53,12 @@ impl<T: BoxProvider> Key<T> {
     /// generate a random key using secure random bytes
     pub fn random() -> Self {
         Self {
-            key: GuardedVec::new(T::box_key_len(), |v| {
-                v.copy_from_slice(
-                    T::random_vec(T::box_key_len())
-                        .expect("failed to generate random key")
-                        .as_slice(),
-                )
-            }),
-
+            key: Buffer::alloc(
+                T::random_vec(T::box_key_len())
+                    .expect("failed to generate random key")
+                    .as_slice(),
+                T::box_key_len(),
+            ),
             _box_provider: PhantomData,
         }
     }
@@ -67,10 +66,11 @@ impl<T: BoxProvider> Key<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
+    #[allow(dead_code)]
     pub fn load(key: Vec<u8>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
-                key: GuardedVec::new(T::box_key_len(), |v| v.copy_from_slice(key.as_slice())),
+                key: Buffer::alloc(key.as_slice(), T::box_key_len()),
                 _box_provider: PhantomData,
             })
         } else {
@@ -78,10 +78,16 @@ impl<T: BoxProvider> Key<T> {
         }
     }
 
-    /// get the key's bytes from the [`GuardedVec`]
+    /// get the key's bytes from the [`Buffer`]
     pub fn bytes(&self) -> Vec<u8> {
         // hacks the guarded type.  Probably not the best solution.
         (*self.key.borrow()).to_vec()
+    }
+}
+
+impl<T: BoxProvider> Zeroize for Key<T> {
+    fn zeroize(&mut self) {
+        self.key.zeroize()
     }
 }
 
@@ -137,6 +143,7 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum DecryptError<E: Debug> {
     Invalid,
     Provider(E),

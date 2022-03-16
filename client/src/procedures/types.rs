@@ -9,7 +9,7 @@ use crate::{
 };
 use actix::Message;
 use engine::{
-    runtime::GuardedVec,
+    new_runtime::memories::buffer::Buffer,
     vault::{RecordHint, VaultId},
 };
 use serde::{Deserialize, Serialize};
@@ -346,7 +346,7 @@ pub trait ProcedureStep {
 pub trait Runner {
     fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<T, FatalProcedureError>;
+        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
 
     fn exec_proc<F, T>(
         &mut self,
@@ -356,7 +356,7 @@ pub trait Runner {
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Products<T>, FatalProcedureError>;
+        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
 
     fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
 
@@ -401,7 +401,7 @@ pub trait DeriveSecret {
     type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn derive(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+    fn derive(self, input: Self::Input, guard: Buffer<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
 }
 
 /// Existing secret is used, no new secret is created.
@@ -410,7 +410,7 @@ pub trait UseSecret {
     type Input: TryFrom<ProcedureIo>;
     // Non-secret output type.
     type Output: Into<ProcedureIo>;
-    fn use_secret(self, input: Self::Input, guard: GuardedVec<u8>) -> Result<Self::Output, FatalProcedureError>;
+    fn use_secret(self, input: Self::Input, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError>;
 }
 
 // ==========================
