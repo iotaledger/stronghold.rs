@@ -83,12 +83,6 @@ impl<T: BoxProvider> Key<T> {
             None
         }
     }
-
-    /// get the key's bytes from the [`Buffer`]
-    pub fn bytes(&self) -> Vec<u8> {
-        // hacks the guarded type.  Probably not the best solution.
-        (*self.key.borrow()).to_vec()
-    }
 }
 
 impl<T: BoxProvider> Clone for Key<T> {
@@ -207,14 +201,13 @@ impl<T: BoxProvider> NCKey<T> {
         }
     }
 
-    /// get the key's bytes from the [`Buffer`]
-    #[allow(dead_code)]
-    pub fn bytes(&self) -> Vec<u8> {
-        // hacks the guarded type.  Probably not the best solution.
-        let buf = self.key.unlock().expect("Failed to unlock non-contiguous memory");
-        let v = (*buf.borrow()).to_vec();
-        v
-    }
+    // /// get the key's bytes from the [`Buffer`]
+    // #[allow(dead_code)]
+    // pub fn bytes<'a>(&'a self) -> Ref<'a, u8> {
+    //     // hacks the guarded type.  Probably not the best solution.
+    //     let buf = self.key.unlock().expect("Failed to unlock non-contiguous memory");
+    //     buf.borrow()
+    // }
 }
 
 impl<T: BoxProvider> Clone for NCKey<T> {
