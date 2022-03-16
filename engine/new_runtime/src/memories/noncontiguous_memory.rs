@@ -11,13 +11,14 @@ use crate::{
 use core::fmt::{self, Debug, Formatter};
 use crypto::hashes::sha;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use serde::{Serialize, Deserialize};
 
 static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
 
 // Currently we only support data of 32 bytes in noncontiguous memory
 pub const NC_DATA_SIZE: usize = 32;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum NCConfig {
     FullFile,
     FullRam,
@@ -27,7 +28,7 @@ use NCConfig::*;
 
 // NONCONTIGUOUS MEMORY
 /// Shards of memory which composes a non contiguous memory
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 enum MemoryShard {
     FileShard(FileMemory),
     RamShard(RamMemory),
@@ -36,7 +37,7 @@ use MemoryShard::*;
 
 /// NonContiguousMemory only works on data which size corresponds to the hash primitive we use. In our case we use it to
 /// store keys hence the size of the data depends on the chosen box provider
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NonContiguousMemory {
     shard1: MemoryShard,
     shard2: MemoryShard,

@@ -18,11 +18,13 @@ use std::{
     path::PathBuf,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
+use serde::{Serialize, Deserialize};
 
 const FILENAME_SIZE: usize = 16;
 
 /// Data is stored into files in clear or encrypted.
 /// Basic security of this file includes files access control and
+#[derive(Serialize, Deserialize)]
 pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: PathBuf,
