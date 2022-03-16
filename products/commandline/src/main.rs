@@ -34,10 +34,9 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
 
                     if snapshot.exists() {
                         let result = block_on(stronghold.read_snapshot(
-                            client_path,
-                            None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
+                            None,
                             None,
                         ))
                         .unwrap();
@@ -45,27 +44,30 @@ fn write_to_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghold
                             println!("[Error] Reading snapshot failed: {}", e);
                             return;
                         }
-                    }
 
-                    let old_value =
-                        block_on(stronghold.write_to_store(rid.into(), plain.as_bytes().to_vec(), None)).unwrap();
-                    match old_value {
-                        Some(v) => println!("Wrote to store. Overwrote old data: {:?}", v),
-                        None => println!("Wrote to store."),
-                    }
+                        let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                        if let Err(e) = result {
+                            println!("[Error] Loading client failed: {}", e);
+                            return;
+                        }
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
-                    if let Err(e) = result {
-                        println!("[Error] Writing snapshot failed: {}", e);
-                    }
+                        let old_value =
+                            block_on(stronghold.write_to_store(rid.into(), plain.as_bytes().to_vec(), None)).unwrap();
+                        match old_value {
+                            Some(v) => println!("Wrote to store. Overwrote old data: {:?}", v),
+                            None => println!("Wrote to store."),
+                        }
+
+                        let result =
+                            block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                                .unwrap();
+                        if let Err(e) = result {
+                            println!("[Error] Writing snapshot failed: {}", e);
+                        }
+                    };
                 };
             };
-        };
+        }
     }
 }
 
@@ -85,15 +87,20 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
 
                     if snapshot.exists() {
                         let result = block_on(stronghold.read_snapshot(
-                            client_path,
-                            None,
                             &key.to_vec(),
                             Some("commandline".to_string()),
+                            None,
                             None,
                         ))
                         .unwrap();
                         if let Err(e) = result {
                             println!("[Error] Reading snapshot failed: {}", e);
+                            return;
+                        }
+
+                        let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                        if let Err(e) = result {
+                            println!("[Error] Loading client failed: {}", e);
                             return;
                         }
                     }
@@ -113,12 +120,9 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
                         }
                     }
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
@@ -129,7 +133,7 @@ fn encrypt_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stron
 }
 
 // Writes the state of the stronghold to a snapshot. Requires a password and an optional snapshot path.
-fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold, client_path: Vec<u8>) {
+fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stronghold) {
     if let Some(matches) = matches.subcommand_matches("snapshot") {
         if let Some(pass) = matches.value_of("password") {
             if let Some(ref path) = matches.value_of("path") {
@@ -148,7 +152,7 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
 
                 if input.exists() {
                     let result =
-                        block_on(stronghold.read_snapshot(client_path, None, &key.to_vec(), None, Some(input)))
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
                             .unwrap();
                     match result {
                         Ok(()) => println!("Read snapshot"),
@@ -158,12 +162,9 @@ fn snapshot_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Stro
                         }
                     }
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                            .unwrap();
                     match result {
                         Ok(()) => println!("Wrote to snapshot."),
                         Err(e) => {
@@ -191,16 +192,17 @@ fn list_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongho
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    let result = block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Reading snapshot failed: {}", e);
+                        return;
+                    }
+
+                    let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Loading client failed: {}", e);
                         return;
                     }
 
@@ -232,16 +234,17 @@ fn read_from_store_command(matches: &ArgMatches, stronghold: &mut iota_stronghol
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    let result = block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Reading snapshot failed: {}", e);
+                        return;
+                    }
+
+                    let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Loading client failed: {}", e);
                         return;
                     }
 
@@ -272,16 +275,17 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    let result = block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Reading snapshot failed: {}", e);
+                        return;
+                    }
+
+                    let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Loading client failed: {}", e);
                         return;
                     }
 
@@ -294,12 +298,9 @@ fn revoke_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strong
                         }
                     }
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
@@ -328,16 +329,17 @@ fn garbage_collect_vault_command(
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    let result = block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Reading snapshot failed: {}", e);
+                        return;
+                    }
+
+                    let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Loading client failed: {}", e);
                         return;
                     }
 
@@ -355,12 +357,9 @@ fn garbage_collect_vault_command(
                         println!("{}: {:?}", id, hint);
                     }
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
@@ -386,16 +385,17 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
                 let snapshot = home_dir.join("snapshots").join("commandline.stronghold");
 
                 if snapshot.exists() {
-                    let result = block_on(stronghold.read_snapshot(
-                        client_path,
-                        None,
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Reading snapshot failed: {}", e);
+                        return;
+                    }
+
+                    let result = block_on(stronghold.load_client(client_path, None)).unwrap();
+                    if let Err(e) = result {
+                        println!("[Error] Loading client failed: {}", e);
                         return;
                     }
 
@@ -403,12 +403,9 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
 
                     println!("Delete Data: {:?}", result);
 
-                    let result = block_on(stronghold.write_all_to_snapshot(
-                        &key.to_vec(),
-                        Some("commandline".to_string()),
-                        None,
-                    ))
-                    .unwrap();
+                    let result =
+                        block_on(stronghold.write_snapshot(&key.to_vec(), Some("commandline".to_string()), None))
+                            .unwrap();
                     if let Err(e) = result {
                         println!("[Error] Writing snapshot failed: {}", e);
                     }
@@ -431,7 +428,7 @@ async fn main() {
 
     write_to_store_command(&matches, &mut stronghold, client_path.clone());
     encrypt_command(&matches, &mut stronghold, client_path.clone());
-    snapshot_command(&matches, &mut stronghold, client_path.clone());
+    snapshot_command(&matches, &mut stronghold);
     read_from_store_command(&matches, &mut stronghold, client_path.clone());
     list_command(&matches, &mut stronghold, client_path.clone());
     revoke_command(&matches, &mut stronghold, client_path.clone());

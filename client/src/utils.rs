@@ -6,7 +6,7 @@ mod types;
 
 pub use self::{
     ids::LoadFromPath,
-    types::{Location, StrongholdFlags, VaultFlags},
+    types::{derive_record_id, derive_vault_id, get_index_from_record_id, Location, StrongholdFlags, VaultFlags},
 };
 
 /// Gets the index of a slice.

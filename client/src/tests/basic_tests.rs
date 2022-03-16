@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{state::secure::SecureClient, utils::LoadFromPath, Location, RecordHint, Stronghold};
+use crate::{utils::LoadFromPath, Location, RecordHint, Stronghold};
 use crypto::macs::hmac::HMAC_SHA512;
 
 use engine::vault::{ClientId, VaultId};
@@ -193,23 +193,28 @@ async fn test_write_read_snapshot() {
 
     for i in 0..20 {
         let loc = Location::counter::<_, usize>("path", i);
-        let expect_id = SecureClient::resolve_location(loc).1;
+        let expect_id = loc.resolve().1;
         let (_, hint) = ids.iter().find(|(id, _)| *id == expect_id).unwrap();
         let expect_hint = RecordHint::new(format!("test {:?}", i)).unwrap();
         assert_eq!(*hint, expect_hint);
     }
 
     stronghold
-        .write_all_to_snapshot(&key_data, Some("test1".into()), None)
+        .write_snapshot(&key_data, Some("test1".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
 
-    // remark: changed former_client_path from 'None' to 'Some(client_path)'
     stronghold
-        .read_snapshot(client_path.clone(), None, &key_data, Some("test1".into()), None)
+        .read_snapshot(&key_data, Some("test1".into()), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .load_client(client_path.clone(), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -260,7 +265,7 @@ async fn test_write_read_multi_snapshot() {
     }
 
     stronghold
-        .write_all_to_snapshot(&key_data, Some("test2".into()), None)
+        .write_snapshot(&key_data, Some("test2".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
@@ -272,24 +277,22 @@ async fn test_write_read_multi_snapshot() {
             .unwrap();
     }
 
-    for i in 0..num_actors {
-        let client_path = format!("test {:?}", i).as_bytes().to_vec();
-        stronghold.switch_actor_target(client_path.clone()).await.unwrap();
-        stronghold
-            .read_snapshot(client_path, None, &key_data, Some("test2".into()), None)
-            .await
-            .unwrap_or_else(|e| panic!("Actor error: {}", e))
-            .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
-    }
+    stronghold
+        .read_snapshot(&key_data, Some("test2".into()), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
 
     for i in 0..num_actors {
         let loc = Location::counter::<_, usize>("path", i);
         let local_client_path = format!("test {:?}", i).as_bytes().to_vec();
         stronghold.switch_actor_target(local_client_path.clone()).await.unwrap();
-        let p = stronghold
-            .read_secret(local_client_path.clone(), loc.clone())
+        stronghold
+            .load_client(local_client_path.clone(), None)
             .await
-            .unwrap();
+            .unwrap_or_else(|e| panic!("Actor error: {}", e))
+            .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+        let p = stronghold.read_secret(local_client_path, loc).await.unwrap();
         let res = format!("test {:?}", i);
 
         assert_eq!(std::str::from_utf8(&p.unwrap()), Ok(res.as_str()));

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::types::*;
-use crate::{state::secure::SecureClient, Location};
+use crate::{utils::derive_vault_id, Location};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
@@ -199,7 +199,7 @@ impl Procedure for RevokeData {
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
         runner.revoke_data(&self.location)?;
         if self.should_gc {
-            runner.garbage_collect(SecureClient::resolve_location(self.location).0);
+            runner.garbage_collect(self.location.resolve().0);
         }
         Ok(())
     }
@@ -215,7 +215,7 @@ impl Procedure for GarbageCollect {
     type Output = ();
 
     fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let vault_id = SecureClient::derive_vault_id(self.vault_path);
+        let vault_id = derive_vault_id(self.vault_path);
         runner.garbage_collect(vault_id);
         Ok(())
     }

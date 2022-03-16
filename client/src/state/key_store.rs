@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use engine::vault::{Key, VaultId};
-
 use std::collections::HashMap;
 
 use crate::Provider;
@@ -17,7 +16,12 @@ impl KeyStore {
         Self { store: HashMap::new() }
     }
 
-    /// Gets the key from the [`KeyStore`] and removes it. Returns an [`Option<Key<Provider>>`]
+    /// Gets the key from the [`KeyStore`] without removing it.
+    pub fn get_key(&self, id: VaultId) -> Option<&Key<Provider>> {
+        self.store.get(&id)
+    }
+
+    /// Gets the key from the [`KeyStore`] and removes it.
     pub fn take_key(&mut self, id: VaultId) -> Option<Key<Provider>> {
         self.store.remove(&id)
     }
@@ -34,7 +38,7 @@ impl KeyStore {
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].  If the [`VaultId`] already exists, it just returns the
     /// existing &[`Key<Provider>`]
-    pub fn insert_key(&mut self, id: VaultId, key: Key<Provider>) -> &Key<Provider> {
+    pub fn entry_or_insert_key(&mut self, id: VaultId, key: Key<Provider>) -> &Key<Provider> {
         self.store.entry(id).or_insert(key)
     }
 

@@ -122,16 +122,21 @@ async fn test_stronghold() {
     stronghold.garbage_collect(vault_path).await.unwrap();
 
     stronghold
-        .write_all_to_snapshot(&key_data, Some("test0".into()), None)
+        .write_snapshot(&key_data, Some("test0".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
     stronghold
-        .read_snapshot(client_path.clone(), None, &key_data, Some("test0".into()), None)
+        .read_snapshot(&key_data, Some("test0".into()), None, None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .spawn_stronghold_actor(client_path.clone(), vec![])
+        .await
+        .unwrap();
 
     // read head after reading snapshot.
 
@@ -250,7 +255,7 @@ async fn run_stronghold_multi_actors() {
     println!("actor 0: {:?}", ids);
 
     stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
+        .write_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
@@ -266,13 +271,13 @@ async fn run_stronghold_multi_actors() {
         .unwrap();
 
     stronghold
-        .read_snapshot(
-            client_path2.clone(),
-            Some(client_path1.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
+        .read_snapshot(&key_data, Some("megasnap".into()), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .load_client(client_path2.clone(), Some(client_path1.clone()))
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -329,13 +334,7 @@ async fn run_stronghold_multi_actors() {
         .unwrap();
 
     stronghold
-        .read_snapshot(
-            client_path3,
-            Some(client_path0.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
+        .load_client(client_path3, Some(client_path0.clone()))
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -382,7 +381,7 @@ async fn test_stronghold_generics() {
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
     stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None)
+        .write_snapshot(&key_data.to_vec(), Some("generic".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
