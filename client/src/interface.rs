@@ -13,7 +13,7 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, Procedures,
             ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, LoadFromSnapshotState, ReadSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, LoadFromSnapshotState, ReadSnapshot, StoreSnapshotKey, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
@@ -355,7 +355,7 @@ impl Stronghold {
 
     /// Reads data from a given snapshot file into memory.
     ///
-    /// Optionally store the keydata so it can be used again in [`Stronghold::write_snapshot_stored_key`].
+    /// Optionally store the keydata, see [`Stronghold::store_snapshot_key`].
     pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         keydata: &T,
@@ -375,9 +375,29 @@ impl Stronghold {
                 key,
                 filename,
                 path,
-                key_location: write_key,
+                write_key,
             })
             .await?;
+        Ok(result)
+    }
+
+    /// Secure the snapshot key in a vault during runtime.
+    /// On [`Stronghold::write_snapshot_stored_key`] the key can be used to encrypt the
+    /// snapshot without requiring the user to provide it again.
+    ///
+    /// **Note:** stored snapshot keys can only be used when writing a snapshot, but never on read.
+    pub async fn store_snapshot_key<T: Zeroize + AsRef<Vec<u8>>>(
+        &mut self,
+        keydata: &T,
+        location: Location,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        let mut key: [u8; 32] = [0u8; 32];
+        let keydata = keydata.as_ref();
+        key.copy_from_slice(keydata);
+
+        let result = snapshot_actor.send(StoreSnapshotKey { key, location }).await?;
         Ok(result)
     }
 

@@ -61,7 +61,8 @@ pub mod messages {
         pub key: snapshot::Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
-        pub key_location: Option<Location>,
+        // Write the key to the snapshot vault in memory.
+        pub write_key: Option<Location>,
     }
 
     impl Message for ReadSnapshot {
@@ -74,6 +75,15 @@ pub mod messages {
 
     impl Message for LoadFromSnapshotState {
         type Result = Result<returntypes::ReturnClientState, SnapshotError>;
+    }
+
+    pub struct StoreSnapshotKey {
+        pub location: Location,
+        pub key: snapshot::Key,
+    }
+
+    impl Message for StoreSnapshotKey {
+        type Result = Result<(), SnapshotError>;
     }
 }
 
@@ -99,7 +109,7 @@ impl Handler<messages::ReadSnapshot> for Snapshot {
     /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
     /// for access.
     fn handle(&mut self, msg: messages::ReadSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        let key_location = msg.key_location.map(|loc| loc.resolve());
+        let key_location = msg.write_key.map(|loc| loc.resolve());
         *self = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key, key_location)?;
         Ok(())
     }
@@ -130,5 +140,14 @@ impl Handler<messages::WriteSnapshot> for Snapshot {
         *self = Snapshot::default();
 
         Ok(())
+    }
+}
+
+impl Handler<messages::StoreSnapshotKey> for Snapshot {
+    type Result = Result<(), SnapshotError>;
+
+    fn handle(&mut self, msg: messages::StoreSnapshotKey, _ctx: &mut Self::Context) -> Self::Result {
+        let (vid, rid) = msg.location.resolve();
+        self.store_snapshot_key(msg.key, vid, rid)
     }
 }

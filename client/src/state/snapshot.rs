@@ -62,11 +62,7 @@ impl Snapshot {
     ) -> Result<Self, SnapshotError> {
         let mut snapshot = Snapshot::default();
         if let Some((vid, rid)) = write_key {
-            let key = snapshot.keystore.create_key(vid);
-            snapshot
-                .db
-                .write(key, vid, rid, &snapshot_key, RecordHint::new("").unwrap())
-                .unwrap();
+            snapshot.store_snapshot_key(snapshot_key, vid, rid)?;
         }
         for (client_id, state) in state.0 {
             snapshot.add_data(client_id, state)?;
