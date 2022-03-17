@@ -4,7 +4,7 @@
 // modules
 mod client;
 mod error;
-mod keyprovider;
+mod location;
 mod snapshot;
 mod store;
 mod vault;
@@ -13,7 +13,7 @@ mod view;
 // re-export imports
 pub use client::*;
 pub use error::*;
-pub use keyprovider::*;
+pub use location::*;
 pub use snapshot::*;
 pub use store::*;
 pub use vault::*;

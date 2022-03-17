@@ -1,22 +1,38 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+//! This KeyStore might be replaced by another implementation of the engine
+use crate::Provider;
+use engine::vault::{BoxProvider, Key, NCKey, VaultId};
 use std::collections::HashMap;
-use crate::vault::VaultId;
-use crate::vault:: crypto_box::{BoxProvider, Key, NCKey};
 
 /// The [`KeyStore`] keeps a map of [`VaultId`] -> [Vec<u8>] representing
 /// encrypted [`Key<P>`] using the `master_key`.
 /// `master_key` is stored in a non-contiguous data structure [`NCKey<P>`]
 /// for more security
-pub struct KeyStore<P: BoxProvider> {
+pub struct KeyStore<P>
+where
+    P: BoxProvider,
+{
     store: HashMap<VaultId, Vec<u8>>,
-    master_key: NCKey<P>
+    master_key: NCKey<P>,
 }
 
-impl<P: BoxProvider> KeyStore<P> {
-    /// Creates a new [`KeyStore`].
-    pub fn new() -> Self {
-        Self { store: HashMap::new(), master_key: NCKey::<P>::random() }
+impl<P> Default for KeyStore<P>
+where
+    P: BoxProvider,
+{
+    fn default() -> Self {
+        Self {
+            store: HashMap::new(),
+            master_key: NCKey::<P>::random(),
+        }
     }
+}
 
+impl<P> KeyStore<P>
+where
+    P: BoxProvider,
+{
     /// Gets the encrypted key from the [`KeyStore`] and removes it.
     /// Decrypt it with the `master_key` and `vault_id` as salt.
     /// Returns an [`Option<Key<P>>`]
@@ -34,19 +50,14 @@ impl<P: BoxProvider> KeyStore<P> {
     /// Returns None if it fails
     /// Returns None if it fails
     pub fn create_key(&mut self, id: VaultId) -> Option<Key<P>> {
-        let vault_key = Key::random(); 
+        let vault_key = Key::random();
         self.insert_key(id, vault_key)
     }
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].
     /// If the [`VaultId`] already exists, it just returns the existing [`Key<P>`]
     pub fn insert_key(&mut self, id: VaultId, key: Key<P>) -> Option<Key<P>> {
-        let vault_key =
-            if let Some(key) = self.take_key(id) {
-                key
-            } else {
-                key
-            };
+        let vault_key = if let Some(key) = self.take_key(id) { key } else { key };
         let enc_key = self.master_key.encrypt_key(&vault_key, id).ok()?;
         self.store.insert(id, enc_key);
         Some(vault_key)
@@ -56,7 +67,7 @@ impl<P: BoxProvider> KeyStore<P> {
     /// [`Vec<Key<P>>`] and returns then a [`Vec<VaultId>`]; primarily used to repopulate the state from a
     /// snapshot.
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) {
-        let mut new_ks = KeyStore::new();
+        let mut new_ks = KeyStore::default();
         for (id, key) in keys.into_iter() {
             new_ks.insert_key(id, key);
         }
@@ -68,7 +79,12 @@ impl<P: BoxProvider> KeyStore<P> {
         let mut key_store: HashMap<VaultId, Key<P>> = HashMap::new();
 
         self.store.iter().for_each(|(id, enc_key)| {
-            key_store.insert(*id, self.master_key.decrypt_key(enc_key.clone(), *id).expect("Failed to decrypt from the keystore")) ;
+            key_store.insert(
+                *id,
+                self.master_key
+                    .decrypt_key(enc_key.clone(), *id)
+                    .expect("Failed to decrypt from the keystore"),
+            );
         });
 
         key_store
@@ -79,4 +95,3 @@ impl<P: BoxProvider> KeyStore<P> {
         self.store.clear();
     }
 }
-

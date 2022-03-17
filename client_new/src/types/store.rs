@@ -89,6 +89,8 @@ impl Store {
     ///
     /// # Example
     /// ```no_run
+    /// use iota_stronghold_new::Store;
+    ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
     /// let data = b"some data".to_vec();
@@ -100,5 +102,21 @@ impl Store {
     pub fn delete(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
         Ok(guard.remove(&key))
+    }
+
+    /// Checks the [`Store`], if the provided key exists
+    /// # Example
+    /// ```
+    /// use iota_stronghold_new::Store;
+    ///
+    /// let store = Store::default();
+    /// let key = b"some key".to_vec();
+    /// let data = b"some data".to_vec();
+    /// store.insert(key.clone(), data, None).unwrap();
+    /// assert!(store.contains_key(key).unwrap());
+    /// ```
+    pub fn contains_key(&self, key: Vec<u8>) -> Result<bool, ClientError> {
+        let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        Ok(guard.get(&key).is_some())
     }
 }

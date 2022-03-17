@@ -21,6 +21,10 @@ impl Snapshot {
     {
         todo!()
     }
+
+    pub async fn write(&self) -> Result<(), Box<dyn Error>> {
+        todo!()
+    }
 }
 
 #[tokio::test]
@@ -40,7 +44,14 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     let vault: Vault = client.vault(&vault_path).await;
 
-    // vault.write_secret(location, payload, hint);
+    // create a new secret inside the vault
+    vault.write_secret(vec![], vec![], vec![]).await;
+
+    // Write the state of the client back into the snapshot
+    client.update(&snapshot).await?;
+
+    // Write the current state into the snapshot
+    snapshot.write().await?;
 
     Ok(())
 }

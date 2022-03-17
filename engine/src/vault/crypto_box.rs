@@ -209,17 +209,14 @@ impl<T: BoxProvider> NCKey<T> {
         T::box_seal(&key, ad.as_ref(), &*data.key.borrow())
     }
 
-
     pub fn decrypt_key<AD: AsRef<[u8]>>(&self, data: Vec<u8>, ad: AD) -> Result<Key<T>, DecryptError<T::Error>> {
         let key = Key {
             key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
             _box_provider: PhantomData,
         };
         let opened = T::box_open(&key, ad.as_ref(), &data).map_err(DecryptError::Provider)?;
-        Key::load(opened).ok_or_else(|| DecryptError::Invalid)
+        Key::load(opened).ok_or(DecryptError::Invalid)
     }
-
-
 
     // /// get the key's bytes from the [`Buffer`]
     // #[allow(dead_code)]
@@ -303,4 +300,3 @@ pub trait NCDecrypt<T: TryFrom<Vec<u8>>>: AsRef<[u8]> {
         T::try_from(opened).map_err(|_| DecryptError::Invalid)
     }
 }
-

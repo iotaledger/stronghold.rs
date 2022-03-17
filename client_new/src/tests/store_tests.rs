@@ -38,3 +38,13 @@ fn test_delete_from_store() -> Result<(), ClientError> {
 
     Ok(())
 }
+
+#[test]
+fn test_contains_key() -> Result<(), ClientError> {
+    let store = Store::default();
+    let key = b"some key".to_vec();
+    let data = b"some data".to_vec();
+    store.insert(key.clone(), data, None)?;
+    assert!(store.contains_key(key).unwrap());
+    Ok(())
+}
