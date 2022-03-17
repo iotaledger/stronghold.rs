@@ -3,7 +3,7 @@
 
 use std::{error::Error, path::Path};
 
-use crate::{Cache, Client, KeyProvider, Store, Stronghold, Vault};
+use crate::{Client, KeyProvider, Store, Stronghold, Vault};
 use zeroize::Zeroize;
 
 /// This is a testing stub and MUST be removed, if the actual implementation
