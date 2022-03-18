@@ -1,44 +1,25 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Location, Provider};
+use crate::{FatalEngineError, Location, Provider, RecordError, VaultError};
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{BoxProvider, RecordError as EngineRecordError, RecordHint, VaultError as EngineVaultError, VaultId},
+    vault::{BoxProvider, RecordHint, VaultId},
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, string::FromUtf8Error};
 use thiserror::Error as DeriveError;
 
-pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
-pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
-
-#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
-#[error("fatal engine error: {0}")]
-pub struct FatalEngineError(String);
-
-impl From<RecordError> for FatalEngineError {
-    fn from(e: RecordError) -> Self {
-        FatalEngineError(e.to_string())
-    }
-}
-
-impl From<String> for FatalEngineError {
-    fn from(e: String) -> Self {
-        FatalEngineError(e)
-    }
-}
-
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
-    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    fn get_guard<F, T>(&self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
 
     // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
     // written into `location1` and the output is returned.
     fn exec_proc<F, T>(
-        &mut self,
+        &self,
         location0: &Location,
         location1: &Location,
         hint: RecordHint,
@@ -47,11 +28,11 @@ pub trait Runner {
     where
         F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
 
-    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
+    fn write_to_vault(&self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError>;
+    fn revoke_data(&self, location: &Location) -> Result<(), RecordError>;
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
+    fn garbage_collect(&self, vault_id: VaultId) -> bool;
 }
 
 /// Products of a procedure.

@@ -12,7 +12,10 @@ use stronghold_utils::random as rand;
 pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
 pub struct ClientVault {
+    /// An atomic but inner mutable back reference to the [`Client`]
     pub(crate) client: Arc<RwLock<Client>>,
+
+    /// The current [`VaultId`]
     pub(crate) id: VaultId,
 }
 
@@ -27,7 +30,7 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
-        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let client = self.client.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
         client
             .write_to_vault(
                 &location,
@@ -53,7 +56,7 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn revoke_secret(&self, location: Location) -> Result<(), ClientError> {
-        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let client = self.client.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         client
             .revoke_data(&location)
@@ -66,7 +69,7 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn cleanup(&self) -> Result<bool, ClientError> {
-        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let client = self.client.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         Ok(client.garbage_collect(self.vault_id()))
     }

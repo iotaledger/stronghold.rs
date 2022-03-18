@@ -20,16 +20,16 @@ use crate::{
 
 pub struct Client {
     // A keystore
-    pub(crate) keystore: KeyStore<Provider>,
+    pub(crate) keystore: Arc<RwLock<KeyStore<Provider>>>,
 
     // A view on the vault entries
-    pub(crate) db: DbView<Provider>, // Arc<RwLock<DbView<Provider>>>,
+    pub(crate) db: Arc<RwLock<DbView<Provider>>>,
 
     // The id of this client
     pub id: ClientId,
 
     // Contains the Record Ids for the most recent Record in each vault.
-    pub store: Arc<Store>,
+    pub store: Arc<RwLock<Store>>,
 }
 
 impl Default for Client {
@@ -57,7 +57,8 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn store(&self) -> Arc<Store> {
+    pub async fn store(&self) -> Arc<RwLock<Store>> {
+        // TODO: Change to thin store wrapper similar to [`ClientVault`]
         self.store.clone()
     }
 
@@ -80,12 +81,14 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn vault_exists<P>(&self, vault_path: P) -> bool
+    pub async fn vault_exists<P>(&self, vault_path: P) -> Result<bool, ClientError>
     where
         P: AsRef<Vec<u8>>,
     {
         let vault_id = derive_vault_id(vault_path);
-        self.keystore.vault_exists(vault_id)
+        let keystore = self.keystore.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+
+        Ok(keystore.vault_exists(vault_id))
     }
 
     /// Returns Ok, if the record exists
@@ -95,10 +98,13 @@ impl Client {
     /// ```
     pub async fn record_exists(&mut self, location: Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
-        let result = match self.keystore.take_key(vault_id) {
+        let mut keystore = self.keystore.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let result = match keystore.take_key(vault_id) {
             Some(key) => {
-                let res = self.db.contains_record(&key, vault_id, record_id);
-                self.keystore.insert_key(vault_id, key);
+                let mut db = self.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+
+                let res = db.contains_record(&key, vault_id, record_id);
+                keystore.insert_key(vault_id, key);
                 res
             }
             None => false,

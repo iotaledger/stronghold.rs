@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use engine::vault::{BoxProvider, RecordError as EngineRecordError, VaultError as EngineVaultError};
-use serde::de::Error;
+use serde::{de::Error, Deserialize, Serialize};
 use thiserror::Error as DeriveError;
 
 use crate::Provider;
@@ -29,3 +29,19 @@ pub enum ClientError {
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
+
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+#[error("fatal engine error: {0}")]
+pub struct FatalEngineError(String);
+
+impl From<RecordError> for FatalEngineError {
+    fn from(e: RecordError) -> Self {
+        FatalEngineError(e.to_string())
+    }
+}
+
+impl From<String> for FatalEngineError {
+    fn from(e: String) -> Self {
+        FatalEngineError(e)
+    }
+}
