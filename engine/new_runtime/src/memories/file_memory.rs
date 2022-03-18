@@ -19,7 +19,6 @@ use std::{
     path::PathBuf,
 };
 
-
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -109,7 +108,7 @@ impl FileMemory {
         fs::set_permissions(&self.fname, perms)
     }
 
-     #[cfg(not(unix))]
+    #[cfg(not(unix))]
     fn lock_file(&self) -> Result<(), std::io::Error> {
         // Lock file permissions
         let mut perms = fs::metadata(&self.fname)?.permissions();
@@ -156,7 +155,6 @@ impl FileMemory {
         perms.set_readonly(true);
         fs::set_permissions(&self.fname, perms)
     }
-
 
     fn write_to_file(&self, payload: &[u8]) -> Result<(), std::io::Error> {
         match self.set_write_only() {
