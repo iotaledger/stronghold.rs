@@ -17,7 +17,6 @@ std                     = []
 
 [dependencies]
 thiserror               = { version = "1.0.30" }
-log                     = { version = "0.4.14" }
 zeroize                 = { version = "1.4.3", features = ["zeroize_derive"] }
 serde                   = { version = "1.0",   features = [ "derive" ] }
 iota-crypto             = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519" ] }
@@ -34,7 +33,14 @@ criterion               = { version = "0.3",    features = ["async_tokio"] }
 env_logger              = { version = "0.9.0" }
 ctor                    = { version = "0.1.21"}
 rand                    = { version = "0.8.4" }
+clap                    = { version = "3.1.6", features = [ "derive" ]}
+log                     = { version = "0.4.14" }
+base64                  = { version = "0.13.0" }
+
 
 [[bench]]
-name        = "config"
-harness     = false
+name                    = "config"
+harness                 = false
+
+[[example]]
+name                    = "cli"

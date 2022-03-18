@@ -72,6 +72,22 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     assert!(vault_exists.is_ok());
     assert!(vault_exists.unwrap());
 
+    // get the public key
+    let public_key_procedure = crate::procedures::PublicKey {
+        ty: KeyType::Ed25519,
+        private_key: output_location,
+    };
+
+    let procedure_result = client
+        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
+        .await;
+
+    assert!(procedure_result.is_ok());
+
+    let procedure_result = procedure_result.unwrap();
+    let output: Vec<u8> = procedure_result.into();
+
+    // some store operations
     let store = client.store().await;
 
     let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
