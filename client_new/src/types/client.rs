@@ -7,10 +7,7 @@ use std::{
 
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{
-        BoxProvider, ClientId, DbView, RecordError as EngineRecordError, RecordHint, VaultError as EngineVaultError,
-        VaultId,
-    },
+    vault::{view::Record, BoxProvider, ClientId, DbView, RecordHint, VaultId},
 };
 
 use crate::{
@@ -18,16 +15,10 @@ use crate::{
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
-    ClientError, KeyStore, Location, Provider, Store, Vault,
+    ClientError, ClientVault, KeyStore, Location, Provider, RecordError, Store,
 };
 
-pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
-pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
-
 pub struct Client {
-    // store: Option<Arc<Store>>,
-    vault: Option<Arc<Vault>>,
-
     // A keystore
     pub(crate) keystore: KeyStore<Provider>,
 
@@ -52,6 +43,15 @@ impl Drop for Client {
 }
 
 impl Client {
+    /// Returns an [`Arc`] of  [`Self`] to be shared in concurrent setups
+    ///
+    /// # Example
+    /// ```no_run
+    /// ```
+    fn atomic_ref(&self) -> Arc<RwLock<Client>> {
+        todo!()
+    }
+
     /// Returns an atomic reference to the [`Store`]
     ///
     /// # Example
@@ -66,11 +66,13 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn vault<P>(&self, path: P) -> Vault
-    where
-        P: AsRef<Vec<u8>>,
-    {
-        todo!()
+    pub fn vault(&mut self, vault_path: Location) -> ClientVault {
+        let (vault_id, _) = vault_path.resolve();
+
+        ClientVault {
+            client: self.atomic_ref(),
+            id: vault_id,
+        }
     }
 
     /// Returns `true`, if a vault exists
@@ -168,4 +170,4 @@ impl Client {
     }
 }
 
-// Compatibility to old structure
+// TODO: Compatibility to former structure

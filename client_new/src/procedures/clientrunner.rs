@@ -21,7 +21,7 @@ use crate::{
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
-    Client, ClientError, KeyStore, Location, Provider, Store, Vault,
+    Client, ClientError, ClientVault, KeyStore, Location, Provider, Store,
 };
 
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;

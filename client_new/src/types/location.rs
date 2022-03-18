@@ -4,7 +4,7 @@
 use engine::vault::{RecordId, VaultId};
 use serde::{Deserialize, Serialize};
 
-use crate::{LoadFromPath, Vault};
+use crate::{ClientVault, LoadFromPath};
 
 /// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
 /// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can

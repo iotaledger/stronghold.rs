@@ -1,29 +1,95 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{
-    procedures::{Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
-    Result,
+    procedures::{Procedure, ProcedureError, ProcedureOutput, Runner, StrongholdProcedure},
+    Client, ClientError, Location, Provider, RecordError,
 };
+use engine::vault::{RecordHint, VaultId};
+use std::sync::{Arc, RwLock};
+use stronghold_utils::random as rand;
 
-/// Thin layer over [`engine::Vault`]
-pub struct Vault {}
+pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
-impl Vault {
+pub struct ClientVault {
+    pub(crate) client: Arc<RwLock<Client>>,
+    pub(crate) id: VaultId,
+}
+
+/// [`ClientVault`] is a thin abstraction over a vault for a specific [`VaultId`]. An
+/// implementation of this type can only be obtained by a [`Client`]. Use the [`ClientVault`]
+/// to store secrets and execute [`Procedure`]s on them. Data stored inside a [`Vault`] can
+/// never be directly access, nor will its contents ever be exposed.
+impl ClientVault {
     /// Writes a secret into the vault
-    pub async fn write_secret(&self, location: Vec<u8>, payload: Vec<u8>, hint: Vec<u8>) {
-        todo!()
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
+        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        client
+            .write_to_vault(
+                &location,
+                RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap(),
+                payload,
+            )
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Deletes a secret from the vault
-    pub async fn delete_secret(&self, location: Vec<u8>) {
-        todo!()
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn delete_secret(&self, location: Location) -> Result<bool, ClientError> {
+        self.revoke_secret(location)?;
+        self.cleanup()
     }
 
-    pub async fn revoke_secret(&self, location: Vec<u8>) {
-        todo!()
+    /// Revokes a secrets and marks it as ready for deletion
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn revoke_secret(&self, location: Location) -> Result<(), ClientError> {
+        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+
+        client
+            .revoke_data(&location)
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
-    pub async fn garbage_collect(&self) {
+    /// Collects revoked records and deletes them
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn cleanup(&self) -> Result<bool, ClientError> {
+        let mut client = self.client.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+
+        Ok(client.garbage_collect(self.vault_id()))
+    }
+
+    /// BUG: this will create confusion, as the vault id, needs to be stored somewhere.
+    /// It should be possible to multiple vaults from a client.
+    ///
+    /// Returns the currently used [`VaultId`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn vault_id(&self) -> VaultId {
+        self.id
+    }
+
+    /// SECURITY WARNING! THIS IS FOR TESTING PURPOSES ONLY!
+    ///
+    /// # Security
+    ///
+    /// THE CALL TO THIS METHOD IS INSECURE AS IT WILL EXPOSE SECRETS STORED INSIDE A VAULT
+    #[cfg(test)]
+    pub fn read_secret(&self) {
         todo!()
     }
 }

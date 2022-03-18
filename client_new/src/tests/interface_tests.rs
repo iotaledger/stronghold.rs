@@ -5,7 +5,7 @@ use std::{error::Error, path::Path};
 
 use crate::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
-    Client, KeyProvider, Store, Stronghold, Vault,
+    Client, ClientVault, KeyProvider, Location, Store, Stronghold,
 };
 use engine::vault::RecordHint;
 use zeroize::Zeroize;
@@ -58,10 +58,13 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     let store = client.store().await;
 
-    let vault: Vault = client.vault(&vault_path).await;
+    let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
 
     // create a new secret inside the vault
-    vault.write_secret(vec![], vec![], vec![]).await;
+    vault.write_secret(
+        Location::const_generic(vault_path.clone(), b"record-path".to_vec()),
+        vec![],
+    )?;
 
     // Write the state of the client back into the snapshot
     client.update(&snapshot).await?;
@@ -70,4 +73,15 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     snapshot.write().await?;
 
     Ok(())
+}
+
+#[test]
+fn test_lock() {
+    use std::sync::{Arc, RwLock};
+
+    let data = Arc::new(RwLock::new(Some(12usize)));
+
+    let mut data = data.write().expect("");
+
+    let moved = data.take();
 }
