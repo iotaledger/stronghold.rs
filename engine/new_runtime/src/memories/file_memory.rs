@@ -16,9 +16,13 @@ use serde::{
 use std::{
     fs::{self, File},
     io::{self, prelude::*},
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
+
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use zeroize::Zeroize;
 
 const FILENAME_SIZE: usize = 16;
@@ -96,47 +100,63 @@ impl FileMemory {
     }
 
     // Set access control to minimum on the file
+    #[cfg(unix)]
     fn lock_file(&self) -> Result<(), std::io::Error> {
         // Lock file permissions
         let mut perms = fs::metadata(&self.fname)?.permissions();
-        if cfg!(unix) {
-            // Prevent reading/writing
-            perms.set_mode(0o000);
-        } else {
-            // Currently rust fs library can only be create
-            // readonly file permissions
-            perms.set_readonly(true);
-        }
+        // Prevent reading/writing
+        perms.set_mode(0o000);
         fs::set_permissions(&self.fname, perms)
     }
 
+     #[cfg(not(unix))]
+    fn lock_file(&self) -> Result<(), std::io::Error> {
+        // Lock file permissions
+        let mut perms = fs::metadata(&self.fname)?.permissions();
+        // Currently rust fs library can only be create
+        // readonly file permissions
+        perms.set_readonly(true);
+        fs::set_permissions(&self.fname, perms)
+    }
+
+    #[cfg(unix)]
     fn set_write_only(&self) -> Result<(), std::io::Error> {
         // Lock file permissions
         let mut perms = fs::metadata(&self.fname)?.permissions();
-        if cfg!(unix) {
-            // Set write only
-            perms.set_mode(0o200);
-        } else {
-            // Currently rust fs library can only be create
-            // readonly file permissions
-            perms.set_readonly(true);
-        }
+        // Set write only
+        perms.set_mode(0o200);
         fs::set_permissions(&self.fname, perms)
     }
 
+    #[cfg(not(unix))]
+    fn set_write_only(&self) -> Result<(), std::io::Error> {
+        // Lock file permissions
+        let mut perms = fs::metadata(&self.fname)?.permissions();
+        // Currently rust fs library can only be create
+        // readonly file permissions
+        perms.set_readonly(true);
+        fs::set_permissions(&self.fname, perms)
+    }
+
+    #[cfg(unix)]
     fn set_read_only(&self) -> Result<(), std::io::Error> {
         // Lock file permissions
         let mut perms = fs::metadata(&self.fname)?.permissions();
-        if cfg!(unix) {
-            // Set write only
-            perms.set_mode(0o400);
-        } else {
-            // Currently rust fs library can only be create
-            // readonly file permissions
-            perms.set_readonly(true);
-        }
+        // Set read only
+        perms.set_mode(0o400);
         fs::set_permissions(&self.fname, perms)
     }
+
+    #[cfg(not(unix))]
+    fn set_read_only(&self) -> Result<(), std::io::Error> {
+        // Lock file permissions
+        let mut perms = fs::metadata(&self.fname)?.permissions();
+        // Currently rust fs library can only be create
+        // readonly file permissions
+        perms.set_readonly(true);
+        fs::set_permissions(&self.fname, perms)
+    }
+
 
     fn write_to_file(&self, payload: &[u8]) -> Result<(), std::io::Error> {
         match self.set_write_only() {
@@ -297,9 +317,13 @@ mod tests {
         let fm = fm.unwrap();
 
         // Try to read or write file
-        let try_read = File::open(&fm.fname).expect_err("Test failed shall gives an Err");
+        if cfg!(unix) {
+            // On systems other than unix we can only lock access to read-only
+            // hence this read should work on non-unix targets
+            let try_read = File::open(&fm.fname).expect_err("Test failed shall gives an Err");
+            assert_eq!(try_read.kind(), std::io::ErrorKind::PermissionDenied);
+        }
         let try_write = File::create(&fm.fname).expect_err("Test failed shall gives an Err");
-        assert_eq!(try_read.kind(), std::io::ErrorKind::PermissionDenied);
         assert_eq!(try_write.kind(), std::io::ErrorKind::PermissionDenied);
 
         // Check that content of the file has effectively been xored
