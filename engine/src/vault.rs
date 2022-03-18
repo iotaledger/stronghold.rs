@@ -18,8 +18,8 @@
 
 mod base64;
 mod crypto_box;
-mod types;
 mod key_store;
+mod types;
 pub mod view;
 
 pub use crate::vault::{
