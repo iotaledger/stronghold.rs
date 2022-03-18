@@ -18,6 +18,7 @@
 
 mod base64;
 mod crypto_box;
+mod key_store;
 mod types;
 pub mod view;
 

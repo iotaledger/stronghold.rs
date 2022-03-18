@@ -201,6 +201,7 @@ impl<T: BoxProvider> NCKey<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn encrypt_key<AD: AsRef<[u8]>>(&self, data: &Key<T>, ad: AD) -> Result<Vec<u8>, T::Error> {
         let key = Key {
             key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
@@ -209,6 +210,7 @@ impl<T: BoxProvider> NCKey<T> {
         T::box_seal(&key, ad.as_ref(), &*data.key.borrow())
     }
 
+    #[allow(dead_code)]
     pub fn decrypt_key<AD: AsRef<[u8]>>(&self, data: Vec<u8>, ad: AD) -> Result<Key<T>, DecryptError<T::Error>> {
         let key = Key {
             key: self.key.unlock().expect("Failed to unlock non contiguous memory"),

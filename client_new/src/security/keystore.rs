@@ -1,8 +1,10 @@
-// Copyright 2020-2022 IOTA Stiftung
+// Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-//! This KeyStore might be replaced by another implementation of the engine
-use crate::Provider;
-use engine::vault::{BoxProvider, Key, NCKey, VaultId};
+
+use crate::vault::{
+    crypto_box::{BoxProvider, Key, NCKey},
+    VaultId,
+};
 use std::collections::HashMap;
 
 /// The [`KeyStore`] keeps a map of [`VaultId`] -> [Vec<u8>] representing
@@ -17,11 +19,11 @@ where
     master_key: NCKey<P>,
 }
 
-impl<P> Default for KeyStore<P>
-where
-    P: BoxProvider,
-{
-    fn default() -> Self {
+impl<P: BoxProvider> KeyStore<P> {
+    #![allow(dead_code)]
+
+    /// Creates a new [`KeyStore`].
+    pub fn new() -> Self {
         Self {
             store: HashMap::new(),
             master_key: NCKey::<P>::random(),
