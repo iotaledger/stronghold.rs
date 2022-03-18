@@ -9,7 +9,7 @@ use crate::vault::{
     },
 };
 
-use runtime::GuardedVec;
+use new_runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 use thiserror::Error as DeriveError;
@@ -118,7 +118,7 @@ impl<P: BoxProvider> DbView<P> {
         }
     }
 
-    /// Get access the decrypted [`GuardedVec`] of the specified [`Record`].
+    /// Get access the decrypted [`Buffer`] of the specified [`Record`].
     pub fn get_guard<E, F>(
         &mut self,
         key: &Key<P>,
@@ -127,7 +127,7 @@ impl<P: BoxProvider> DbView<P> {
         f: F,
     ) -> Result<(), VaultError<P::Error, E>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<(), E>,
+        F: FnOnce(Buffer<u8>) -> Result<(), E>,
         E: Debug,
     {
         let vault = self.vaults.get_mut(&vid).ok_or(VaultError::VaultNotFound(vid))?;
@@ -135,7 +135,7 @@ impl<P: BoxProvider> DbView<P> {
         f(guard).map_err(VaultError::Procedure)
     }
 
-    /// Access the decrypted [`GuardedVec`] of the specified [`Record`] and place the return value into the second
+    /// Access the decrypted [`Buffer`] of the specified [`Record`] and place the return value into the second
     /// specified [`Record`]
     #[allow(clippy::too_many_arguments)]
     pub fn exec_proc<E, F>(
@@ -150,7 +150,7 @@ impl<P: BoxProvider> DbView<P> {
         f: F,
     ) -> Result<(), VaultError<P::Error, E>>
     where
-        F: FnOnce(GuardedVec<u8>) -> Result<Vec<u8>, E>,
+        F: FnOnce(Buffer<u8>) -> Result<Vec<u8>, E>,
         E: Debug,
     {
         let vault = self.vaults.get_mut(&vid0).ok_or(VaultError::VaultNotFound(vid0))?;
@@ -256,8 +256,8 @@ impl<P: BoxProvider> Vault<P> {
         Ok(())
     }
 
-    /// Gets the decrypted [`GuardedVec`] from the [`Record`]
-    pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> Result<GuardedVec<u8>, RecordError<P::Error>> {
+    /// Gets the decrypted [`Buffer`] from the [`Record`]
+    pub fn get_guard(&self, key: &Key<P>, id: ChainId) -> Result<Buffer<u8>, RecordError<P::Error>> {
         if key != &self.key {
             return Err(RecordError::InvalidKey);
         }
@@ -342,7 +342,7 @@ impl Record {
     }
 
     /// Get the blob from this [`Record`].
-    fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> Result<GuardedVec<u8>, RecordError<P::Error>> {
+    fn get_blob<P: BoxProvider>(&self, key: &Key<P>, id: ChainId) -> Result<Buffer<u8>, RecordError<P::Error>> {
         // check if ids match
         if self.id != id {
             return Err(RecordError::RecordNotFound(id));
@@ -353,13 +353,20 @@ impl Record {
             RecordError::CorruptedContent("Could not type decrypted transaction as data-transaction".into())
         })?;
 
-        let guarded = GuardedVec::new(tx.len.u64() as usize, |i| {
-            let blob = SealedBlob::from(self.blob.as_ref())
-                .decrypt(key, tx.blob)
-                .expect("Unable to decrypt blob");
+        let blob = SealedBlob::from(self.blob.as_ref())
+            .decrypt(key, tx.blob)
+            .expect("Unable to decrypt blob");
 
-            i.copy_from_slice(blob.as_ref());
-        });
+        let guarded = Buffer::alloc(&blob, tx.len.u64() as usize);
+
+        // let guarded =
+        //     GuardedVec::new(tx.len.u64() as usize, |i| {
+        //     let blob = SealedBlob::from(self.blob.as_ref())
+        //         .decrypt(key, tx.blob)
+        //         .expect("Unable to decrypt blob");
+
+        //     i.copy_from_slice(blob.as_ref());
+        // });
 
         Ok(guarded)
     }

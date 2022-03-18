@@ -23,7 +23,7 @@ use engine::{
 };
 
 #[cfg(feature = "p2p")]
-use engine::runtime::GuardedVec;
+use engine::new_runtime::memories::buffer::Buffer;
 #[cfg(feature = "p2p")]
 use p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 use std::collections::HashMap;
@@ -437,7 +437,7 @@ impl Handler<p2p_messages::DeriveNoiseKeypair> for SecureClient {
 
     fn handle(&mut self, msg: p2p_messages::DeriveNoiseKeypair, _ctx: &mut Self::Context) -> Self::Result {
         let mut id_keys = None;
-        let f = |guard: GuardedVec<u8>| {
+        let f = |guard: Buffer<u8>| {
             let keys = Keypair::from_protobuf_encoding(&*guard.borrow()).map_err(|e| e.to_string())?;
             let _ = id_keys.insert(keys);
             Ok(())
