@@ -26,15 +26,16 @@ mod stronghold_std {
     /// also persists data written into a Stronghold by creating Snapshots of the current state. The
     /// Snapshot itself is encrypted and can be accessed by a key.
     /// TODO: more epic description
+    #[derive(Default)]
     pub struct Stronghold {
         // what fields?
     }
 
-    impl Default for Stronghold {
-        fn default() -> Self {
-            todo!()
-        }
-    }
+    // impl Default for Stronghold {
+    //     fn default() -> Self {
+    //         Stronghold {}
+    //     }
+    // }
 
     impl Stronghold {
         fn load_client<P>(&self, client_path: P) -> core::result::Result<Client, ClientError> {

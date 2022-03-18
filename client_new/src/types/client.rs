@@ -29,12 +29,17 @@ pub struct Client {
     pub id: ClientId,
 
     // Contains the Record Ids for the most recent Record in each vault.
-    pub store: Arc<RwLock<Store>>,
+    pub store: Store,
 }
 
 impl Default for Client {
     fn default() -> Self {
-        todo!()
+        Self {
+            keystore: Arc::new(RwLock::new(KeyStore::default())),
+            db: Arc::new(RwLock::new(DbView::new())),
+            id: ClientId::default(),
+            store: Store::default(),
+        }
     }
 }
 
@@ -48,8 +53,13 @@ impl Client {
     /// # Example
     /// ```no_run
     /// ```
-    fn atomic_ref(&self) -> Arc<RwLock<Client>> {
-        todo!()
+    fn atomic_ref(&self) -> Client {
+        Self {
+            keystore: self.keystore.clone(),
+            db: self.db.clone(),
+            id: self.id,
+            store: self.store.atomic_ref(),
+        }
     }
 
     /// Returns an atomic reference to the [`Store`]
@@ -57,9 +67,8 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn store(&self) -> Arc<RwLock<Store>> {
-        // TODO: Change to thin store wrapper similar to [`ClientVault`]
-        self.store.clone()
+    pub async fn store(&self) -> Store {
+        self.store.atomic_ref()
     }
 
     /// Returns a [`Vault`] according to path

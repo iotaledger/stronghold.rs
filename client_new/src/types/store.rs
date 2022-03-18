@@ -119,4 +119,11 @@ impl Store {
         let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
         Ok(guard.get(&key).is_some())
     }
+
+    /// Returns an clone of inner cache of [`Self`]
+    pub(crate) fn atomic_ref(&self) -> Self {
+        Self {
+            cache: self.cache.clone(),
+        }
+    }
 }
