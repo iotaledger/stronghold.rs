@@ -78,6 +78,7 @@ impl SecureClient {
         self.store = store;
     }
 
+    // #[deprecated]
     /// Resolves a location to a `VaultId` and a `RecordId`
     pub fn resolve_location<L: AsRef<Location>>(l: L) -> (VaultId, RecordId) {
         match l.as_ref() {

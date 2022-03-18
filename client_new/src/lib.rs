@@ -14,7 +14,7 @@ pub use stronghold_std::*;
 #[cfg(feature = "std")]
 mod stronghold_std {
 
-    pub use crate::{internal::Provider, security::*, types::*};
+    pub use crate::{internal::Provider, security::*, types::*, utils::*};
     use std::{collections::HashMap, error::Error, hash::Hash, path::Path, sync::Arc};
 
     pub type Result<T> = core::result::Result<T, Box<dyn Error>>;
@@ -65,3 +65,10 @@ pub mod internal;
 
 #[cfg(feature = "std")]
 pub mod security;
+
+#[cfg(feature = "std")]
+pub mod procedures;
+
+// is this std?
+#[cfg(feature = "std")]
+pub mod utils;

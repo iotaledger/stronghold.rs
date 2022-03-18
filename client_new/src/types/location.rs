@@ -1,6 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
+use engine::vault::{RecordId, VaultId};
 use serde::{Deserialize, Serialize};
+
+use crate::{LoadFromPath, Vault};
 
 /// A `Location` type used to specify where in the `Stronghold` a piece of data should be stored. A generic location
 /// specifies a non-versioned location while a counter location specifies a versioned location. The Counter location can
@@ -57,10 +61,53 @@ impl Location {
     pub const fn const_counter(vault_path: Vec<u8>, counter: usize) -> Self {
         Self::Counter { vault_path, counter }
     }
+
+    /// Resolves itself into [`VaultId`] and [`RecordId`]
+    pub fn resolve(&self) -> (VaultId, RecordId) {
+        match self {
+            Location::Generic {
+                vault_path,
+                record_path,
+            } => {
+                let vid = derive_vault_id(vault_path);
+                let rid = RecordId::load_from_path(vid.as_ref(), record_path);
+                (vid, rid)
+            }
+            Location::Counter { vault_path, counter } => {
+                let vid = derive_vault_id(vault_path);
+                let rid = derive_record_id(vault_path, *counter);
+
+                (vid, rid)
+            }
+        }
+    }
 }
 
 impl AsRef<Location> for Location {
     fn as_ref(&self) -> &Location {
         self
     }
+}
+
+pub fn derive_vault_id<P>(path: P) -> VaultId
+where
+    P: AsRef<Vec<u8>>,
+{
+    VaultId::load_from_path(path.as_ref(), path.as_ref())
+}
+
+// Derives the counter [`RecordId`] from the given vault path and the counter value.
+pub fn derive_record_id<P>(vault_path: P, counter: usize) -> RecordId
+where
+    P: AsRef<Vec<u8>>,
+{
+    let vault_path = vault_path.as_ref();
+
+    let path = if counter == 0 {
+        format!("{:?}{}", vault_path, "first_record")
+    } else {
+        format!("{:?}{}", vault_path, counter)
+    };
+
+    RecordId::load_from_path(path.as_bytes(), path.as_bytes())
 }
