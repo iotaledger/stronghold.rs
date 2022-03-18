@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{error::Error, path::Path};
+use std::{borrow::BorrowMut, error::Error, path::Path};
 
 use crate::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
@@ -52,18 +52,25 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     // let snapshot = Snapshot::try_from("/path/to/snapshot")?;
 
     // no mutability allowed!
-    let mut client = Client::default();
+    let client = Client::default();
+
+    let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
 
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
-        output: crate::Location::generic(b"".to_vec(), b"".to_vec()),
+        output: output_location.clone(),
         hint: RecordHint::new(b"").unwrap(),
     };
 
-    assert!(client
+    let procedure_result = client
         .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
-        .await
-        .is_ok());
+        .await;
+
+    assert!(procedure_result.is_ok());
+
+    let vault_exists = client.vault_exists(b"vault_path".to_vec()).await;
+    assert!(vault_exists.is_ok());
+    assert!(vault_exists.unwrap());
 
     let store = client.store().await;
 
@@ -86,13 +93,11 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
-fn test_lock() {
-    use std::sync::{Arc, RwLock};
+#[tokio::test]
+async fn test_load_client_from_snapshot() {}
 
-    let data = Arc::new(RwLock::new(Some(12usize)));
+#[tokio::test]
+async fn test_load_multiple_clients_from_snapshot() {}
 
-    let mut data = data.write().expect("");
-
-    let moved = data.take();
-}
+#[tokio::test]
+async fn test_multiple_clients_modifikation_from_and_to_snapshot() {}

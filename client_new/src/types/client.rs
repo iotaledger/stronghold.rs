@@ -76,7 +76,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub fn vault(&mut self, vault_path: Location) -> ClientVault {
+    pub fn vault(&self, vault_path: Location) -> ClientVault {
         let (vault_id, _) = vault_path.resolve();
 
         ClientVault {
@@ -145,7 +145,7 @@ impl Client {
     /// # Example
     /// ```no_run
     /// ```
-    pub async fn execute_procedure<P>(&mut self, procedure: P) -> Result<P::Output, ProcedureError>
+    pub async fn execute_procedure<P>(&self, procedure: P) -> Result<P::Output, ProcedureError>
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
@@ -160,7 +160,7 @@ impl Client {
     /// ```no_run
     /// ```
     pub async fn execure_procedure_chained(
-        &mut self,
+        &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {
         let mut out = Vec::new();

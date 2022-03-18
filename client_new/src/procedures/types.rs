@@ -50,7 +50,8 @@ pub trait Procedure: Sized {
     // Non-secret output type.
     type Output: TryFrom<ProcedureOutput>;
 
-    fn execute<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError>;
+    // made immutable
+    fn execute<R: Runner>(self, _runner: &R) -> Result<Self::Output, ProcedureError>;
 }
 
 /// Trait for procedures that generate a new secret.
@@ -61,7 +62,7 @@ pub trait GenerateSecret: Sized {
 
     fn target(&self) -> (&Location, RecordHint);
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let (target, hint) = self.target();
         let target = target.clone();
         let Products { output, secret } = self.generate()?;
@@ -80,7 +81,7 @@ pub trait DeriveSecret: Sized {
 
     fn target(&self) -> (&Location, RecordHint);
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
         let (target, hint) = self.target();
         let target = target.clone();
@@ -98,7 +99,7 @@ pub trait UseSecret: Sized {
 
     fn source(&self) -> &Location;
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
         let f = |guard| self.use_secret(guard);
         let output = runner.get_guard(&source, f)?;

@@ -56,7 +56,7 @@ pub enum StrongholdProcedure {
 impl Procedure for StrongholdProcedure {
     type Output = ProcedureOutput;
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         use StrongholdProcedure::*;
         match self {
             WriteVault(proc) => proc.execute(runner).map(|o| o.into()),
@@ -138,7 +138,7 @@ macro_rules! procedures {
             impl Procedure for $Proc {
                 type Output = <$Proc as $Trait>::Output;
 
-                fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+                fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
                     self.exec(runner)
                 }
             }
@@ -199,7 +199,7 @@ pub struct RevokeData {
 
 impl Procedure for RevokeData {
     type Output = ();
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         runner.revoke_data(&self.location)?;
         if self.should_gc {
             runner.garbage_collect(self.location.resolve().0);
@@ -217,7 +217,7 @@ pub struct GarbageCollect {
 impl Procedure for GarbageCollect {
     type Output = ();
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let vault_id = derive_vault_id(self.vault_path);
         runner.garbage_collect(vault_id);
         Ok(())
