@@ -3,7 +3,11 @@
 
 use std::{error::Error, path::Path};
 
-use crate::{Client, KeyProvider, Store, Stronghold, Vault};
+use crate::{
+    procedures::{GenerateKey, KeyType, StrongholdProcedure},
+    Client, KeyProvider, Store, Stronghold, Vault,
+};
+use engine::vault::RecordHint;
 use zeroize::Zeroize;
 
 /// This is a testing stub and MUST be removed, if the actual implementation
@@ -40,7 +44,17 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     let snapshot = Snapshot::try_from("/path/to/snapshot")?;
 
-    let client = Client::default();
+    // no mutability allowed!
+    let mut client = Client::default();
+
+    let generate_key_procedure = GenerateKey {
+        ty: KeyType::Ed25519,
+        output: crate::Location::generic(b"".to_vec(), b"".to_vec()),
+        hint: RecordHint::new(b"").unwrap(),
+    };
+    client
+        .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
+        .await?;
 
     let store = client.store().await;
 

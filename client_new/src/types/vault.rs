@@ -1,6 +1,9 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use crate::Result;
+use crate::{
+    procedures::{Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
+    Result,
+};
 
 /// Thin layer over [`engine::Vault`]
 pub struct Vault {}
@@ -21,10 +24,6 @@ impl Vault {
     }
 
     pub async fn garbage_collect(&self) {
-        todo!()
-    }
-
-    pub async fn execute_procedure() -> Result<()> {
         todo!()
     }
 }

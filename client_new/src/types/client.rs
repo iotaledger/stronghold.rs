@@ -14,8 +14,11 @@ use engine::{
 };
 
 use crate::{
-    procedures::{FatalProcedureError, Products, Runner},
-    KeyStore, Location, Provider, Store, Vault,
+    derive_vault_id,
+    procedures::{
+        FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
+    },
+    ClientError, KeyStore, Location, Provider, Store, Vault,
 };
 
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
@@ -50,11 +53,19 @@ impl Drop for Client {
 
 impl Client {
     /// Returns an atomic reference to the [`Store`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn store(&self) -> Arc<Store> {
         self.store.clone()
     }
 
     /// Returns a [`Vault`] according to path
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn vault<P>(&self, path: P) -> Vault
     where
         P: AsRef<Vec<u8>>,
@@ -62,132 +73,98 @@ impl Client {
         todo!()
     }
 
-    /// Returns ok, if a vault exists
-    pub async fn check_vault(&self) -> Result<(), Box<dyn Error>> {
-        todo!()
+    /// Returns `true`, if a vault exists
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn vault_exists<P>(&self, vault_path: P) -> bool
+    where
+        P: AsRef<Vec<u8>>,
+    {
+        let vault_id = derive_vault_id(vault_path);
+        self.keystore.vault_exists(vault_id)
     }
 
     /// Returns Ok, if the record exists
-    pub async fn check_record(&self) -> Result<(), Box<dyn Error>> {
-        todo!()
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn record_exists(&mut self, location: Location) -> Result<bool, ClientError> {
+        let (vault_id, record_id) = location.resolve();
+        let result = match self.keystore.take_key(vault_id) {
+            Some(key) => {
+                let res = self.db.contains_record(&key, vault_id, record_id);
+                self.keystore.insert_key(vault_id, key);
+                res
+            }
+            None => false,
+        };
+        Ok(result)
     }
 
     /// Returns the [`ClientId`] of the client
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn id(&self) -> &ClientId {
         &self.id
     }
 
+    /// Writes all the changes into the snapshot
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn update<S>(&self, snapshot: S) -> Result<(), Box<dyn Error>> {
         todo!()
     }
-}
 
-impl Runner for Client {
-    fn get_guard<F, T>(&mut self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    /// Executes a cryptographic [`Procedure`] and returns its output.
+    /// A cryptographic [`Procedure`] is the main operation on secrets.
+    ///
+    /// # Example
+    /// ```no_run
+    /// ```
+    pub async fn execute_procedure<P>(&mut self, procedure: P) -> Result<P::Output, ProcedureError>
     where
-        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
+        P: Procedure + Into<StrongholdProcedure>,
     {
-        let (vault_id, record_id) = location.resolve();
-        let key = self
-            .keystore
-            .take_key(vault_id)
-            .ok_or(VaultError::VaultNotFound(vault_id))?;
-
-        let mut ret = None;
-        let execute_procedure = |guard: Buffer<u8>| {
-            ret = Some(f(guard)?);
-            Ok(())
-        };
-        let res = self.db.get_guard(&key, vault_id, record_id, execute_procedure);
-        self.keystore.insert_key(vault_id, key);
-
-        match res {
-            Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(e),
-        }
+        let res = self.execure_procedure_chained(vec![procedure.into()]).await;
+        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
+        Ok(mapped)
     }
 
-    fn exec_proc<F, T>(
+    /// Executes a list of cryptographic [`Procedures`] sequentially and returns a collected output
+    ///
+    /// # Example
+    /// ```no_run
+    /// ```
+    pub async fn execure_procedure_chained(
         &mut self,
-        location0: &Location,
-        location1: &Location,
-        hint: RecordHint,
-        f: F,
-    ) -> Result<T, VaultError<FatalProcedureError>>
-    where
-        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>,
-    {
-        let (vid0, rid0) = location0.resolve();
-        let (vid1, rid1) = location1.resolve();
-
-        let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
-
-        let mut ret = None;
-        let execute_procedure = |guard: Buffer<u8>| {
-            let Products { output: plain, secret } = f(guard)?;
-            ret = Some(plain);
-            Ok(secret)
-        };
-
-        let res;
-        if vid0 == vid1 {
-            res = self
-                .db
-                .exec_proc(&key0, vid0, rid0, &key0, vid1, rid1, hint, execute_procedure);
-        } else {
-            if !self.keystore.vault_exists(vid1) {
-                let key1 = self
-                    .keystore
-                    .create_key(vid1)
-                    .ok_or_else(|| VaultError::Procedure("Failed to generate key from keystore".to_string().into()))?;
-                self.db.init_vault(&key1, vid1);
+        procedures: Vec<StrongholdProcedure>,
+    ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {
+        let mut out = Vec::new();
+        let mut log = Vec::new();
+        // Execute the procedures sequentially.
+        for proc in procedures {
+            if let Some(output) = proc.output() {
+                log.push(output);
             }
-            let key1 = self.keystore.take_key(vid1).unwrap();
-            res = self
-                .db
-                .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
-            self.keystore.insert_key(vid1, key1);
+            let output = match proc.execute(self) {
+                Ok(o) => o,
+                Err(e) => {
+                    for location in log {
+                        let _ = self.revoke_data(&location);
+                    }
+                    return Err(e);
+                }
+            };
+            out.push(output);
         }
-
-        self.keystore.insert_key(vid0, key0);
-
-        match res {
-            Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError> {
-        let (vault_id, record_id) = location.resolve();
-        if !self.keystore.vault_exists(vault_id) {
-            // The error type mapped to the possible key creation error is semantically incorrect
-            let key = self.keystore.create_key(vault_id).ok_or(RecordError::InvalidKey)?;
-            self.db.init_vault(&key, vault_id);
-        }
-        let key = self.keystore.take_key(vault_id).unwrap();
-        let res = self.db.write(&key, vault_id, record_id, &value, hint);
-        self.keystore.insert_key(vault_id, key);
-        res
-    }
-
-    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError> {
-        let (vault_id, record_id) = location.resolve();
-        if let Some(key) = self.keystore.take_key(vault_id) {
-            let res = self.db.revoke_record(&key, vault_id, record_id);
-            self.keystore.insert_key(vault_id, key);
-            res?;
-        }
-        Ok(())
-    }
-
-    fn garbage_collect(&mut self, vault_id: VaultId) -> bool {
-        let key = match self.keystore.take_key(vault_id) {
-            Some(key) => key,
-            None => return false,
-        };
-        self.db.garbage_collect_vault(&key, vault_id);
-        self.keystore.insert_key(vault_id, key);
-        true
+        Ok(out)
     }
 }
 
