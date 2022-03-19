@@ -16,9 +16,13 @@ pub struct KeyStore<P: BoxProvider> {
     master_key: NCKey<P>,
 }
 
-impl<P: BoxProvider> KeyStore<P> {
-    #![allow(dead_code)]
+impl<P: BoxProvider> Default for KeyStore<P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
+impl<P: BoxProvider> KeyStore<P> {
     /// Creates a new [`KeyStore`].
     pub fn new() -> Self {
         Self {
