@@ -12,6 +12,7 @@ use crate::{
     internals::Provider,
     procedures::{Procedure, ProcedureError, ProcedureOutput, Runner},
     state::secure::SecureClient,
+    utils::derive_vault_id,
 };
 use actix::{Actor, ActorContext, Context, Handler, Message, MessageResult, Supervised};
 use engine::{
@@ -266,7 +267,7 @@ pub mod testing {
     }
 
     impl_handler!(ReadFromVault, Option<Vec<u8>>, (self, msg, _ctx), {
-        let (vid, rid) = Self::resolve_location(msg.location);
+        let (vid, rid) = msg.location.resolve();
 
         let key = self.keystore.take_key(vid)?;
 
@@ -303,7 +304,7 @@ impl_handler!(messages::ClearCache, (), (self, _msg, _ctx), {
 });
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
-    let (vault_id, record_id) = Self::resolve_location(msg.location);
+    let (vault_id, record_id) = msg.location.resolve();
 
     return match self.keystore.take_key(vault_id) {
         Some(key) => {
@@ -324,12 +325,12 @@ impl_handler!(messages::RevokeData, Result<(), RecordError>, (self, msg, _ctx), 
 });
 
 impl_handler!(messages::GarbageCollect, bool, (self, msg, _ctx), {
-    let (vault_id, _) = Self::resolve_location(msg.location);
+    let (vault_id, _) = msg.location.resolve();
     self.garbage_collect(vault_id)
 });
 
 impl_handler!(messages::ListIds, Vec<(RecordId, RecordHint)>, (self, msg, _ctx), {
-    let vault_id = Self::derive_vault_id(msg.vault_path);
+    let vault_id = derive_vault_id(msg.vault_path);
     let key = match self.keystore.take_key(vault_id) {
         Some(k) => k,
         None => return Vec::new(),
@@ -348,7 +349,7 @@ impl_handler!(messages::ReloadData, (), (self, msg, _ctx), {
 });
 
 impl_handler!(messages::CheckVault, bool, (self, msg, _ctx), {
-    let vid = Self::derive_vault_id(msg.vault_path);
+    let vid = derive_vault_id(msg.vault_path);
     self.keystore.vault_exists(vid)
 });
 

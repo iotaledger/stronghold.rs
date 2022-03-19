@@ -18,7 +18,6 @@ use crate::{
         Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType, MnemonicLanguage, PublicKey, Sha2Hash, Slip10Derive,
         Slip10DeriveInput, Slip10Generate, X25519DiffieHellman,
     },
-    state::secure::SecureClient,
     Location, Stronghold,
 };
 
@@ -92,15 +91,9 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
 
     let list = sh.list_hints_and_ids(vault_path).await?;
     assert_eq!(list.len(), 2);
-    let (_, hint) = list
-        .iter()
-        .find(|(id, _)| *id == SecureClient::resolve_location(seed.clone()).1)
-        .unwrap();
+    let (_, hint) = list.iter().find(|(id, _)| *id == seed.resolve().1).unwrap();
     assert_eq!(*hint, seed_hint);
-    let (_, hint) = list
-        .iter()
-        .find(|(id, _)| *id == SecureClient::resolve_location(key.clone()).1)
-        .unwrap();
+    let (_, hint) = list.iter().find(|(id, _)| *id == key.resolve().1).unwrap();
     assert_eq!(*hint, key_hint);
     Ok(())
 }

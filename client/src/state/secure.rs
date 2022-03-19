@@ -8,13 +8,12 @@ use crate::{
     internals,
     procedures::{FatalProcedureError, Products, Runner},
     state::key_store::KeyStore,
-    utils::LoadFromPath,
     Location,
 };
 use engine::{
     new_runtime::memories::buffer::Buffer,
     store::Cache,
-    vault::{ClientId, DbView, RecordHint, RecordId, VaultId},
+    vault::{ClientId, DbView, RecordHint, VaultId},
 };
 use std::time::Duration;
 
@@ -78,63 +77,9 @@ impl SecureClient {
         self.store = store;
     }
 
-    /// Resolves a location to a `VaultId` and a `RecordId`
-    pub fn resolve_location<L: AsRef<Location>>(l: L) -> (VaultId, RecordId) {
-        match l.as_ref() {
-            Location::Generic {
-                vault_path,
-                record_path,
-            } => {
-                let vid = Self::derive_vault_id(vault_path);
-                let rid = RecordId::load_from_path(vid.as_ref(), record_path);
-                (vid, rid)
-            }
-            Location::Counter { vault_path, counter } => {
-                let vid = Self::derive_vault_id(vault_path);
-                let rid = Self::derive_record_id(vault_path, *counter);
-
-                (vid, rid)
-            }
-        }
-    }
-
-    /// Gets the [`VaultId`] from a specified path.
-    pub fn derive_vault_id<P: AsRef<Vec<u8>>>(path: P) -> VaultId {
-        VaultId::load_from_path(path.as_ref(), path.as_ref())
-    }
-
-    /// Derives the counter [`RecordId`] from the given vault path and the counter value.
-    pub fn derive_record_id<P: AsRef<Vec<u8>>>(vault_path: P, ctr: usize) -> RecordId {
-        let vault_path = vault_path.as_ref();
-
-        let path = if ctr == 0 {
-            format!("{:?}{}", vault_path, "first_record")
-        } else {
-            format!("{:?}{}", vault_path, ctr)
-        };
-
-        RecordId::load_from_path(path.as_bytes(), path.as_bytes())
-    }
-
     /// Gets the client string.
     pub fn get_client_str(&self) -> String {
         self.client_id.into()
-    }
-
-    /// Gets the current index of a record if its a counter.
-    pub fn get_index_from_record_id<P: AsRef<Vec<u8>>>(&self, vault_path: P, record_id: RecordId) -> usize {
-        let mut ctr = 0;
-        let vault_path = vault_path.as_ref();
-
-        while ctr <= 32_000_000 {
-            let rid = Self::derive_record_id(vault_path, ctr);
-            if record_id == rid {
-                break;
-            }
-            ctr += 1;
-        }
-
-        ctr
     }
 }
 
@@ -143,7 +88,7 @@ impl Runner for SecureClient {
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
     {
-        let (vault_id, record_id) = Self::resolve_location(location);
+        let (vault_id, record_id) = location.resolve();
         let key = self
             .keystore
             .take_key(vault_id)
@@ -173,8 +118,8 @@ impl Runner for SecureClient {
     where
         F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>,
     {
-        let (vid0, rid0) = Self::resolve_location(location0);
-        let (vid1, rid1) = Self::resolve_location(location1);
+        let (vid0, rid0) = location0.resolve();
+        let (vid1, rid1) = location1.resolve();
 
         let key0 = self.keystore.take_key(vid0).ok_or(VaultError::VaultNotFound(vid0))?;
 
@@ -211,7 +156,7 @@ impl Runner for SecureClient {
     }
 
     fn write_to_vault(&mut self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError> {
-        let (vault_id, record_id) = Self::resolve_location(location);
+        let (vault_id, record_id) = location.resolve();
         if !self.keystore.vault_exists(vault_id) {
             let key = self.keystore.create_key(vault_id);
             self.db.init_vault(key, vault_id);
@@ -223,7 +168,7 @@ impl Runner for SecureClient {
     }
 
     fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError> {
-        let (vault_id, record_id) = Self::resolve_location(location);
+        let (vault_id, record_id) = location.resolve();
         if let Some(key) = self.keystore.take_key(vault_id) {
             let res = self.db.revoke_record(&key, vault_id, record_id);
             self.keystore.insert_key(vault_id, key);
@@ -240,57 +185,5 @@ impl Runner for SecureClient {
         self.db.garbage_collect_vault(&key, vault_id);
         self.keystore.insert_key(vault_id, key);
         true
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use crate::Provider;
-
-    #[test]
-    fn test_rid_internals() {
-        let clientid = ClientId::random::<Provider>().unwrap();
-
-        let vault_path = b"some_vault".to_vec();
-
-        let client: SecureClient = SecureClient::new(clientid);
-        let mut ctr = 0;
-        let mut ctr2 = 0;
-
-        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
-
-        ctr += 1;
-        ctr2 += 1;
-
-        let _rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
-        let _rid2 = SecureClient::derive_record_id(vault_path.clone(), ctr2);
-
-        ctr += 1;
-
-        let rid = SecureClient::derive_record_id(vault_path.clone(), ctr);
-
-        let test_rid = SecureClient::derive_record_id(vault_path.clone(), 2);
-        let ctr = client.get_index_from_record_id(vault_path, rid);
-
-        assert_eq!(test_rid, rid);
-        assert_eq!(2, ctr);
-    }
-
-    #[test]
-    fn test_location_counter_api() {
-        let vidlochead = Location::counter::<_, usize>("some_vault", 0);
-        let vidlochead2 = Location::counter::<_, usize>("some_vault 2", 0);
-
-        let (_, rid) = SecureClient::resolve_location(&vidlochead);
-        let (_, rid2) = SecureClient::resolve_location(&vidlochead2);
-
-        let (_, rid_head) = SecureClient::resolve_location(&vidlochead);
-        let (_, rid_head_2) = SecureClient::resolve_location(&vidlochead2);
-
-        assert_eq!(rid, rid_head);
-        assert_eq!(rid2, rid_head_2);
     }
 }

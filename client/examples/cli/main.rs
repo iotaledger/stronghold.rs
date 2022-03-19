@@ -39,10 +39,11 @@ async fn write_to_store_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
     }
 
     stronghold
@@ -51,7 +52,7 @@ async fn write_to_store_command(
         .unwrap();
 
     stronghold
-        .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+        .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
         .await
         .unwrap()
         .unwrap();
@@ -75,10 +76,11 @@ async fn encrypt_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
     }
 
     stronghold
@@ -93,7 +95,7 @@ async fn encrypt_command(
         .unwrap();
 
     stronghold
-        .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+        .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
         .await
         .unwrap()
         .unwrap();
@@ -123,12 +125,13 @@ async fn snapshot_command(
 
     if input.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), None, Some(input))
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), Some(input), None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
         stronghold
-            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
             .unwrap()
             .unwrap();
@@ -154,10 +157,11 @@ async fn list_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
 
         let list = stronghold
             .list_hints_and_ids(Location::generic(path, path).vault_path().to_vec())
@@ -189,10 +193,11 @@ async fn read_from_store_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
 
         let data = stronghold.read_from_store(rpath.into()).await.unwrap();
 
@@ -221,14 +226,15 @@ async fn delete_from_store_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
 
         stronghold.delete_from_store(rpath.into()).await.unwrap();
         stronghold
-            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
             .unwrap()
             .unwrap();
@@ -257,10 +263,11 @@ async fn revoke_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
         stronghold
             .delete_data(Location::generic(id, id), false)
             .await
@@ -268,7 +275,7 @@ async fn revoke_command(
             .unwrap();
 
         stronghold
-            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
             .unwrap()
             .unwrap();
@@ -296,10 +303,11 @@ async fn garbage_collect_vault_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
 
         let location = Location::generic(id, id);
         stronghold
@@ -314,7 +322,7 @@ async fn garbage_collect_vault_command(
         println!("{:?}", list);
 
         stronghold
-            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
             .unwrap()
             .unwrap();
@@ -343,10 +351,11 @@ async fn purge_command(
 
     if snapshot.exists() {
         stronghold
-            .read_snapshot(client_path, None, &key.to_vec(), Some("commandline".to_string()), None)
+            .read_snapshot(&key.to_vec(), Some("commandline".to_string()), None, None)
             .await
             .unwrap()
             .unwrap();
+        stronghold.load_client(client_path, None).await.unwrap().unwrap();
         let location = Location::generic(id, id);
         stronghold.delete_data(location.clone(), true).await.unwrap().unwrap();
         let list = stronghold
@@ -357,7 +366,7 @@ async fn purge_command(
         println!("{:?}", list);
 
         stronghold
-            .write_all_to_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
+            .write_snapshot(&key.to_vec(), Some("commandline".to_string()), None)
             .await
             .unwrap()
             .unwrap();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{ActorError, Location, RecordHint, Stronghold};
-use stronghold_utils::random::bytestring;
+use stronghold_utils::random::{self, bytestring};
 
 #[actix::test]
 async fn test_stronghold() {
@@ -122,13 +122,26 @@ async fn test_stronghold() {
     stronghold.garbage_collect(vault_path).await.unwrap();
 
     stronghold
-        .write_all_to_snapshot(&key_data, Some("test0".into()), None)
+        .write_snapshot(&key_data, Some("test0".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
 
+    stronghold.kill_stronghold(client_path.clone(), true).await.unwrap();
+
     stronghold
-        .read_snapshot(client_path.clone(), None, &key_data, Some("test0".into()), None)
+        .read_snapshot(&key_data, Some("test0".into()), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .spawn_stronghold_actor(client_path.clone(), vec![])
+        .await
+        .unwrap();
+
+    stronghold
+        .load_client(client_path.clone(), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -250,7 +263,7 @@ async fn run_stronghold_multi_actors() {
     println!("actor 0: {:?}", ids);
 
     stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
+        .write_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
@@ -266,13 +279,13 @@ async fn run_stronghold_multi_actors() {
         .unwrap();
 
     stronghold
-        .read_snapshot(
-            client_path2.clone(),
-            Some(client_path1.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
+        .read_snapshot(&key_data, Some("megasnap".into()), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .load_client(client_path2.clone(), Some(client_path1.clone()))
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -329,13 +342,7 @@ async fn run_stronghold_multi_actors() {
         .unwrap();
 
     stronghold
-        .read_snapshot(
-            client_path3,
-            Some(client_path0.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
+        .load_client(client_path3, Some(client_path0.clone()))
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
@@ -382,8 +389,57 @@ async fn test_stronghold_generics() {
     assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
     stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None)
+        .write_snapshot(&key_data.to_vec(), Some("generic".into()), None)
         .await
         .unwrap_or_else(|e| panic!("Actor error: {}", e))
         .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
+}
+
+#[actix::test]
+async fn test_store_snapshot_key() {
+    let key_data: Vec<u8> = random::random::<[u8; 32]>().into();
+    let client_path = random::bytestring(1024);
+
+    let loc = Location::counter::<_, usize>("path", 0);
+    let data = random::bytestring(1024);
+    let snapshot_key_loc = Location::generic(random::string(256), random::string(256));
+    let snapshot = "test_store_snapshot_key".to_string();
+
+    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
+        .await
+        .unwrap();
+
+    assert!(stronghold
+        .write_to_vault(loc.clone(), data.clone(), RecordHint::new(b"").unwrap(), vec![])
+        .await
+        .is_ok());
+
+    stronghold
+        .store_snapshot_key(&key_data, snapshot_key_loc.clone())
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
+
+    stronghold
+        .write_snapshot_stored_key(snapshot_key_loc, Some(snapshot.clone()), None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
+
+    stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
+
+    stronghold
+        .read_snapshot(&key_data, Some(snapshot), None, None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    stronghold
+        .load_client(client_path.clone(), None)
+        .await
+        .unwrap_or_else(|e| panic!("Actor error: {}", e))
+        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
+
+    let p = stronghold.read_secret(client_path, loc).await.unwrap();
+    assert_eq!(p.unwrap(), data);
 }
