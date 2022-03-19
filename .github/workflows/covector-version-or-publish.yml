@@ -10,7 +10,7 @@ on:
   push:
     branches:
       - dev
-      - dev-refactor
+    #  - dev-refactor
 
 jobs:
   version-or-publish:

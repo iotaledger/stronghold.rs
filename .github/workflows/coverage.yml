@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - dev
-      - dev-refactor
+    #  - dev-refactor
       - main
     paths:
       - '**.rs'
