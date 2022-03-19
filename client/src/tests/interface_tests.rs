@@ -403,7 +403,7 @@ async fn test_store_snapshot_key() {
     let loc = Location::counter::<_, usize>("path", 0);
     let data = random::bytestring(1024);
     let snapshot_key_loc = Location::generic(random::string(256), random::string(256));
-    let snapshot = random::string(16);
+    let snapshot = "test_store_snapshot_key".to_string();
 
     let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
         .await
