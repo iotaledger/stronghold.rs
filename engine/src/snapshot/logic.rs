@@ -75,6 +75,9 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     // write public key into output.
     output.write_all(&ephemeral_pk_bytes)?;
 
+    println!("wrote ephemeral_pk_bytes");
+
+
     // secret key now expects an array
     let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
     key_bytes.clone_from_slice(key);
@@ -106,9 +109,13 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
         .map_err(|e| WriteError::CorruptedData(format!("Encryption failed: {}", e)))?;
 
+    println!("did encryption: ct: {:?}", ct);
+
     // write tag and ciphertext into the output.
     output.write_all(&tag)?;
+    println!("wrote tag");
     output.write_all(&ct)?;
+    println!("wrote ct");
 
     Ok(())
 }
@@ -173,9 +180,11 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
 
     let compressed_plain = compress(plain);
+    println!("writing with key: {:?}", key);
 
     let mut salt = [0u8; 6];
     rand::fill(&mut salt).map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
+    println!("salt: {:?}", salt);
 
     let mut s = path.as_os_str().to_os_string();
     s.push(".");
@@ -186,8 +195,10 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     // write magic and version bytes
     f.write_all(&MAGIC)?;
     f.write_all(&VERSION)?;
+    println!("wrote MAGIC and VERSION");
     write(&compressed_plain, &mut f, key, associated_data)?;
     f.sync_all()?;
+    println!("sync all");
 
     rename(tmp, path)?;
 
