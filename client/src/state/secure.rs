@@ -100,7 +100,7 @@ impl Runner for SecureClient {
             Ok(())
         };
         let res = self.db.get_guard(&key, vault_id, record_id, execute_procedure);
-        self.keystore.entry_or_insert_key(vault_id, key);
+        self.keystore.insert_key(vault_id, key);
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
@@ -144,10 +144,10 @@ impl Runner for SecureClient {
             res = self
                 .db
                 .exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
-            self.keystore.entry_or_insert_key(vid1, key1);
+            self.keystore.insert_key(vid1, key1);
         }
 
-        self.keystore.entry_or_insert_key(vid0, key0);
+        self.keystore.insert_key(vid0, key0);
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
@@ -163,7 +163,7 @@ impl Runner for SecureClient {
         }
         let key = self.keystore.take_key(vault_id).unwrap();
         let res = self.db.write(&key, vault_id, record_id, &value, hint);
-        self.keystore.entry_or_insert_key(vault_id, key);
+        self.keystore.insert_key(vault_id, key);
         res
     }
 
@@ -171,7 +171,7 @@ impl Runner for SecureClient {
         let (vault_id, record_id) = location.resolve();
         if let Some(key) = self.keystore.take_key(vault_id) {
             let res = self.db.revoke_record(&key, vault_id, record_id);
-            self.keystore.entry_or_insert_key(vault_id, key);
+            self.keystore.insert_key(vault_id, key);
             res?;
         }
         Ok(())
@@ -183,7 +183,7 @@ impl Runner for SecureClient {
             None => return false,
         };
         self.db.garbage_collect_vault(&key, vault_id);
-        self.keystore.entry_or_insert_key(vault_id, key);
+        self.keystore.insert_key(vault_id, key);
         true
     }
 }

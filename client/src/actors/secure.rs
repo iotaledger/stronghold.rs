@@ -277,7 +277,7 @@ pub mod testing {
             data.extend_from_slice(&*guarded_data);
             Ok(())
         });
-        self.keystore.entry_or_insert_key(vid, key);
+        self.keystore.insert_key(vid, key);
 
         match res {
             Ok(()) => Some(data),
@@ -309,7 +309,7 @@ impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     return match self.keystore.take_key(vault_id) {
         Some(key) => {
             let res = self.db.contains_record(&key, vault_id, record_id);
-            self.keystore.entry_or_insert_key(vault_id, key);
+            self.keystore.insert_key(vault_id, key);
             res
         }
         None => false,
@@ -337,7 +337,7 @@ impl_handler!(messages::ListIds, Vec<(RecordId, RecordHint)>, (self, msg, _ctx),
     };
 
     let list = self.db.list_hints_and_ids(&key, vault_id);
-    self.keystore.entry_or_insert_key(vault_id, key);
+    self.keystore.insert_key(vault_id, key);
     list
 });
 

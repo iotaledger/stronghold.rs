@@ -3,17 +3,14 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::{
-    state::{key_store::KeyStore, secure::Store},
-    Location, Provider,
-};
+use crate::{state::secure::Store, Location, Provider};
 
 use engine::{
     snapshot::{
         self, read, read_from as read_from_file, write, write_to as write_to_file, Key, ReadError as EngineReadError,
         WriteError as EngineWriteError,
     },
-    vault::{ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
+    vault::{BoxProvider, ClientId, DbView, Key as PKey, KeyStore, RecordHint, RecordId, VaultId},
 };
 
 use serde::{Deserialize, Serialize};
@@ -27,7 +24,7 @@ pub type ClientState = (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Stor
 /// Wrapper for the [`SnapshotState`] data structure.
 pub struct Snapshot {
     // Keys for vaults in db and for the encrypted client states.
-    keystore: KeyStore,
+    keystore: KeyStore<Provider>,
     // Db with snapshot keys.
     db: DbView<Provider>,
     // Loaded snapshot states with each client state separately encrypted.
@@ -71,26 +68,28 @@ impl Snapshot {
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_snapshot_state(&self) -> Result<SnapshotState, SnapshotError> {
+    pub fn get_snapshot_state(&mut self) -> Result<SnapshotState, SnapshotError> {
         let mut state = SnapshotState::default();
-        for client_id in self.states.keys() {
-            let id = *client_id;
-            let client_state = self.get_state(id)?;
-            state.0.insert(id, client_state);
+        let ids: Vec<ClientId> = self.states.keys().cloned().collect();
+        for client_id in ids {
+            let client_state = self.get_state(client_id)?;
+            state.0.insert(client_id, client_state);
         }
         Ok(state)
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_state(&self, id: ClientId) -> Result<ClientState, SnapshotError> {
+    pub fn get_state(&mut self, id: ClientId) -> Result<ClientState, SnapshotError> {
         let vid = VaultId(id.0);
         let ((encrypted, store), key) = match self
             .states
             .get(&id)
-            .and_then(|state| self.keystore.get_key(vid).map(|pkey| (state, pkey)))
+            .and_then(|state| self.keystore.take_key(vid).map(|pkey| (state, pkey)))
             .and_then(|(state, pkey)| {
-                let pkey = &pkey.key;
-                pkey.borrow().deref().try_into().ok().map(|k| (state, k))
+                let k = &pkey.key;
+                let res = k.borrow().deref().try_into().ok().map(|k| (state, k));
+                self.keystore.insert_key(vid, pkey).ok()?;
+                res
             }) {
             Some(t) => t,
             None => return Ok((HashMap::default(), DbView::default(), Store::default())),
@@ -137,15 +136,21 @@ impl Snapshot {
             UseKey::Key(k) => k,
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
-                let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
+                let pkey = self
+                    .keystore
+                    .take_key(vid)
+                    .ok_or(SnapshotError::SnapshotKey(vid, rid))?;
                 let mut data = Vec::new();
-                self.db
-                    .get_guard::<Infallible, _>(pkey, vid, rid, |guarded_data| {
+                let res = self
+                    .db
+                    .get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
                         let guarded_data = guarded_data.borrow();
                         data.extend_from_slice(&*guarded_data);
                         Ok(())
                     })
-                    .map_err(|e| SnapshotError::Vault(format!("{}", e)))?;
+                    .map_err(|e| SnapshotError::Vault(format!("{}", e)));
+                self.keystore.insert_key(vid, pkey)?;
+                res?;
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
@@ -174,7 +179,7 @@ impl Snapshot {
         let mut buffer = Vec::new();
         write(&bytes, &mut buffer, &key, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
-        self.keystore.entry_or_insert_key(vault_id, pkey);
+        self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
         Ok(())
     }
@@ -186,10 +191,10 @@ impl Snapshot {
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
-        let key = self.keystore.create_key(vault_id);
+        let key = self.keystore.create_key(vault_id)?;
         self.db
             .write(
-                key,
+                &key,
                 vault_id,
                 record_id,
                 &snapshot_key,
@@ -216,11 +221,20 @@ pub enum SnapshotError {
 
     #[error("vault error: {0}")]
     Vault(String),
+
+    #[error("BoxProvider error: {0}")]
+    Provider(String),
 }
 
 impl From<bincode::Error> for SnapshotError {
     fn from(e: bincode::Error) -> Self {
         SnapshotError::CorruptedContent(format!("bincode error: {}", e))
+    }
+}
+
+impl From<<Provider as BoxProvider>::Error> for SnapshotError {
+    fn from(e: <Provider as BoxProvider>::Error) -> Self {
+        SnapshotError::Provider(format!("{:?}", e))
     }
 }
 
