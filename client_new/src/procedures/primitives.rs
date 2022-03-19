@@ -1,8 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::str::FromStr;
+
 use super::types::*;
-use crate::{derive_record_id, derive_vault_id, Client, Location};
+use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
@@ -280,6 +282,18 @@ pub enum Sha2Hash {
     Sha256,
     Sha384,
     Sha512,
+}
+
+impl FromStr for MnemonicLanguage {
+    type Err = ClientError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let converted = s.to_lowercase();
+        match converted.as_str() {
+            "english" => Ok(Self::English),
+            "japanese" => Ok(Self::Japanese),
+            _ => Err(ClientError::Inner("Illegal string provided".to_string())),
+        }
+    }
 }
 
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a

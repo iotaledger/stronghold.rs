@@ -126,4 +126,20 @@ impl Store {
             cache: self.cache.clone(),
         }
     }
+
+    /// Reloads the [`Store`] with a given [`Cache`]
+    ///
+    /// # Examples
+    /// ```
+    /// use iota_stronghold_new;
+    ///
+    /// let store = Store::default();
+    /// let cache = Cache::new(),
+    /// store.reload(cache);
+    /// ```
+    pub fn reload(&self, cache: Cache<Vec<u8>, Vec<u8>>) -> Result<(), ClientError> {
+        let mut inner = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        *inner = cache;
+        Ok(())
+    }
 }

@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(unused_imports)]
 
+use std::str::FromStr;
+
 use clap::{Parser, Subcommand};
 use engine::vault::RecordHint;
 use iota_stronghold_new as stronghold;
 use log::*;
 use stronghold::{
-    procedures::{GenerateKey, KeyType, StrongholdProcedure},
+    procedures::{BIP39Generate, GenerateKey, KeyType, MnemonicLanguage, StrongholdProcedure},
     Client, ClientError, ClientVault, Store,
 };
+use stronghold_utils::random as rand;
+use thiserror::Error as DeriveError;
 
 #[derive(Debug, Parser)]
 pub struct StrongholdCLI {
@@ -39,6 +43,26 @@ pub enum Command {
         #[clap(long)]
         value: String,
     },
+    #[clap(about = "Generates a BIP39 Mnemonic with an optional passphrase")]
+    BIP39Generate {
+        #[clap(long)]
+        passphrase: Option<String>,
+
+        #[clap(long)]
+        lang: MnemonicLanguage,
+
+        #[clap(long)]
+        vault_path: String,
+
+        #[clap(long)]
+        record_path: String,
+    },
+    Slip10Generate {},
+}
+
+/// Returns a fixed sized vector of random bytes
+fn fixed_random_bytes(length: usize) -> Vec<u8> {
+    std::iter::repeat_with(rand::random::<u8>).take(length).collect()
 }
 
 async fn command_write_and_read_from_store(key: String, value: String) -> Result<(), ClientError> {
@@ -115,6 +139,29 @@ async fn command_generate_key(key_type: String, vault_path: String, record_path:
     info!(r#"Public key is "{}" (Base64)"#, base64::encode(output));
 }
 
+async fn command_generate_bip39(
+    passphrase: Option<String>,
+    language: MnemonicLanguage,
+    vault_path: String,
+    record_path: String,
+) {
+    let client = Client::default();
+
+    let output_location =
+        stronghold::Location::generic(vault_path.as_bytes().to_vec(), record_path.as_bytes().to_vec());
+
+    let bip39_procedure = BIP39Generate {
+        passphrase,
+        language,
+        output: output_location,
+        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
+    };
+
+    let result = client.execute_procedure(bip39_procedure).await.unwrap();
+
+    info!("BIP39 Mnemonic: {}", result);
+}
+
 #[tokio::main]
 async fn main() {
     let _logger = env_logger::builder()
@@ -135,5 +182,12 @@ async fn main() {
         Command::StoreReadWrite { key, value } => {
             command_write_and_read_from_store(key, value).await.unwrap();
         }
+        Command::BIP39Generate {
+            passphrase,
+            lang,
+            vault_path,
+            record_path,
+        } => command_generate_bip39(passphrase, lang, vault_path, record_path).await,
+        Command::Slip10Generate {} => todo!(),
     }
 }
