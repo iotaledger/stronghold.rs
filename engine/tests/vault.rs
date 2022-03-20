@@ -77,11 +77,11 @@ fn test_vaults() {
 
     assert_eq!(list0.len(), 1);
 
-    let b = view.contains_record(&key0, vid0, rid0);
+    let b = view.contains_record(vid0, rid0);
 
     assert!(b);
 
-    let b = view.contains_record(&key0, vid0, rid01);
+    let b = view.contains_record(vid0, rid01);
 
     assert!(!b);
 
