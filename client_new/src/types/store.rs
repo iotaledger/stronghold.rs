@@ -11,6 +11,7 @@ use std::{
 
 use crate::ClientError;
 use engine::store::Cache;
+use serde::{Deserialize, Serialize};
 
 /// The [`StoreGuard`] wraps the [`RwLocKReadGuard`] with an associated key. The
 /// inner value can simply be accessed by a custom `deref` function
@@ -40,6 +41,16 @@ impl Default for Store {
     fn default() -> Self {
         Self {
             cache: Arc::new(RwLock::new(Cache::default())),
+        }
+    }
+}
+
+impl Clone for Store {
+    fn clone(&self) -> Self {
+        let cloned = self.cache.read().expect("").clone();
+
+        Self {
+            cache: Arc::new(RwLock::new(cloned)),
         }
     }
 }
@@ -141,5 +152,25 @@ impl Store {
         let mut inner = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
         *inner = cache;
         Ok(())
+    }
+}
+
+// compatibility implementation
+
+impl Serialize for Store {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+
+impl<'a> Deserialize<'a> for Store {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'a>,
+    {
+        todo!()
     }
 }
