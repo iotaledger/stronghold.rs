@@ -1,46 +1,113 @@
-// Copyright 2020-2021 IOTA Stiftung
+// Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![allow(clippy::type_complexity)]
+//! This module contains the  Stronghold snapshot interface.
+//! A snapshot is a current view of the memory state inside all [`Client`]s
 
-use crate::{
-    state::{key_store::KeyStore, secure::Store},
-    Location, Provider,
-};
+#![allow(clippy::type_complexity)]
 
 use engine::{
     snapshot::{
         self, read, read_from as read_from_file, write, write_to as write_to_file, Key, ReadError as EngineReadError,
         WriteError as EngineWriteError,
     },
+    store::Cache,
     vault::{BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
 };
-
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::Infallible, io, ops::Deref, path::Path};
+use std::{
+    collections::HashMap,
+    convert::Infallible,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 use stronghold_utils::random;
-use thiserror::Error as DeriveError;
 
-type EncryptedClientState = (Vec<u8>, Store);
-pub type ClientState = (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store);
+use crate::{KeyStore, Location, Provider, SnapshotError};
+
+type EncryptedClientState = (Vec<u8>, Cache<Vec<u8>, Vec<u8>>);
+
+pub type ClientState = (
+    HashMap<VaultId, PKey<Provider>>,
+    DbView<Provider>,
+    Cache<Vec<u8>, Vec<u8>>,
+);
 
 /// Wrapper for the [`SnapshotState`] data structure.
+#[derive(Default)]
 pub struct Snapshot {
     // Keys for vaults in db and for the encrypted client states.
-    keystore: KeyStore,
+    keystore: KeyStore<Provider>,
     // Db with snapshot keys.
     db: DbView<Provider>,
     // Loaded snapshot states with each client state separately encrypted.
     states: HashMap<ClientId, EncryptedClientState>,
 }
 
-impl Default for Snapshot {
-    fn default() -> Self {
-        Snapshot {
-            keystore: KeyStore::new(),
-            db: DbView::new(),
-            states: HashMap::new(),
+// impl Default for Snapshot {
+//     fn default() -> Self {
+//         Snapshot {
+//             keystore: KeyStore::default(),
+//             db: DbView::default(),
+//             states: HashMap::default(),
+//         }
+//     }
+// }
+
+/// A handle for snapshot file locations.
+///
+/// # Examples
+/// ```no_run
+/// use iota_stronghold_new::SnapshotPath;
+///
+/// // set path to a known location for a snapshot file
+/// let named = SnapshotPath::named("snapshot-file");
+/// // set path to an absolute location for a snapshot file
+/// let path = SnapshotPath::from_path("/path/to/snapshot/file");
+/// ```
+#[derive(Clone, Debug)]
+pub struct SnapshotPath {
+    /// The absolute path to a snapshot file location
+    path: PathBuf,
+}
+
+impl SnapshotPath {
+    /// Creates a [`SnapshotPath`] by a known location for [`Snapshot`] files.
+    /// That is the home directory in most cases.
+    ///
+    /// # Example
+    pub fn named<P>(name: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        assert!(name.as_ref().is_relative());
+        // assert!(name.as_ref().is_file());
+        assert!(engine::snapshot::files::home_dir().is_ok());
+
+        let path = engine::snapshot::files::home_dir().unwrap();
+
+        Self { path: path.join(name) }
+    }
+
+    /// Creates a [`SnapshotPath`] by an absolute path for [`Snapshot`] files.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn from_path<P>(path: P) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        assert!(path.as_ref().is_absolute());
+
+        Self {
+            path: path.as_ref().to_path_buf(),
         }
+    }
+
+    /// Returns [`Self`] as Path
+    pub fn as_path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -77,6 +144,14 @@ impl Snapshot {
         for client_id in ids {
             let client_state = self.get_state(client_id)?;
             state.0.insert(client_id, client_state);
+            // match self.get_state(client_id) {
+            //     Ok(client_state) => {
+
+            //     }
+            //     Err(_) => {
+            //         // File not present, could not retrieve previous state
+            //     }
+            // };
         }
         Ok(state)
     }
@@ -91,11 +166,14 @@ impl Snapshot {
             .and_then(|(state, pkey)| {
                 let k = &pkey.key;
                 let res = k.borrow().deref().try_into().ok().map(|k| (state, k));
-                self.keystore.insert_key(vid, pkey);
+                self.keystore
+                    .get_or_insert_key(vid, pkey)
+                    .map_err(|e| SnapshotError::Inner(e.to_string()))
+                    .ok();
                 res
             }) {
             Some(t) => t,
-            None => return Ok((HashMap::default(), DbView::default(), Store::default())),
+            None => return Ok((HashMap::default(), DbView::default(), Cache::default())),
         };
         let decrypted = read(&mut encrypted.as_slice(), &key, &[])?;
         let (keys, db) = bincode::deserialize(&decrypted)?;
@@ -110,15 +188,16 @@ impl Snapshot {
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
     pub fn read_from_snapshot(
-        name: Option<&str>,
-        path: Option<&Path>,
+        snapshot_path: &SnapshotPath,
         key: Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        let data = match path {
-            Some(p) => read_from_file(p, &key, &[])?,
-            None => read_from_file(&snapshot::files::get_path(name)?, &key, &[])?,
-        };
+        // let data = match path {
+        //     Some(p) => read_from_file(p, &key, &[])?,
+        //     None => read_from_file(&snapshot::files::get_path(name)?, &key, &[])?,
+        // };
+
+        let data = read_from_file(snapshot_path.as_path(), &key, &[])?;
 
         let state = bincode::deserialize(&data)?;
         Snapshot::from_state(state, key, write_key)
@@ -126,10 +205,14 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
+    /// TODO: This should be split into two functions :
+    ///   - named_mut()
+    ///   - path_
     pub fn write_to_snapshot(
         &mut self,
-        name: Option<&str>,
-        path: Option<&Path>,
+        // name: Option<&str>,
+        // path: Option<&Path>,
+        snapshot_path: &SnapshotPath,
         use_key: UseKey,
     ) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
@@ -152,29 +235,38 @@ impl Snapshot {
                         Ok(())
                     })
                     .map_err(|e| SnapshotError::Vault(format!("{}", e)));
-                self.keystore.insert_key(vid, pkey);
+                self.keystore
+                    .insert_key(vid, pkey)
+                    .map_err(|e| SnapshotError::Inner(e.to_string()))
+                    .ok();
                 res?;
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
 
-        // TODO: This is a hack and probably should be removed when we add proper error handling.
-        let f = move || match path {
-            Some(p) => write_to_file(&data, p, &key, &[]),
-            None => write_to_file(&data, &snapshot::files::get_path(name)?, &key, &[]),
-        };
+        // // TODO: This is a hack and probably should be removed when we add proper error handling.
+        // let f = move || match path {
+        //     Some(p) => write_to_file(&data, p, &key, &[]),
+        //     None => write_to_file(&data, &snapshot::files::get_path(name)?, &key, &[]),
+        // };
 
-        match f() {
-            Ok(()) => Ok(()),
-            Err(_) => f().map_err(|e| e.into()),
-        }
+        // match f() {
+        //     Ok(()) => Ok(()),
+        //     Err(_) => f().map_err(|e| e.into()),
+        // }
+
+        write_to_file(&data, snapshot_path.as_path(), &key, &[]).map_err(|e| e.into())
     }
 
     /// Adds data to the snapshot state hashmap.
     pub fn add_data(
         &mut self,
         id: ClientId,
-        (keys, db, store): (HashMap<VaultId, PKey<Provider>>, DbView<Provider>, Store),
+        (keys, db, store): (
+            HashMap<VaultId, PKey<Provider>>,
+            DbView<Provider>,
+            Cache<Vec<u8>, Vec<u8>>,
+        ),
     ) -> Result<(), SnapshotError> {
         let bytes = bincode::serialize(&(keys, db))?;
         let vault_id = VaultId(id.0);
@@ -182,7 +274,9 @@ impl Snapshot {
         let mut buffer = Vec::new();
         write(&bytes, &mut buffer, &key, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
-        self.keystore.insert_key(vault_id, pkey);
+        self.keystore
+            .insert_key(vault_id, pkey)
+            .map_err(|e| SnapshotError::Inner(e.to_string()))?;
         self.states.insert(id, (buffer, store));
         Ok(())
     }
@@ -194,10 +288,11 @@ impl Snapshot {
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
-        let key = self.keystore.create_key(vault_id);
+        // this should return an error
+        let key = self.keystore.create_key(vault_id).expect("Could not create key");
         self.db
             .write(
-                key,
+                &key,
                 vault_id,
                 record_id,
                 &snapshot_key,
@@ -206,27 +301,6 @@ impl Snapshot {
             .map_err(|e| SnapshotError::Vault(format!("{}", e)))?;
         Ok(())
     }
-}
-
-#[derive(Debug, DeriveError)]
-pub enum SnapshotError {
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-
-    #[error("corrupted file: {0}")]
-    CorruptedContent(String),
-
-    #[error("invalid file {0}")]
-    InvalidFile(String),
-
-    #[error("missing or invalid snapshot key in {0:?} {1:?}")]
-    SnapshotKey(VaultId, RecordId),
-
-    #[error("vault error: {0}")]
-    Vault(String),
-
-    #[error("BoxProvider error: {0}")]
-    Provider(String),
 }
 
 impl From<bincode::Error> for SnapshotError {
@@ -260,7 +334,7 @@ impl From<EngineWriteError> for SnapshotError {
         match e {
             EngineWriteError::Io(io) => SnapshotError::Io(io),
             EngineWriteError::CorruptedData(e) => SnapshotError::CorruptedContent(e),
-            EngineWriteError::GenerateRandom(_) => SnapshotError::Io(io::ErrorKind::Other.into()),
+            EngineWriteError::GenerateRandom(_) => SnapshotError::Io(std::io::ErrorKind::Other.into()),
         }
     }
 }

@@ -101,6 +101,13 @@
         "stronghold-utils"
       ]
     },
+    "stronghold-rlu": {
+      "path": "./rlu/",
+      "manager": "rust",
+      "dependencies": [
+        "stronghold-engine"
+      ]
+    },
     "iota-stronghold": {
       "path": "./client/",
       "manager": "rust",

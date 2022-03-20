@@ -13,6 +13,7 @@ use std::{
 };
 
 /// The [`Cache`] struct used to store the data in an ordered format.
+// #[deprecated(note = "use [`stronghold_iota_new::client_new::types::cache::Cache")]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache<K, V>
 where
