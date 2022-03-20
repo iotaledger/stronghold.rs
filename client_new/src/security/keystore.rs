@@ -22,15 +22,11 @@ where
     master_key: NCKey<P>,
 }
 
-impl<P: BoxProvider> Default for KeyStore<P> {
+impl<P> Default for KeyStore<P>
+where
+    P: BoxProvider,
+{
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<P: BoxProvider> KeyStore<P> {
-    /// Creates a new [`KeyStore`].
-    pub fn new() -> Self {
         Self {
             store: HashMap::new(),
             master_key: NCKey::<P>::random(),
@@ -75,7 +71,7 @@ where
     /// [`Vec<Key<P>>`] and returns then a [`Vec<VaultId>`]; primarily used to repopulate the state from a
     /// snapshot.
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) -> Result<(), P::Error> {
-        let mut new_ks = KeyStore::new();
+        let mut new_ks = KeyStore::default();
         for (id, key) in keys.into_iter() {
             new_ks.insert_key(id, key)?;
         }

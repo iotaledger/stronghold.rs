@@ -24,6 +24,9 @@ pub enum ClientError {
 
     #[error("Inner error occured({0})")]
     Inner(String),
+
+    #[error("Error loading client data. No data present")]
+    ClientDataNotPresent,
 }
 
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;

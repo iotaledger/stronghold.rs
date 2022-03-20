@@ -35,13 +35,14 @@ impl TryFrom<Vec<u8>> for KeyProvider {
 
 impl KeyProvider {
     /// Tries to unlock the inner key and returns it.
-    /// If unlocking fails, a [`MemoryError`] ill be returned
+    /// If unlocking fails, a [`MemoryError`] will be returned
     /// This operations ensures, that the unlocked key will be fragmented,
     /// when it goes out of scope.
     ///
     /// # Example
     /// ```no_run
     /// use iota_stronghold_new::KeyProvider;
+    /// use std::ops::Deref;
     ///
     /// // crate some key data
     /// let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
@@ -63,7 +64,7 @@ impl KeyProvider {
     /// let inner_key = buffer_ref.deref();
     /// assert_eq!(keydata, inner_key.to_vec());
     /// ```
-    pub(crate) fn try_unlock(&self) -> Result<Buffer<u8>, MemoryError> {
+    pub fn try_unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         match self.inner.key.unlock() {
             Ok(inner) => Ok(inner),
             Err(memerror) => Err(memerror),

@@ -1,4 +1,4 @@
-// Copyright 2020-2021 IOTA Stiftung
+// Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
@@ -34,7 +34,7 @@ impl<'a> StoreGuard<'a> {
 }
 
 pub struct Store {
-    cache: Arc<RwLock<Cache<Vec<u8>, Vec<u8>>>>,
+    pub(crate) cache: Arc<RwLock<Cache<Vec<u8>, Vec<u8>>>>,
 }
 
 impl Default for Store {
@@ -105,10 +105,10 @@ impl Store {
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
     /// let data = b"some data".to_vec();
-    /// store.insert(key.clone(), data, None)?;
+    /// store.insert(key.clone(), data, None).unwrap();
     /// let deleted = store.delete(key.clone());
     /// assert!(deleted.is_ok());
-    /// assert!(store.get(key)?.deref().is_none());
+    /// assert!(store.get(key).unwrap().deref().is_none());
     /// ```
     pub fn delete(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
@@ -142,10 +142,11 @@ impl Store {
     ///
     /// # Examples
     /// ```
-    /// use iota_stronghold_new;
+    /// use engine::store::Cache;
+    /// use iota_stronghold_new::Store;
     ///
     /// let store = Store::default();
-    /// let cache = Cache::new(),
+    /// let cache = Cache::new();
     /// store.reload(cache);
     /// ```
     pub fn reload(&self, cache: Cache<Vec<u8>, Vec<u8>>) -> Result<(), ClientError> {

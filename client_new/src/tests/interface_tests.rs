@@ -5,32 +5,11 @@ use std::{borrow::BorrowMut, error::Error, path::Path};
 
 use crate::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
-    Client, ClientVault, KeyProvider, Location, Store, Stronghold,
+    Client, ClientVault, KeyProvider, Location, Snapshot, SnapshotPath, Store, Stronghold,
 };
 use engine::vault::RecordHint;
 use stronghold_utils::random as rand;
 use zeroize::Zeroize;
-
-/// This is a testing stub and MUST be removed, if the actual implementation
-/// is present
-struct Snapshot {}
-
-impl Snapshot {
-    pub fn named(filename: String) -> Self {
-        todo!()
-    }
-
-    pub fn try_from<P>(path: P) -> Result<Self, Box<dyn Error>>
-    where
-        P: AsRef<Path>,
-    {
-        todo!()
-    }
-
-    pub async fn write(&self) -> Result<(), Box<dyn Error>> {
-        todo!()
-    }
-}
 
 /// Returns a fixed sized vector of random bytes
 fn fixed_random_bytes(length: usize) -> Vec<u8> {
@@ -45,14 +24,14 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     // load the base type
     let stronghold = Stronghold::default();
 
-    let key = fixed_random_bytes(32);
+    let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
     let keyprovider = KeyProvider::try_from(key).map_err(|e| format!("Error {:?}", e))?;
-    let snapshot_path = "/path/to/snapshot";
+    let snapshot_path: SnapshotPath = SnapshotPath::named("testing-snapshot.snapshot");
 
-    // let snapshot = Snapshot::try_from("/path/to/snapshot")?;
+    let snapshot = Snapshot::default();
 
-    // no mutability allowed!
-    let client = Client::default();
+    // create a new empty client
+    let client = stronghold.create_client(client_path.clone()).await?;
 
     let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
 
@@ -79,7 +58,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     };
 
     let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
+        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()))
         .await;
 
     assert!(procedure_result.is_ok());
@@ -87,7 +66,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let procedure_result = procedure_result.unwrap();
     let output: Vec<u8> = procedure_result.into();
 
-    // some store operations
+    // some store data
     let store = client.store().await;
 
     let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
@@ -100,14 +79,33 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
         )
         .is_ok());
 
-    // Write the state of the client back into the snapshot
-    // client.update(&snapshot).await?;
+    // write client into snapshot
+    stronghold.write_client(client_path.clone()).await?;
 
-    // Write the current state into the snapshot
-    // snapshot.write().await?;
+    // commit all to snapshot file
+    stronghold.commit(&snapshot_path, &keyprovider).await?;
+
+    //// -- reset strongholad, re-load snapshot from disk
+
+    // reset stronghold
+    let stronghold = stronghold.reset();
+
+    let client = stronghold
+        .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
+        .await?;
+
+    // Write the state of the client back into the snapshot
+    let procedure_result = client
+        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
+        .await;
+
+    assert!(procedure_result.is_ok());
 
     Ok(())
 }
+
+#[tokio::test]
+async fn write_client_to_snapshot() {}
 
 #[tokio::test]
 async fn test_load_client_from_snapshot() {}

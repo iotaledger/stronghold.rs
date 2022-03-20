@@ -188,6 +188,6 @@ async fn main() {
             vault_path,
             record_path,
         } => command_generate_bip39(passphrase, lang, vault_path, record_path).await,
-        Command::Slip10Generate {} => todo!(),
+        Command::Slip10Generate {} => {}
     }
 }

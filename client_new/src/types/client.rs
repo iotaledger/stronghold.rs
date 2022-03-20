@@ -15,8 +15,10 @@ use crate::{
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
-    ClientError, ClientVault, KeyStore, Location, Provider, RecordError, Store,
+    ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, Store,
 };
+
+use super::snapshot;
 
 pub struct Client {
     // A keystore
@@ -48,12 +50,12 @@ impl Drop for Client {
 }
 
 impl Client {
-    /// Returns an [`Arc`] of  [`Self`] to be shared in concurrent setups
+    /// Returns [`Self`] with atomic references to the same client to be shared in concurrent setups
     ///
     /// # Example
     /// ```no_run
     /// ```
-    fn atomic_ref(&self) -> Client {
+    pub(crate) fn atomic_ref(&self) -> Client {
         Self {
             keystore: self.keystore.clone(),
             db: self.db.clone(),
@@ -132,13 +134,39 @@ impl Client {
         &self.id
     }
 
-    /// Writes all the changes into the snapshot
+    /// Loads the state of [`Self`] from a [`ClientState`]. Replaces all previous data.
     ///
     /// # Example
     /// ```
     /// ```
-    pub async fn update<S>(&self, snapshot: S) -> Result<(), Box<dyn Error>> {
-        todo!()
+    pub async fn load(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
+        let (keys, db, st) = state;
+
+        // reload keystore
+        let mut keystore = self.keystore.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut new_keystore = KeyStore::<Provider>::default();
+        new_keystore
+            .rebuild_keystore(keys)
+            .map_err(|e| ClientError::Inner(e.to_string()))?;
+
+        *keystore = new_keystore;
+        drop(keystore);
+
+        // reload db
+        let mut view = self.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        *view = db;
+        drop(view);
+
+        // reload store
+        let mut store = self
+            .store
+            .cache
+            .try_write()
+            .map_err(|_| ClientError::LockAcquireFailed)?;
+        *store = st;
+        drop(store);
+
+        Ok(())
     }
 
     /// Executes a cryptographic [`Procedure`] and returns its output.

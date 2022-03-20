@@ -9,6 +9,7 @@ mod error;
 mod location;
 mod snapshot;
 mod store;
+mod stronghold;
 mod vault;
 
 // re-export imports
@@ -17,4 +18,5 @@ pub use error::*;
 pub use location::*;
 pub use snapshot::*;
 pub use store::*;
+pub use stronghold::*;
 pub use vault::*;
