@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use engine::vault::{Key, VaultId};
-
 use std::collections::HashMap;
 
 use crate::Provider;

@@ -72,7 +72,6 @@ impl<T: BoxProvider> Key<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
-    #[allow(dead_code)]
     pub fn load(key: Vec<u8>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
@@ -137,7 +136,6 @@ pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum DecryptError<E: Debug> {
     Invalid,
     Provider(E),
@@ -168,7 +166,6 @@ pub struct NCKey<T: BoxProvider> {
 
 impl<T: BoxProvider> NCKey<T> {
     /// generate a random key using secure random bytes
-    #[allow(dead_code)]
     pub fn random() -> Self {
         Self {
             key: {
@@ -188,7 +185,6 @@ impl<T: BoxProvider> NCKey<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
-    #[allow(dead_code)]
     pub fn load(key: Vec<u8>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
@@ -201,7 +197,6 @@ impl<T: BoxProvider> NCKey<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn encrypt_key<AD: AsRef<[u8]>>(&self, data: &Key<T>, ad: AD) -> Result<Vec<u8>, T::Error> {
         let key = Key {
             key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
@@ -210,7 +205,6 @@ impl<T: BoxProvider> NCKey<T> {
         T::box_seal(&key, ad.as_ref(), &*data.key.borrow())
     }
 
-    #[allow(dead_code)]
     pub fn decrypt_key<AD: AsRef<[u8]>>(&self, data: Vec<u8>, ad: AD) -> Result<Key<T>, DecryptError<T::Error>> {
         let key = Key {
             key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
@@ -221,7 +215,6 @@ impl<T: BoxProvider> NCKey<T> {
     }
 
     // /// get the key's bytes from the [`Buffer`]
-    // #[allow(dead_code)]
     // pub fn bytes<'a>(&'a self) -> Ref<'a, u8> {
     //     // hacks the guarded type.  Probably not the best solution.
     //     let buf = self.key.unlock().expect("Failed to unlock non-contiguous memory");

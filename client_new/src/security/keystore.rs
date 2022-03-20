@@ -22,11 +22,15 @@ where
     master_key: NCKey<P>,
 }
 
-impl<P> Default for KeyStore<P>
-where
-    P: BoxProvider,
-{
+impl<P: BoxProvider> Default for KeyStore<P> {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<P: BoxProvider> KeyStore<P> {
+    /// Creates a new [`KeyStore`].
+    pub fn new() -> Self {
         Self {
             store: HashMap::new(),
             master_key: NCKey::<P>::random(),
@@ -40,7 +44,6 @@ where
 {
     /// Gets the encrypted key from the [`KeyStore`] and removes it.
     /// Decrypt it with the `master_key` and `vault_id` as salt.
-    /// Returns an [`Option<Key<P>>`]
     pub fn take_key(&mut self, id: VaultId) -> Option<Key<P>> {
         let enc_key = self.store.remove(&id)?;
         self.master_key.decrypt_key(enc_key, id).ok()
@@ -54,29 +57,30 @@ where
     /// Creates a new key in the [`KeyStore`] if it does not exist yet
     /// Returns None if it fails
     /// Returns None if it fails
-    pub fn create_key(&mut self, id: VaultId) -> Option<Key<P>> {
+    pub fn create_key(&mut self, id: VaultId) -> Result<Key<P>, P::Error> {
         let vault_key = Key::random();
         self.insert_key(id, vault_key)
     }
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].
     /// If the [`VaultId`] already exists, it just returns the existing [`Key<P>`]
-    pub fn insert_key(&mut self, id: VaultId, key: Key<P>) -> Option<Key<P>> {
+    pub fn insert_key(&mut self, id: VaultId, key: Key<P>) -> Result<Key<P>, P::Error> {
         let vault_key = if let Some(key) = self.take_key(id) { key } else { key };
-        let enc_key = self.master_key.encrypt_key(&vault_key, id).ok()?;
+        let enc_key = self.master_key.encrypt_key(&vault_key, id)?;
         self.store.insert(id, enc_key);
-        Some(vault_key)
+        Ok(vault_key)
     }
 
     /// Rebuilds the [`KeyStore`] while throwing out any existing [`VaultId`], [`Key<P>`] pairs.  Accepts a
     /// [`Vec<Key<P>>`] and returns then a [`Vec<VaultId>`]; primarily used to repopulate the state from a
     /// snapshot.
-    pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) {
-        let mut new_ks = KeyStore::default();
+    pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) -> Result<(), P::Error> {
+        let mut new_ks = KeyStore::new();
         for (id, key) in keys.into_iter() {
-            new_ks.insert_key(id, key);
+            new_ks.insert_key(id, key)?;
         }
         *self = new_ks;
+        Ok(())
     }
 
     /// Gets the state data in a hashmap format for the snapshot.

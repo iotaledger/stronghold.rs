@@ -113,7 +113,9 @@ impl Client {
                 let mut db = self.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
 
                 let res = db.contains_record(&key, vault_id, record_id);
-                keystore.insert_key(vault_id, key);
+                keystore
+                    .insert_key(vault_id, key)
+                    .map_err(|_| ClientError::Inner("Insert Key into Vault failed".to_string()))?;
                 res
             }
             None => false,

@@ -7,20 +7,9 @@ use actix::{Actor, Handler, Message, Supervised};
 
 use std::path::PathBuf;
 
-use engine::{
-    snapshot,
-    vault::{ClientId, DbView, Key, VaultId},
-};
+use engine::{snapshot, vault::ClientId};
 
-use crate::{
-    internals,
-    state::{
-        secure::Store,
-        snapshot::{ReadError, Snapshot, SnapshotState, WriteError},
-    },
-    Provider,
-};
-use std::collections::HashMap;
+use crate::state::snapshot::{Snapshot, SnapshotError};
 
 /// re-export local modules
 pub use messages::*;
@@ -28,54 +17,73 @@ pub use returntypes::*;
 
 pub mod returntypes {
 
+    use crate::state::snapshot::ClientState;
+
     use super::*;
 
     /// Return type for loaded snapshot file
-    pub struct ReturnReadSnapshot {
+    pub struct ReturnClientState {
         pub id: ClientId,
 
-        pub data: Box<(
-            HashMap<VaultId, Key<internals::Provider>>,
-            DbView<internals::Provider>,
-            Store,
-        )>,
+        pub data: Box<ClientState>,
     }
 }
 
 pub mod messages {
 
+    use crate::{
+        state::snapshot::{ClientState, UseKey},
+        Location,
+    };
+
     use super::*;
 
     pub struct WriteSnapshot {
-        pub key: snapshot::Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
+        pub key: UseKey,
     }
 
     impl Message for WriteSnapshot {
-        type Result = Result<(), WriteError>;
+        type Result = Result<(), SnapshotError>;
     }
 
     pub struct FillSnapshot {
-        pub data: Box<(HashMap<VaultId, Key<Provider>>, DbView<Provider>, Store)>,
+        pub data: Box<ClientState>,
         pub id: ClientId,
     }
 
     impl Message for FillSnapshot {
-        type Result = ();
+        type Result = Result<(), SnapshotError>;
     }
 
-    #[derive(Default)]
-    pub struct ReadFromSnapshot {
+    pub struct ReadSnapshot {
         pub key: snapshot::Key,
         pub filename: Option<String>,
         pub path: Option<PathBuf>,
-        pub id: ClientId,
-        pub fid: Option<ClientId>,
+        // Write the key to the snapshot vault in memory.
+        pub write_key: Option<Location>,
     }
 
-    impl Message for ReadFromSnapshot {
-        type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
+    impl Message for ReadSnapshot {
+        type Result = Result<(), SnapshotError>;
+    }
+
+    pub struct LoadFromSnapshotState {
+        pub id: ClientId,
+    }
+
+    impl Message for LoadFromSnapshotState {
+        type Result = Result<returntypes::ReturnClientState, SnapshotError>;
+    }
+
+    pub struct StoreSnapshotKey {
+        pub location: Location,
+        pub key: snapshot::Key,
+    }
+
+    impl Message for StoreSnapshotKey {
+        type Result = Result<(), SnapshotError>;
     }
 }
 
@@ -87,50 +95,59 @@ impl Actor for Snapshot {
 impl Supervised for Snapshot {}
 
 impl Handler<messages::FillSnapshot> for Snapshot {
-    type Result = ();
+    type Result = Result<(), SnapshotError>;
 
     fn handle(&mut self, msg: messages::FillSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        self.state.add_data(msg.id, *msg.data);
+        self.add_data(msg.id, *msg.data)
     }
 }
 
-impl Handler<messages::ReadFromSnapshot> for Snapshot {
-    type Result = Result<returntypes::ReturnReadSnapshot, ReadError>;
+impl Handler<messages::ReadSnapshot> for Snapshot {
+    type Result = Result<(), SnapshotError>;
 
     /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
     /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
     /// for access.
-    fn handle(&mut self, msg: messages::ReadFromSnapshot, _ctx: &mut Self::Context) -> Self::Result {
-        let id = msg.fid.unwrap_or(msg.id);
+    fn handle(&mut self, msg: messages::ReadSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        let key_location = msg.write_key.map(|loc| loc.resolve());
+        *self = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key, key_location)?;
+        Ok(())
+    }
+}
 
-        if self.has_data(id) {
-            let data = self.get_state(id);
+impl Handler<messages::LoadFromSnapshotState> for Snapshot {
+    type Result = Result<returntypes::ReturnClientState, SnapshotError>;
 
-            Ok(ReturnReadSnapshot {
-                id,
-                data: Box::new(data),
-            })
-        } else {
-            let mut snapshot = Snapshot::read_from_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
-            let data = snapshot.get_state(id);
-            *self = snapshot;
+    /// This will try to read from a snapshot on disk, otherwise load from a local snapshot
+    /// in memory. Returns the loaded snapshot data, that must be loaded inside the client
+    /// for access.
+    fn handle(&mut self, msg: messages::LoadFromSnapshotState, _ctx: &mut Self::Context) -> Self::Result {
+        let data = self.get_state(msg.id)?;
 
-            Ok(ReturnReadSnapshot {
-                id,
-                data: Box::new(data),
-            })
-        }
+        Ok(ReturnClientState {
+            id: msg.id,
+            data: Box::new(data),
+        })
     }
 }
 
 impl Handler<messages::WriteSnapshot> for Snapshot {
-    type Result = Result<(), WriteError>;
+    type Result = Result<(), SnapshotError>;
 
     fn handle(&mut self, msg: messages::WriteSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         self.write_to_snapshot(msg.filename.as_deref(), msg.path.as_deref(), msg.key)?;
 
-        self.state = SnapshotState::default();
+        *self = Snapshot::default();
 
         Ok(())
+    }
+}
+
+impl Handler<messages::StoreSnapshotKey> for Snapshot {
+    type Result = Result<(), SnapshotError>;
+
+    fn handle(&mut self, msg: messages::StoreSnapshotKey, _ctx: &mut Self::Context) -> Self::Result {
+        let (vid, rid) = msg.location.resolve();
+        self.store_snapshot_key(msg.key, vid, rid)
     }
 }

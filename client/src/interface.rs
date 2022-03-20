@@ -13,14 +13,14 @@ use crate::{
             CheckRecord, CheckVault, ClearCache, DeleteFromStore, GarbageCollect, GetData, ListIds, Procedures,
             ReadFromStore, ReloadData, RevokeData, WriteToStore, WriteToVault,
         },
-        snapshot_messages::{FillSnapshot, ReadFromSnapshot, WriteSnapshot},
+        snapshot_messages::{FillSnapshot, LoadFromSnapshotState, ReadSnapshot, StoreSnapshotKey, WriteSnapshot},
         GetAllClients, GetClient, GetSnapshot, GetTarget, RecordError, Registry, RemoveClient, SpawnClient,
         SwitchTarget,
     },
     procedures::{Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
     state::{
         secure::SecureClient,
-        snapshot::{ReadError, WriteError},
+        snapshot::{SnapshotError, UseKey},
     },
     utils::{LoadFromPath, StrongholdFlags, VaultFlags},
     Location,
@@ -313,7 +313,14 @@ impl Stronghold {
         P: Procedure + Into<StrongholdProcedure>,
     {
         let res = self.runtime_exec_chained(vec![procedure.into()]).await?;
-        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        let mapped = res.map(|mut output| {
+            output
+                .pop()
+                .expect("output.len() == procedures.len()")
+                .try_into()
+                .ok()
+                .expect("conversion can never fail.")
+        });
         Ok(mapped)
     }
 
@@ -346,18 +353,62 @@ impl Stronghold {
         Ok(exists)
     }
 
-    /// Reads data from a given snapshot file.  Can only read the data for a single `client_path` at a time. If the new
-    /// actor uses a new `client_path` the former client path may be passed into the function call to read the data into
-    /// that actor. Also requires keydata to unlock the snapshot. A filename and filepath can be specified. The Keydata
-    /// should implement and use Zeroize.
+    /// Reads data from a given snapshot file into memory.
+    ///
+    /// Optionally store the keydata, see [`Stronghold::store_snapshot_key`].
     pub async fn read_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
-        client_path: Vec<u8>,
-        former_client_path: Option<Vec<u8>>,
         keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
-    ) -> StrongholdResult<Result<(), ReadError>> {
+        write_key: Option<Location>,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        let mut key: [u8; 32] = [0u8; 32];
+        let keydata = keydata.as_ref();
+        key.copy_from_slice(keydata);
+
+        // read the snapshots contents
+        let result = snapshot_actor
+            .send(ReadSnapshot {
+                key,
+                filename,
+                path,
+                write_key,
+            })
+            .await?;
+        Ok(result)
+    }
+
+    /// Secure the snapshot key in a vault during runtime.
+    /// On [`Stronghold::write_snapshot_stored_key`] the key can be used to encrypt the
+    /// snapshot without requiring the user to provide it again.
+    ///
+    /// **Note:** stored snapshot keys can only be used when writing a snapshot, but never on read.
+    pub async fn store_snapshot_key<T: Zeroize + AsRef<Vec<u8>>>(
+        &mut self,
+        keydata: &T,
+        location: Location,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
+        let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
+
+        let mut key: [u8; 32] = [0u8; 32];
+        let keydata = keydata.as_ref();
+        key.copy_from_slice(keydata);
+
+        let result = snapshot_actor.send(StoreSnapshotKey { key, location }).await?;
+        Ok(result)
+    }
+
+    /// Load a client from the state read with [`Stronghold::read_snapshot`].
+    ///  If the new actor uses a new `client_path` the former client path may be passed into the function call to read
+    /// the data into that actor.
+    pub async fn load_client(
+        &mut self,
+        client_path: Vec<u8>,
+        former_client_path: Option<Vec<u8>>,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
         let client_id = ClientId::load_from_path(&client_path, &client_path);
         let former_client_id = former_client_path.map(|cp| ClientId::load_from_path(&cp, &cp));
 
@@ -370,22 +421,13 @@ impl Stronghold {
             self.target().await?
         };
 
-        let mut key: [u8; 32] = [0u8; 32];
-        let keydata = keydata.as_ref();
-
-        key.copy_from_slice(keydata);
-
         // get address of snapshot actor
         let snapshot_actor = self.registry.send(GetSnapshot {}).await?;
 
         // read the snapshots contents
         let result = snapshot_actor
-            .send(ReadFromSnapshot {
-                key,
-                filename,
-                path,
-                id: client_id,
-                fid: former_client_id,
+            .send(LoadFromSnapshotState {
+                id: former_client_id.unwrap_or(client_id),
             })
             .await?;
         let content = match result {
@@ -406,20 +448,39 @@ impl Stronghold {
     /// Writes the entire state of the [`Stronghold`] into a snapshot.  All Actors and their associated data will be
     /// written into the specified snapshot. Requires keydata to encrypt the snapshot and a filename and path can be
     /// specified. The Keydata should implement and use Zeroize.
-    pub async fn write_all_to_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
+    pub async fn write_snapshot<T: Zeroize + AsRef<Vec<u8>>>(
         &mut self,
         keydata: &T,
         filename: Option<String>,
         path: Option<PathBuf>,
-    ) -> StrongholdResult<Result<(), WriteError>> {
-        // this should be delegated to the secure client actor
-        // wrapping the interior functionality inside it.
-        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
-
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
         let mut key: [u8; 32] = [0u8; 32];
         let keydata = keydata.as_ref();
         key.copy_from_slice(keydata);
+        let use_key = UseKey::Key(key);
+        self.write_all_to_snapshot(use_key, filename, path).await
+    }
 
+    /// [`Stronghold::write_snapshot`] by using an existing key that is stored in `key_location`.
+    pub async fn write_snapshot_stored_key(
+        &mut self,
+        key_location: Location,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
+        let use_key = UseKey::Stored(key_location);
+        self.write_all_to_snapshot(use_key, filename, path).await
+    }
+
+    async fn write_all_to_snapshot(
+        &mut self,
+        key: UseKey,
+        filename: Option<String>,
+        path: Option<PathBuf>,
+    ) -> StrongholdResult<Result<(), SnapshotError>> {
+        // this should be delegated to the secure client actor
+        // wrapping the interior functionality inside it.
+        let clients: Vec<(ClientId, Addr<SecureClient>)> = self.registry.send(GetAllClients).await?;
         // get snapshot actor
         let snapshot = self.registry.send(GetSnapshot {}).await?;
 
@@ -428,8 +489,11 @@ impl Stronghold {
             let data = client.send(GetData {}).await?;
 
             // fill into snapshot
-            snapshot.send(FillSnapshot { data, id }).await?;
-        } // end loop
+            match snapshot.send(FillSnapshot { data, id }).await? {
+                Ok(()) => {}
+                Err(e) => return Ok(Err(e)),
+            }
+        }
 
         // write snapshot
         let res = snapshot.send(WriteSnapshot { key, filename, path }).await?;
@@ -821,7 +885,14 @@ impl Stronghold {
         let res = self
             .remote_runtime_exec_chained(peer, client_path, vec![procedure.into()])
             .await?;
-        let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap());
+        let mapped = res.map(|mut output| {
+            output
+                .pop()
+                .expect("output.len() == procedures.len()")
+                .try_into()
+                .ok()
+                .expect("conversion can never fail.")
+        });
         Ok(mapped)
     }
 

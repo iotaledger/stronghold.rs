@@ -41,7 +41,11 @@ impl Runner for Client {
         let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
 
         let res = db.get_guard(&key, vault_id, record_id, execute_procedure);
-        keystore.insert_key(vault_id, key);
+
+        // this should return an error
+        keystore
+            .insert_key(vault_id, key)
+            .expect("Inserting key into vault failed");
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
@@ -86,16 +90,23 @@ impl Runner for Client {
             if !keystore.vault_exists(vid1) {
                 let key1 = keystore
                     .create_key(vid1)
-                    .ok_or_else(|| VaultError::Procedure("Failed to generate key from keystore".to_string().into()))?;
+                    .map_err(|_| VaultError::Procedure("Failed to generate key from keystore".to_string().into()))?;
                 db.init_vault(&key1, vid1);
             }
 
             let key1 = keystore.take_key(vid1).unwrap();
             res = db.exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
-            keystore.insert_key(vid1, key1);
+
+            // this should return an error
+            keystore
+                .insert_key(vid1, key1)
+                .expect("Inserting key into vault failed");
         }
 
-        keystore.insert_key(vid0, key0);
+        // this should be an errors
+        keystore
+            .insert_key(vid0, key0)
+            .expect("Inserting key into vault faileds");
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
@@ -114,12 +125,16 @@ impl Runner for Client {
 
         if !keystore.vault_exists(vault_id) {
             // The error type mapped to the possible key creation error is semantically incorrect
-            let key = keystore.create_key(vault_id).ok_or(RecordError::InvalidKey)?;
+            let key = keystore.create_key(vault_id).map_err(|_| RecordError::InvalidKey)?;
             db.init_vault(&key, vault_id);
         }
         let key = keystore.take_key(vault_id).unwrap();
         let res = db.write(&key, vault_id, record_id, &value, hint);
-        keystore.insert_key(vault_id, key);
+
+        // this should return an error
+        keystore
+            .insert_key(vault_id, key)
+            .expect("Inserting key into vault failed");
         res
     }
 
@@ -134,7 +149,11 @@ impl Runner for Client {
 
         if let Some(key) = keystore.take_key(vault_id) {
             let res = db.revoke_record(&key, vault_id, record_id);
-            keystore.insert_key(vault_id, key);
+
+            // this should return an error
+            keystore
+                .insert_key(vault_id, key)
+                .expect("Inserting key into vault failed");
             res?;
         }
         Ok(())
@@ -152,7 +171,9 @@ impl Runner for Client {
             None => return false,
         };
         db.garbage_collect_vault(&key, vault_id);
-        keystore.insert_key(vault_id, key);
+        keystore
+            .insert_key(vault_id, key)
+            .expect("Inserting key into vault failed");
         true
     }
 }
