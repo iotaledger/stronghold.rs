@@ -167,7 +167,7 @@ impl Snapshot {
                 let k = &pkey.key;
                 let res = k.borrow().deref().try_into().ok().map(|k| (state, k));
                 self.keystore
-                    .insert_key(vid, pkey)
+                    .get_or_insert_key(vid, pkey)
                     .map_err(|e| SnapshotError::Inner(e.to_string()))
                     .ok();
                 res

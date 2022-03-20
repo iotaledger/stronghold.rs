@@ -85,11 +85,12 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     // commit all to snapshot file
     stronghold.commit(&snapshot_path, &keyprovider).await?;
 
-    //// -- reset strongholad, re-load snapshot from disk
+    //// -- reset stronghold, re-load snapshot from disk
 
     // reset stronghold
     let stronghold = stronghold.reset();
 
+    println!("load client from snapshot file");
     let client = stronghold
         .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
         .await?;

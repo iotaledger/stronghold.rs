@@ -44,7 +44,7 @@ impl Runner for Client {
 
         // this should return an error
         keystore
-            .insert_key(vault_id, key)
+            .get_or_insert_key(vault_id, key)
             .expect("Inserting key into vault failed");
 
         match res {
@@ -99,13 +99,13 @@ impl Runner for Client {
 
             // this should return an error
             keystore
-                .insert_key(vid1, key1)
+                .get_or_insert_key(vid1, key1)
                 .expect("Inserting key into vault failed");
         }
 
         // this should be an errors
         keystore
-            .insert_key(vid0, key0)
+            .get_or_insert_key(vid0, key0)
             .expect("Inserting key into vault faileds");
 
         match res {
@@ -133,7 +133,7 @@ impl Runner for Client {
 
         // this should return an error
         keystore
-            .insert_key(vault_id, key)
+            .get_or_insert_key(vault_id, key)
             .expect("Inserting key into vault failed");
         res
     }
@@ -152,7 +152,7 @@ impl Runner for Client {
 
             // this should return an error
             keystore
-                .insert_key(vault_id, key)
+                .get_or_insert_key(vault_id, key)
                 .expect("Inserting key into vault failed");
             res?;
         }
@@ -172,7 +172,7 @@ impl Runner for Client {
         };
         db.garbage_collect_vault(&key, vault_id);
         keystore
-            .insert_key(vault_id, key)
+            .get_or_insert_key(vault_id, key)
             .expect("Inserting key into vault failed");
         true
     }

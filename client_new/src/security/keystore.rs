@@ -55,16 +55,24 @@ where
     /// Returns None if it fails
     pub fn create_key(&mut self, id: VaultId) -> Result<Key<P>, P::Error> {
         let vault_key = Key::random();
-        self.insert_key(id, vault_key)
+        self.get_or_insert_key(id, vault_key)
     }
 
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].
     /// If the [`VaultId`] already exists, it just returns the existing [`Key<P>`]
-    pub fn insert_key(&mut self, id: VaultId, key: Key<P>) -> Result<Key<P>, P::Error> {
+    pub fn get_or_insert_key(&mut self, id: VaultId, key: Key<P>) -> Result<Key<P>, P::Error> {
         let vault_key = if let Some(key) = self.take_key(id) { key } else { key };
         let enc_key = self.master_key.encrypt_key(&vault_key, id)?;
         self.store.insert(id, enc_key);
         Ok(vault_key)
+    }
+
+    /// Inserts a key into the [`KeyStore`] by [`VaultId`] and overrides the old key.
+    pub fn insert_key(&mut self, id: VaultId, key: Key<P>) -> Result<(), P::Error> {
+        let vault_key = key;
+        let enc_key = self.master_key.encrypt_key(&vault_key, id)?;
+        self.store.insert(id, enc_key);
+        Ok(())
     }
 
     /// Rebuilds the [`KeyStore`] while throwing out any existing [`VaultId`], [`Key<P>`] pairs.  Accepts a
@@ -73,7 +81,7 @@ where
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) -> Result<(), P::Error> {
         let mut new_ks = KeyStore::default();
         for (id, key) in keys.into_iter() {
-            new_ks.insert_key(id, key)?;
+            new_ks.get_or_insert_key(id, key)?;
         }
         *self = new_ks;
         Ok(())
