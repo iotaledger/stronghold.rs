@@ -222,6 +222,12 @@ impl Debug for ChainId {
     }
 }
 
+impl From<RecordId> for ChainId {
+    fn from(id: RecordId) -> Self {
+        id.0
+    }
+}
+
 impl TryFrom<&[u8]> for ChainId {
     type Error = InvalidLength;
 
@@ -297,6 +303,12 @@ impl Debug for RecordId {
 impl Display for RecordId {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0.as_ref().base64())
+    }
+}
+
+impl From<ChainId> for RecordId {
+    fn from(id: ChainId) -> Self {
+        RecordId(id)
     }
 }
 

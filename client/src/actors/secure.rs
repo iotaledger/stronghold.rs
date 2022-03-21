@@ -305,15 +305,7 @@ impl_handler!(messages::ClearCache, (), (self, _msg, _ctx), {
 
 impl_handler!(messages::CheckRecord, bool, (self, msg, _ctx), {
     let (vault_id, record_id) = msg.location.resolve();
-
-    return match self.keystore.take_key(vault_id) {
-        Some(key) => {
-            let res = self.db.contains_record(&key, vault_id, record_id);
-            self.keystore.insert_key(vault_id, key);
-            res
-        }
-        None => false,
-    };
+    self.db.contains_record(vault_id, record_id)
 });
 
 impl_handler!(messages::WriteToVault, Result<(), RecordError>, (self, msg, _ctx), {

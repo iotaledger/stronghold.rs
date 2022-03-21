@@ -129,8 +129,8 @@ impl<T: BoxProvider> Debug for Key<T> {
 /// trait for encryptable data. Allows the data to be encrypted.
 pub trait Encrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
     /// encrypts a raw data and creates a type T from the ciphertext
-    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<B>, ad: AD) -> Result<T, B::Error> {
-        let sealed = B::box_seal(key, ad.as_ref(), self.as_ref())?;
+    fn encrypt<P: BoxProvider, AD: AsRef<[u8]>>(&self, key: &Key<P>, ad: AD) -> Result<T, P::Error> {
+        let sealed = P::box_seal(key, ad.as_ref(), self.as_ref())?;
         Ok(T::from(sealed))
     }
 }

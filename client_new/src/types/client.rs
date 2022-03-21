@@ -109,20 +109,9 @@ impl Client {
     /// ```
     pub async fn record_exists(&mut self, location: Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
-        let mut keystore = self.keystore.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
-        let result = match keystore.take_key(vault_id) {
-            Some(key) => {
-                let mut db = self.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
-
-                let res = db.contains_record(&key, vault_id, record_id);
-                keystore
-                    .get_or_insert_key(vault_id, key)
-                    .map_err(|_| ClientError::Inner("Insert Key into Vault failed".to_string()))?;
-                res
-            }
-            None => false,
-        };
-        Ok(result)
+        let db = self.db.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let contains_record = db.contains_record(vault_id, record_id);
+        Ok(contains_record)
     }
 
     /// Returns the [`ClientId`] of the client
