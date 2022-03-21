@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #![allow(unused_imports)]
 
-use std::str::FromStr;
+use std::{num::NonZeroUsize, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use engine::vault::RecordHint;
@@ -26,38 +26,54 @@ pub struct StrongholdCLI {
 pub enum Command {
     #[clap(about = "Generates a secret key and returns the public key, Possible values are ['Ed25519', 'X25519']")]
     GenerateKey {
-        #[clap(long)]
+        #[clap(long, help = "The key type to use. Possible values are: ['Ed25519', 'X25519']")]
         key_type: String,
 
-        #[clap(long)]
+        #[clap(long, help = r#"The storage location inside the vault. "#)]
         vault_path: String,
 
-        #[clap(long)]
+        #[clap(long, help = "The storage location for a record inside a vault")]
         record_path: String,
     },
     #[clap(about = "Writes and reads from store")]
     StoreReadWrite {
-        #[clap(long)]
+        #[clap(long, help = "The key to map the value")]
         key: String,
 
-        #[clap(long)]
+        #[clap(long, help = "The actual value to be stored inside the Store")]
         value: String,
     },
     #[clap(about = "Generates a BIP39 Mnemonic with an optional passphrase")]
     BIP39Generate {
-        #[clap(long)]
+        #[clap(long, help = "An optional passphrase to protect the BIP39 Mnemonic")]
         passphrase: Option<String>,
 
-        #[clap(long)]
+        #[clap(
+            long,
+            help = r#"The language of the Mnemonic to chose. Currently available are "japanese", and "english""#
+        )]
         lang: MnemonicLanguage,
 
-        #[clap(long)]
+        #[clap(long, help = "The storage location of the BIP39 key inside the vault")]
         vault_path: String,
 
-        #[clap(long)]
+        #[clap(long, help = "")]
         record_path: String,
     },
-    Slip10Generate {},
+    #[clap(about = "Generates a private master key")]
+    SLIP10Generate {
+        #[clap(long, help = "The size of the seed, defaults to 64 bytes")]
+        size: Option<NonZeroUsize>,
+    },
+
+    #[clap(about = "Derives a private / public key pair from either a master key, or a BIP39 key")]
+    SLIP10Derive {},
+
+    #[clap(about = "Creates a new snapshot with some secrets in it")]
+    CreateSnapshot {},
+
+    #[clap(about = "")]
+    ReadSnapshot {},
 }
 
 /// Returns a fixed sized vector of random bytes
@@ -188,6 +204,9 @@ async fn main() {
             vault_path,
             record_path,
         } => command_generate_bip39(passphrase, lang, vault_path, record_path).await,
-        Command::Slip10Generate {} => {}
+        Command::SLIP10Generate { .. } => {}
+        Command::SLIP10Derive {} => todo!(),
+        Command::CreateSnapshot {} => todo!(),
+        Command::ReadSnapshot {} => todo!(),
     }
 }
