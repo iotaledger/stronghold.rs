@@ -28,7 +28,7 @@
     <p align="center">
         A Rust library to build a secure software storage for sensitive data.
         <br />
-        <a href="https://wiki.iota.org"><strong>Explore the docs »</strong></a>
+        <a href="https://wiki.iota.org/stronghold.rs/welcome"><strong>Explore the docs »</strong></a>
         <br />
         <br />
         <a href="https://github.com/iotaledger/stronghold.rs/labels/bug">Report Bug</a>
