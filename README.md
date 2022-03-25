@@ -175,11 +175,11 @@ Contributions make the open source community such an amazing place to learn, ins
 If you have a suggestion to improve this, please fork the repo and [create a pull request](https://github.com/iotaledger/stronghold.rs/compare). You can also [open an issue](https://github.com/iotaledger/stronghold.rs/issues/new/choose) with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -S -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork the Project.
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your Changes (`git commit -S -m 'Add some AmazingFeature'`).
+4. Push to the Branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
