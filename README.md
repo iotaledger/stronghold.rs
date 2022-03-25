@@ -73,7 +73,7 @@ Edit the ToC to your needs. If your project is part of the wiki, you should link
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidenta leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity. 
+<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. It is written in stable rust and has strong guarantees of memory safety and process integrity. 
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
