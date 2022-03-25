@@ -100,7 +100,7 @@ To build Stronghold, you need a recent version of [Rust](https://www.rust-lang.o
 
 ### Building
 
-The library comes with examples, but has no executables on its own. 
+The library comes with [examples](client/examples) but has no executables on its own.  You can use the following instructions to build the library:
 
 1. Clone the repo
    ```sh
