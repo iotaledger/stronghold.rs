@@ -172,7 +172,7 @@ See the [open issues](https://github.com/iotaledger/stronghold.rs/issues) for a 
 
 Contributions make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+If you have a suggestion to improve this, please fork the repo and [create a pull request](https://github.com/iotaledger/stronghold.rs/compare). You can also [open an issue](https://github.com/iotaledger/stronghold.rs/issues/new/choose) with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!
 
 1. Fork the Project
