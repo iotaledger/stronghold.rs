@@ -250,27 +250,24 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// Import records to the [`Vault`]. In case of duplicated records, the existing record is dropped in favor of the
-    /// new one.
-    ///
-    /// **Note:** This expects that all records are encrypted with the vault's encryption key and the correct
-    /// `RecordId`. In case that the records was previously stored at a different `RecordId` or in a vault with a
-    /// different encryption key, [`Record::update_meta`] has to be called before the import.
+    /// new one. Re-encrypt the records with the new key.
     pub fn import_records(
         &mut self,
-        key: &Key<P>,
+        old_key: &Key<P>,
+        new_key: &Key<P>,
         vid: VaultId,
-        records: Vec<(RecordId, Record)>,
-        is_replacing: bool,
+        mut records: Vec<(RecordId, Record)>,
     ) -> Result<(), RecordError<P::Error>> {
-        if is_replacing {
-            self.vaults.remove(&vid);
-        }
         if !self.vaults.contains_key(&vid) {
-            self.init_vault(key, vid);
+            self.init_vault(new_key, vid);
         }
-
+        for (rid, record) in &mut records {
+            record
+                .update_meta(old_key, (*rid).into(), new_key, (*rid).into())
+                .unwrap();
+        }
         let vault = self.vaults.get_mut(&vid).expect("Vault was initiated.");
-        vault.extend(key, records.into_iter().map(|(rid, r)| (rid.0, r)))
+        vault.extend(new_key, records.into_iter().map(|(rid, r)| (rid.0, r)))
     }
 }
 

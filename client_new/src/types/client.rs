@@ -7,7 +7,7 @@ use std::{
 
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{view::Record, BoxProvider, ClientId, DbView, RecordHint, VaultId},
+    vault::{view::Record, BoxProvider, ClientId, DbView, RecordHint, RecordId, VaultId},
 };
 
 use crate::{
@@ -15,6 +15,7 @@ use crate::{
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
+    sync::{self, ClientRef, ClientRefMut, MergePolicy, SyncClientsConfig},
     ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, Store,
 };
 
@@ -107,11 +108,69 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn record_exists(&mut self, location: Location) -> Result<bool, ClientError> {
+    pub async fn record_exists(&self, location: Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
         let db = self.db.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
         let contains_record = db.contains_record(vault_id, record_id);
         Ok(contains_record)
+    }
+
+    /// Synchronize two vaults of the client so that records are copied from `source` to `target`.
+    /// If `select_records` is `Some` only the specified records are copied, else a full sync
+    /// is performed. If a record already exists at the target, the [`MergePolicy`] applies.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn sync_vaults(
+        &self,
+        source: VaultId,
+        target: VaultId,
+        select_records: Option<Vec<RecordId>>,
+        merge_policy: MergePolicy,
+    ) -> Result<(), ClientError> {
+        let select_vaults = vec![source];
+        let map_vaults = [(source, target)].into();
+        let select_records = select_records.map(|vec| [(source, vec)].into()).unwrap_or_default();
+        let config = SyncClientsConfig {
+            select_vaults: Some(select_vaults),
+            select_records,
+            map_vaults,
+            merge_policy,
+        };
+        let state = ClientRef::try_from(self)?;
+
+        let hierarchy = state.get_hierarchy(config.selected_source_vaults());
+        let mapped_hierarchy = config.filter_map(hierarchy);
+        let diff = state.get_diff(mapped_hierarchy, &config.merge_policy);
+        let exported = state.export_entries(diff);
+        let mapped_exported = config.filter_map(exported);
+
+        drop(state);
+        let mut state_mut = ClientRefMut::try_from(self)?;
+        state_mut.import_own_records(mapped_exported, config.map_vaults);
+        Ok(())
+    }
+
+    /// Synchronize the client with another one so that records are copied from `other` to `self`.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
+        let self_state = ClientRef::try_from(self)?;
+        let other_state = ClientRef::try_from(other)?;
+
+        let hierarchy = other_state.get_hierarchy(config.selected_source_vaults());
+        let mapped_hierarchy = config.filter_map(hierarchy);
+        let diff = self_state.get_diff(mapped_hierarchy, &config.merge_policy);
+        let exported = other_state.export_entries(diff);
+        let mapped_exported = config.filter_map(exported);
+
+        drop(self_state);
+        let mut self_state_mut = ClientRefMut::try_from(self)?;
+        self_state_mut.import_records(mapped_exported, &other_state.keystore, config.map_vaults);
+        Ok(())
     }
 
     /// Returns the [`ClientId`] of the client
@@ -119,7 +178,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn id(&self) -> &ClientId {
+    pub fn id(&self) -> &ClientId {
         &self.id
     }
 
@@ -128,7 +187,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub async fn load(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
+    pub(crate) async fn load(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
         let (keys, db, st) = state;
 
         // reload keystore
@@ -168,7 +227,7 @@ impl Client {
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.execure_procedure_chained(vec![procedure.into()]).await;
+        let res = self.execute_procedure_chained(vec![procedure.into()]).await;
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
         Ok(mapped)
     }
@@ -178,7 +237,7 @@ impl Client {
     /// # Example
     /// ```no_run
     /// ```
-    pub async fn execure_procedure_chained(
+    pub async fn execute_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {
