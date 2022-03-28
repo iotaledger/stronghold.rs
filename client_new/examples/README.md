@@ -114,7 +114,7 @@ This should give you following output:
 
 ## Read a Snapshot From Filesystem
 
-Reads a snapshot from file system and returns the public key from the stored secret key (Ed25519) stored at given location
+This example reads a snapshot from the file system and returns the public key from the stored secret key (Ed25519) stored at the given location
 
 ```lang:rust
 $ cargo run --example cli read-snapshot --path "/path/to/snapshot.file" --client-path "client-path-0" --vault-path "vault-path" --record-path "record-path" --key "passphrase"
