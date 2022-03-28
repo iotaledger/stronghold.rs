@@ -7,7 +7,7 @@ and showcasing the p2p functionality to exchange / execute remote cryptographic 
 
 You should run the examples from within the [client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). The examples shown in this doc were executed on Linux but should work on the other supported platforms. Make sure to adapt paths according to your operating system default. For example, Windows(TM) requires backslashes `\` as a delimiter for a path. This could pose a problem, as backslashes are also used to escape characters.
 
-**TOC**
+### TOC
 
 - [Generate an Ed25519 key pair and print the public key on console](#generate-an-ed25519-key-pair-and-print-the-public-key-on-console)
 - [Write some value into the store, read it again and print the output on console](#write-some-value-into-the-store-read-it-again-and-print-the-output-on-console)
