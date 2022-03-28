@@ -99,7 +99,7 @@ This should give you following output:
 [2022-03-28T08:24:38Z INFO  cli] Derivation Sucessful? true
 ```
 
-## Create a snapshot
+## Create a Snapshot
 
 This example creates a new snapshot on the file system and generates and stores a new key (Ed25519) inside the desired location.
 
