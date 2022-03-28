@@ -87,7 +87,7 @@ This should give you following output:
 
 ## Derive SLIP10 Private Public Keypair
 
-This creates an ephemeral SLIP10 master key and derives a private / public key pair from it. The public key will be returned.
+This example creates an ephemeral SLIP10 master key and derives a private/public key pair from it. The public key will be returned.
 
 ```lang:rust
 $ cargo run --example cli slip10-derive  --chain "/1234567/1234567" --input-vault-path "input-vault-path" --input-record-path "input-record-path" --output-vault-path "output-vault-path" --output-record-path "output-record-path"
