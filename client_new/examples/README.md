@@ -23,7 +23,7 @@ You should run the examples from within the [client crate](https://github.com/io
 <a name="Generate-an-Ed25519-key-pair-and-print-the-public-key-on-console"></a>
 ## Generate an Ed25519 key pair and print the public key on console
 
-This will generate an Ed25519 key pair inside an ephemeral vault print the public key into console.
+This example will generate a Ed25519 key pair inside an ephemeral vault print the public key into the console.
 
 ```lang:rust
 $ cargo run --example cli generate-key --key-type Ed25519 --vault-path "vault_path" --record-path "record_path"
