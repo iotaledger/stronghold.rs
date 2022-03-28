@@ -118,7 +118,7 @@ pub enum UseKey {
 
 /// Data structure that is written to the snapshot.
 #[derive(Deserialize, Serialize, Default)]
-pub struct SnapshotState(HashMap<ClientId, ClientState>);
+pub struct SnapshotState(pub(crate) HashMap<ClientId, ClientState>);
 
 impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.

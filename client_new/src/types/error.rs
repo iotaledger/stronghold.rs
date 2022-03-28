@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::TryLockError;
+
 use engine::vault::{BoxProvider, RecordError as EngineRecordError, RecordId, VaultError as EngineVaultError, VaultId};
 use serde::{de::Error, Deserialize, Serialize};
 use thiserror::Error as DeriveError;
@@ -27,6 +29,12 @@ pub enum ClientError {
 
     #[error("Error loading client data. No data present")]
     ClientDataNotPresent,
+}
+
+impl<T> From<TryLockError<T>> for ClientError {
+    fn from(_: TryLockError<T>) -> Self {
+        ClientError::LockAcquireFailed
+    }
 }
 
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
