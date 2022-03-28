@@ -3,7 +3,7 @@
 A few examples to explain how Stronghold works. Two types will be presented here: a simple command line interface for generating secrets, working with the store etc.
 and showcasing the p2p functionality to exchange / execute remote cryptographic procedures over the p2p interface from Stronghold.
 
-# Command Line Interface
+## Command Line Interface
 
 All example should be run from withing the client crate. The examples shown here are executed on linux, but should work on the other supported platforms as well. Make sure to adapt paths according to your operating systems default eg. Windows(TM) requires backslashes `\` as delimiter for path. This could pose a problem, as backslashes are being used to escape characters.
 
