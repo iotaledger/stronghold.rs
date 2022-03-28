@@ -1,26 +1,25 @@
 # Stronghold Usage Examples
 
-A few examples to explain how Stronghold works. Two types will be presented here: a simple command line interface for generating secrets, working with the store etc.
-and showcasing the p2p functionality to exchange / execute remote cryptographic procedures over the p2p interface from Stronghold.
+The following examples explain how Stronghold works. There are two sets of examples:
 
+1) [Command-line interface examples](#command-line-interface): A simple command-line interface for generating secrets, working with the store, and other topics.
+    - [Generate an Ed25519 key pair and print the public key on console](#generate-an-ed25519-key-pair-and-print-the-public-key-on-console)
+    - [Write some value into the store, read it again and print the output on console](#write-some-value-into-the-store-read-it-again-and-print-the-output-on-console)
+    - [Generate A BIP39 Seed and Return the Mnemonic Phrase](#generate-a-bip39-seed-and-return-the-mnemonic-phrase)
+    - [Generate SLIP10 Master Key](#generate-slip10-master-key)
+    - [Derive SLIP10 Private Public Keypair](#derive-slip10-private-public-keypair)
+    - [Create a snapshot](#create-a-snapshot)
+    - [Read a Snapshot From Filesystem](#read-a-snapshot-from-filesystem)
+    - [Recover a BIP39 Seed with a Mnemonic and Optional Passphrase](#recover-a-bip39-seed-with-a-mnemonic-and-optional-passphrase)
+
+2) Examples showcasing Stronghold’s p2p functionality: Exchange and execute remote cryptographic procedures over the p2p interface from Stronghold.
+
+---
 ## Command Line Interface
+
 
 You should run the examples from within the [client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). The examples shown in this doc were executed on Linux but should work on the other supported platforms. Make sure to adapt paths according to your operating system default. For example, Windows(TM) requires backslashes `\` as a delimiter for a path. This could pose a problem, as backslashes are also used to escape characters.
 
-### TOC
-
-- [Generate an Ed25519 key pair and print the public key on console](#generate-an-ed25519-key-pair-and-print-the-public-key-on-console)
-- [Write some value into the store, read it again and print the output on console](#write-some-value-into-the-store-read-it-again-and-print-the-output-on-console)
-- [Generate A BIP39 Seed and Return the Mnemonic Phrase](#generate-a-bip39-seed-and-return-the-mnemonic-phrase)
-- [Generate SLIP10 Master Key](#generate-slip10-master-key)
-- [Derive SLIP10 Private Public Keypair](#derive-slip10-private-public-keypair)
-- [Create a snapshot](#create-a-snapshot)
-- [Read a Snapshot From Filesystem](#read-a-snapshot-from-filesystem)
-- [Recover a BIP39 Seed with a Mnemonic and Optional Passphrase](#recover-a-bip39-seed-with-a-mnemonic-and-optional-passphrase)
-
----
-
-<a name="Generate-an-Ed25519-key-pair-and-print-the-public-key-on-console"></a>
 ## Generate an Ed25519 key pair and print the public key on console
 
 This example will generate a Ed25519 key pair inside an ephemeral vault print the public key into the console.
