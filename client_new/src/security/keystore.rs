@@ -87,7 +87,7 @@ where
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) -> Result<(), P::Error> {
         let mut new_ks = KeyStore::default();
         for (id, key) in keys.into_iter() {
-            new_ks.get_or_insert_key(id, key)?;
+            new_ks.insert_key(id, key)?;
         }
         *self = new_ks;
         Ok(())

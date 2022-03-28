@@ -133,7 +133,7 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Get access the decrypted [`Buffer`] of the specified [`Record`].
     pub fn get_guard<E, F>(
-        &mut self,
+        &self,
         key: &Key<P>,
         vid: VaultId,
         rid: RecordId,
@@ -143,7 +143,7 @@ impl<P: BoxProvider> DbView<P> {
         F: FnOnce(Buffer<u8>) -> Result<(), E>,
         E: Debug,
     {
-        let vault = self.vaults.get_mut(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+        let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
         let guard = vault.get_guard(key, rid.0).map_err(VaultError::Record)?;
         f(guard).map_err(VaultError::Procedure)
     }

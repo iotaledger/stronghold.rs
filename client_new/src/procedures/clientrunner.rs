@@ -38,7 +38,7 @@ impl Runner for Client {
             Ok(())
         };
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
+        let db = self.db.try_read().map_err(|e| e.to_string()).expect("");
 
         let res = db.get_guard(&key, vault_id, record_id, execute_procedure);
 

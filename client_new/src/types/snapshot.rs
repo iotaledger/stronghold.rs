@@ -138,7 +138,7 @@ impl Snapshot {
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_snapshot_state(&mut self) -> Result<SnapshotState, SnapshotError> {
+    pub fn get_snapshot_state(&self) -> Result<SnapshotState, SnapshotError> {
         let mut state = SnapshotState::default();
         let ids: Vec<ClientId> = self.states.keys().cloned().collect();
         for client_id in ids {
@@ -157,20 +157,15 @@ impl Snapshot {
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_state(&mut self, id: ClientId) -> Result<ClientState, SnapshotError> {
+    pub fn get_state(&self, id: ClientId) -> Result<ClientState, SnapshotError> {
         let vid = VaultId(id.0);
         let ((encrypted, store), key) = match self
             .states
             .get(&id)
-            .and_then(|state| self.keystore.take_key(vid).map(|pkey| (state, pkey)))
+            .and_then(|state| self.keystore.get_key(vid).map(|pkey| (state, pkey)))
             .and_then(|(state, pkey)| {
                 let k = &pkey.key;
-                let res = k.borrow().deref().try_into().ok().map(|k| (state, k));
-                self.keystore
-                    .get_or_insert_key(vid, pkey)
-                    .map_err(|e| SnapshotError::Inner(e.to_string()))
-                    .ok();
-                res
+                k.borrow().deref().try_into().ok().map(|k| (state, k))
             }) {
             Some(t) => t,
             None => return Ok((HashMap::default(), DbView::default(), Cache::default())),
@@ -209,7 +204,7 @@ impl Snapshot {
     ///   - named_mut()
     ///   - path_
     pub fn write_to_snapshot(
-        &mut self,
+        &self,
         // name: Option<&str>,
         // path: Option<&Path>,
         snapshot_path: &SnapshotPath,
@@ -222,24 +217,15 @@ impl Snapshot {
             UseKey::Key(k) => k,
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
-                let pkey = self
-                    .keystore
-                    .take_key(vid)
-                    .ok_or(SnapshotError::SnapshotKey(vid, rid))?;
+                let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
                 let mut data = Vec::new();
-                let res = self
-                    .db
+                self.db
                     .get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
                         let guarded_data = guarded_data.borrow();
                         data.extend_from_slice(&*guarded_data);
                         Ok(())
                     })
-                    .map_err(|e| SnapshotError::Vault(format!("{}", e)));
-                self.keystore
-                    .insert_key(vid, pkey)
-                    .map_err(|e| SnapshotError::Inner(e.to_string()))
-                    .ok();
-                res?;
+                    .map_err(|e| SnapshotError::Vault(format!("{}", e)))?;
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };

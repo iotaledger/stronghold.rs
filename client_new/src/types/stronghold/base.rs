@@ -69,7 +69,7 @@ impl Stronghold {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let snapshot = self.snapshot.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         if !snapshot.has_data(client_id) {
             return Err(ClientError::ClientDataNotPresent);
@@ -120,7 +120,7 @@ impl Stronghold {
             self.write(client_id).await?;
         }
 
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let snapshot = self.snapshot.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         // CRITICAL SECTION
         let buffer = keyprovider
