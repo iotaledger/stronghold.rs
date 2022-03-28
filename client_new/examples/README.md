@@ -129,7 +129,7 @@ This should give you following output:
 
 ## Recover a BIP39 Seed with a Mnemonic and Optional Passphrase
 
-This recovers a BIP39 seed with provided mnemonic and optional passphrase. The recovered seed will be stored at provided location. 
+This example recovers a BIP39 seed with provided mnemonic and optional passphrase. Stronghold will store the recovered seed at the provided location. 
 
 ```lang:rust
 $ cargo run --example cli bip39-recover --path "/path/to/snapshot.file" --client-path "client-path-0" --key "passphrase-for-snapshot" --mnemonic "けさき　にんか　せっさたくま　よかん　たいまつばな　ちんもく　そだてる　ふっこく　せっさたくま　しゃおん　そがい　つうはん　まなぶ　りくぐん　さのう" --passphrase "mnemonic-passphrase-if-present" --vault-path "vault-path" --record-path "record-path"
