@@ -5,7 +5,7 @@ and showcasing the p2p functionality to exchange / execute remote cryptographic 
 
 ## Command Line Interface
 
-All example should be run from withing the client crate. The examples shown here are executed on linux, but should work on the other supported platforms as well. Make sure to adapt paths according to your operating systems default eg. Windows(TM) requires backslashes `\` as delimiter for path. This could pose a problem, as backslashes are being used to escape characters.
+You should run the examples from within the [client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). The examples shown in this doc were executed on Linux but should work on the other supported platforms. Make sure to adapt paths according to your operating system default. For example, Windows(TM) requires backslashes `\` as a delimiter for a path. This could pose a problem, as backslashes are also used to escape characters.
 
 **TOC**
 
