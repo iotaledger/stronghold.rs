@@ -140,15 +140,13 @@ impl Client {
         };
         let state = ClientRef::try_from(self)?;
 
-        let hierarchy = state.get_hierarchy(config.selected_source_vaults());
-        let mapped_hierarchy = config.filter_map(hierarchy);
-        let diff = state.get_diff(mapped_hierarchy, &config.merge_policy);
+        let hierarchy = state.get_hierarchy(config.select_vaults.clone());
+        let diff = state.get_diff(hierarchy, &config);
         let exported = state.export_entries(diff);
-        let mapped_exported = config.filter_map(exported);
 
         drop(state);
         let mut state_mut = ClientRefMut::try_from(self)?;
-        state_mut.import_own_records(mapped_exported, config.map_vaults);
+        state_mut.import_own_records(exported, config.map_vaults);
         Ok(())
     }
 
@@ -161,15 +159,13 @@ impl Client {
         let self_state = ClientRef::try_from(self)?;
         let other_state = ClientRef::try_from(other)?;
 
-        let hierarchy = other_state.get_hierarchy(config.selected_source_vaults());
-        let mapped_hierarchy = config.filter_map(hierarchy);
-        let diff = self_state.get_diff(mapped_hierarchy, &config.merge_policy);
+        let hierarchy = other_state.get_hierarchy(config.select_vaults.clone());
+        let diff = self_state.get_diff(hierarchy, &config);
         let exported = other_state.export_entries(diff);
-        let mapped_exported = config.filter_map(exported);
 
         drop(self_state);
         let mut self_state_mut = ClientRefMut::try_from(self)?;
-        self_state_mut.import_records(mapped_exported, &other_state.keystore, config.map_vaults);
+        self_state_mut.import_records(exported, &other_state.keystore, &config);
         Ok(())
     }
 
