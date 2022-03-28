@@ -101,7 +101,7 @@ This should give you following output:
 
 ## Create a snapshot
 
-This creates a new snapshot on file system and generates and stores a new key (Ed25519) inside desired location.
+This example creates a new snapshot on the file system and generates and stores a new key (Ed25519) inside the desired location.
 
 ```lang:rust
 $ cargo run --example cli create-snapshot --path "/path/to/snapshot.file" --client-path "client-path-0" --vault-path "vault-path" --record-path "record-path" --key "passphrase"
