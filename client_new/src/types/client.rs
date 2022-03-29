@@ -1,13 +1,14 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 use std::{
+    collections::HashMap,
     error::Error,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{view::Record, BoxProvider, ClientId, DbView, RecordHint, RecordId, VaultId},
+    vault::{view::Record, BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
-    sync::{self, ClientRef, ClientRefMut, MergePolicy, SyncClientsConfig},
+    sync::{KeyProvider, MergePolicy, SyncClients, SyncClientsConfig},
     ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, Store,
 };
 
@@ -132,21 +133,24 @@ impl Client {
         let select_vaults = vec![source];
         let map_vaults = [(source, target)].into();
         let select_records = select_records.map(|vec| [(source, vec)].into()).unwrap_or_default();
-        let config = SyncClientsConfig {
+        let mut config = SyncClientsConfig {
             select_vaults: Some(select_vaults),
             select_records,
             map_vaults,
             merge_policy,
         };
-        let state = ClientRef::try_from(self)?;
+        let hierarchy = self.get_hierarchy(config.select_vaults.clone());
+        let diff = self.get_diff(hierarchy, &config);
+        let exported = self.export_entries(diff);
+        let mut db = self.db.try_write()?;
+        let mut key_store = self.keystore.try_write()?;
 
-        let hierarchy = state.get_hierarchy(config.select_vaults.clone());
-        let diff = state.get_diff(hierarchy, &config);
-        let exported = state.export_entries(diff);
-
-        drop(state);
-        let mut state_mut = ClientRefMut::try_from(self)?;
-        state_mut.import_own_records(exported, config.map_vaults);
+        for (vid, records) in exported {
+            let old_vid = config.map_vaults.remove(&vid).unwrap_or(vid);
+            let old_key = key_store.get_key(old_vid).unwrap();
+            let new_key = key_store.get_or_insert_key(vid, Key::random()).unwrap();
+            db.import_records(&old_key, &new_key, vid, records).unwrap()
+        }
         Ok(())
     }
 
@@ -156,16 +160,31 @@ impl Client {
     /// ```
     /// ```
     pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
-        let self_state = ClientRef::try_from(self)?;
-        let other_state = ClientRef::try_from(other)?;
+        let hierarchy = other.get_hierarchy(config.select_vaults.clone());
+        let diff = self.get_diff(hierarchy, &config);
+        let exported = other.export_entries(diff);
 
-        let hierarchy = other_state.get_hierarchy(config.select_vaults.clone());
-        let diff = self_state.get_diff(hierarchy, &config);
-        let exported = other_state.export_entries(diff);
-
-        drop(self_state);
-        let mut self_state_mut = ClientRefMut::try_from(self)?;
-        self_state_mut.import_records(exported, &other_state.keystore, &config);
+        for (vid, mut records) in exported {
+            if let Some(select_vaults) = config.select_vaults.as_ref() {
+                if !select_vaults.contains(&vid) {
+                    continue;
+                }
+            }
+            if let Some(select_records) = config.select_records.get(&vid) {
+                records.retain(|(rid, _)| select_records.contains(rid));
+            }
+            let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
+            let old_key = other.keystore.try_read()?.get_key(vid).unwrap();
+            let new_key = self
+                .keystore
+                .try_write()?
+                .get_or_insert_key(mapped_vid, Key::random())
+                .unwrap();
+            self.db
+                .try_write()?
+                .import_records(&old_key, &new_key, mapped_vid, records)
+                .unwrap()
+        }
         Ok(())
     }
 
@@ -256,6 +275,19 @@ impl Client {
             out.push(output);
         }
         Ok(out)
+    }
+}
+
+impl<'a> SyncClients<'a> for Client {
+    type Db = RwLockReadGuard<'a, DbView<Provider>>;
+
+    fn get_db(&'a self) -> Self::Db {
+        self.db.try_read().unwrap()
+    }
+
+    fn get_key_provider(&'a self) -> KeyProvider<'a> {
+        let ks = self.keystore.try_read().unwrap();
+        KeyProvider::KeyStore(ks)
     }
 }
 

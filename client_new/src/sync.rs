@@ -19,10 +19,17 @@ pub enum MergePolicy {
     Replace,
 }
 
+impl Default for MergePolicy {
+    fn default() -> Self {
+        MergePolicy::Replace
+    }
+}
+
 // TODO: Use *_paths instead of `Ids`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SyncClientsConfig {
     /// Optionally only perform a partial sync with specific vaults.
+    /// In case of `None` all vaults are synched.
     ///
     /// Note: This is referring to the Ids as they are on the source client, not
     /// to the mapped id.
@@ -38,50 +45,46 @@ pub struct SyncClientsConfig {
     /// content.
     pub merge_policy: MergePolicy,
 }
-
-impl Default for SyncClientsConfig {
-    fn default() -> Self {
-        SyncClientsConfig {
-            select_vaults: None,
-            select_records: HashMap::new(),
-            map_vaults: HashMap::new(),
-            merge_policy: MergePolicy::Replace,
-        }
-    }
+pub enum KeyProvider<'a> {
+    KeyStore(RwLockReadGuard<'a, KeyStore<Provider>>),
+    KeyMap(&'a HashMap<VaultId, Key<Provider>>),
 }
 
-/// Immutable access to a client's [`DbView`] and [`KeyStore`].
-pub struct ClientRef<DB, KS>
-where
-    DB: Deref<Target = DbView<Provider>>,
-    KS: Deref<Target = KeyStore<Provider>>,
-{
-    pub db: DB,
-    pub keystore: KS,
-}
+pub trait SyncClients<'a> {
+    type Db: Deref<Target = DbView<Provider>>;
 
-impl<DB, KS> ClientRef<DB, KS>
-where
-    DB: Deref<Target = DbView<Provider>>,
-    KS: Deref<Target = KeyStore<Provider>>,
-{
-    pub fn get_hierarchy(&self, vaults: Option<Vec<VaultId>>) -> HashMap<VaultId, Vec<(RecordId, BlobId)>> {
-        let vaults = vaults.unwrap_or_else(|| self.db.list_vaults());
+    fn get_db(&'a self) -> Self::Db;
+    fn get_key_provider(&'a self) -> KeyProvider<'a>;
+
+    fn get_hierarchy(&'a self, vaults: Option<Vec<VaultId>>) -> HashMap<VaultId, Vec<(RecordId, BlobId)>> {
+        let db = self.get_db();
+        let key_provider = self.get_key_provider();
+        let vaults = vaults.unwrap_or_else(|| db.list_vaults());
         vaults
             .into_iter()
             .map(|vid| {
-                let key = self.keystore.get_key(vid).unwrap();
-                let list = self.db.list_records_with_blob_id(&key, vid).unwrap();
+                let list = match &key_provider {
+                    KeyProvider::KeyStore(ks) => {
+                        let key = ks.get_key(vid).unwrap();
+                        db.list_records_with_blob_id(&key, vid).unwrap()
+                    }
+                    KeyProvider::KeyMap(map) => {
+                        let key = map.get(&vid).unwrap();
+                        db.list_records_with_blob_id(key, vid).unwrap()
+                    }
+                };
                 (vid, list)
             })
             .collect()
     }
 
-    pub fn get_diff(
-        &self,
+    fn get_diff(
+        &'a self,
         other: HashMap<VaultId, Vec<(RecordId, BlobId)>>,
         config: &SyncClientsConfig,
     ) -> HashMap<VaultId, Vec<RecordId>> {
+        let db = self.get_db();
+        let key_provider = self.get_key_provider();
         other
             .into_iter()
             .filter_map(|(vid, list)| {
@@ -91,7 +94,7 @@ where
                     }
                 }
                 let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
-                if !self.db.contains_vault(&mapped_vid) {
+                if !db.contains_vault(&mapped_vid) {
                     let diff = list.into_iter().map(|(rid, _)| rid).collect();
                     return Some((vid, diff));
                 }
@@ -104,15 +107,25 @@ where
                                 return None;
                             }
                         }
-                        if !self.db.contains_record(mapped_vid, rid) {
+                        if !db.contains_record(mapped_vid, rid) {
                             return Some(rid);
                         }
                         if matches!(config.merge_policy, MergePolicy::KeepOld) {
                             return None;
                         }
-                        let target_key = self.keystore.get_key(mapped_vid).unwrap();
-                        if self.db.get_blob_id(&target_key, mapped_vid, rid).unwrap() == bid {
-                            return None;
+                        match &key_provider {
+                            KeyProvider::KeyStore(ks) => {
+                                let target_key = ks.get_key(vid).unwrap();
+                                if db.get_blob_id(&target_key, mapped_vid, rid).unwrap() == bid {
+                                    return None;
+                                }
+                            }
+                            KeyProvider::KeyMap(map) => {
+                                let target_key = map.get(&vid).unwrap();
+                                if db.get_blob_id(target_key, mapped_vid, rid).unwrap() == bid {
+                                    return None;
+                                }
+                            }
                         }
                         Some(rid)
                     })
@@ -122,148 +135,51 @@ where
             .collect()
     }
 
-    pub fn export_entries(&self, select: HashMap<VaultId, Vec<RecordId>>) -> HashMap<VaultId, Vec<(RecordId, Record)>> {
+    fn export_entries(&'a self, select: HashMap<VaultId, Vec<RecordId>>) -> HashMap<VaultId, Vec<(RecordId, Record)>> {
+        let db = self.get_db();
         select
             .into_iter()
-            .map(|(vid, select)| (vid, self.db.export_records(vid, select).unwrap()))
+            .map(|(vid, select)| (vid, db.export_records(vid, select).unwrap()))
             .collect()
     }
 }
 
-impl<'a> From<&'a ClientState> for ClientRef<&'a DbView<Provider>, &'a KeyStore<Provider>> {
-    fn from(state: &'a ClientState) -> Self {
-        todo!()
-    }
-}
-
-impl<'a> TryFrom<&'a Client>
-    for ClientRef<RwLockReadGuard<'a, DbView<Provider>>, RwLockReadGuard<'a, KeyStore<Provider>>>
-{
-    type Error = ClientError;
-
-    fn try_from(client: &'a Client) -> Result<Self, Self::Error> {
-        let db = client.db.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
-        let keystore = client.keystore.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
-        let state = ClientRef { db, keystore };
-        Ok(state)
-    }
-}
-
-/// Mutable access to a client's [`DbView`] and [`KeyStore`].
-pub struct ClientRefMut<DB, KS>
-where
-    DB: DerefMut<Target = DbView<Provider>>,
-    KS: DerefMut<Target = KeyStore<Provider>>,
-{
-    pub db: DB,
-    pub keystore: KS,
-}
-
-impl<DB, KS> ClientRefMut<DB, KS>
-where
-    DB: DerefMut<Target = DbView<Provider>>,
-    KS: DerefMut<Target = KeyStore<Provider>>,
-{
-    pub fn import_own_records(
-        &mut self,
-        records: HashMap<VaultId, Vec<(RecordId, Record)>>,
-        mapping: HashMap<VaultId, VaultId>,
-    ) {
-        for (vid, records) in records {
-            let old_vid = mapping.get(&vid).copied().unwrap_or(vid);
-            let old_key = self.keystore.get_key(old_vid).unwrap();
-            let new_key = self.keystore.get_or_insert_key(vid, Key::random()).unwrap();
-            self.db.import_records(&old_key, &new_key, vid, records).unwrap()
-        }
-    }
-
-    pub fn import_records<KS2: Deref<Target = KeyStore<Provider>>>(
-        &mut self,
-        records: HashMap<VaultId, Vec<(RecordId, Record)>>,
-        old_keystore: &KS2,
-        config: &SyncClientsConfig,
-    ) {
-        for (vid, mut records) in records {
-            if let Some(select_vaults) = config.select_vaults.as_ref() {
-                if !select_vaults.contains(&vid) {
-                    continue;
-                }
-            }
-            if let Some(select_records) = config.select_records.get(&vid) {
-                records.retain(|(rid, _)| select_records.contains(rid));
-            }
-            let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
-            let old_key = old_keystore.get_key(vid).unwrap();
-            let new_key = self.keystore.get_or_insert_key(mapped_vid, Key::random()).unwrap();
-            self.db.import_records(&old_key, &new_key, mapped_vid, records).unwrap()
-        }
-    }
-}
-
-impl<'a> TryFrom<&'a Client>
-    for ClientRefMut<RwLockWriteGuard<'a, DbView<Provider>>, RwLockWriteGuard<'a, KeyStore<Provider>>>
-{
-    type Error = ClientError;
-
-    fn try_from(client: &'a Client) -> Result<Self, Self::Error> {
-        let db = client.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
-        let keystore = client
-            .keystore
-            .try_write()
-            .map_err(|_| ClientError::LockAcquireFailed)?;
-        let state = ClientRefMut { db, keystore };
-        Ok(state)
-    }
-}
-
-impl<'a> From<&'a mut ClientState> for ClientRefMut<&'a mut DbView<Provider>, &'a mut KeyStore<Provider>> {
-    fn from(state: &'a mut ClientState) -> Self {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SyncSnapshotsConfig {
     pub select_clients: Option<Vec<ClientId>>,
-    pub select_vaults: HashMap<ClientId, Vec<VaultId>>,
-    pub select_records: HashMap<ClientId, HashMap<VaultId, Vec<RecordId>>>,
+    pub client_config: HashMap<ClientId, SyncClientsConfig>,
     pub map_clients: HashMap<ClientId, ClientId>,
     pub merge_policy: MergePolicy,
 }
 
-impl SyncSnapshotsConfig {
-    fn client_config(&self, cid: ClientId) -> SyncClientsConfig {
-        let select_vaults = self.select_vaults.get(&cid).cloned();
-        let select_records = self.select_records.get(&cid).cloned().unwrap_or_default();
-        SyncClientsConfig {
-            select_vaults,
-            select_records,
-            merge_policy: self.merge_policy,
-            map_vaults: HashMap::new(),
-        }
-    }
-}
+pub trait SyncSnapshots {
+    fn clients(&self) -> Vec<ClientId>;
+    fn get_from_state<F, T>(&self, cid: ClientId, f: F) -> T
+    where
+        F: FnOnce(Option<&ClientState>) -> T;
+    fn update_state<F, T>(&mut self, cid: ClientId, f: F)
+    where
+        F: FnOnce(&mut ClientState) -> T;
 
-impl SnapshotState {
-    pub fn get_hierarchy(
+    fn get_hierarchy(
         &self,
         clients: Option<Vec<ClientId>>,
     ) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>> {
-        let clients = clients.unwrap_or_else(|| self.0.keys().cloned().collect());
+        let clients = clients.unwrap_or_else(|| self.clients());
         clients
             .into_iter()
             .filter_map(|cid| {
-                let client_ref = match self.0.get(&cid) {
-                    Some(state) => ClientRef::from(state),
-                    None => return None,
+                let f = |state: Option<&ClientState>| {
+                    let state = state?;
+                    Some(state.get_hierarchy(None))
                 };
-                let client_hierarchy = client_ref.get_hierarchy(None);
+                let client_hierarchy = self.get_from_state(cid, f)?;
                 Some((cid, client_hierarchy))
             })
             .collect()
     }
 
-    pub fn get_diff(
+    fn get_diff(
         &self,
         other: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>,
         config: &SyncSnapshotsConfig,
@@ -277,34 +193,44 @@ impl SnapshotState {
                     }
                 }
                 let mapped_cid = config.map_clients.get(&cid).copied().unwrap_or(cid);
-                let client_ref = match self.0.get(&mapped_cid) {
-                    Some(state) => ClientRef::from(state),
-                    None => return None,
+                let f = |state: Option<&ClientState>| {
+                    let state = state?;
+                    let client_diff = match config.client_config.get(&cid) {
+                        Some(c) => state.get_diff(hierarchy, c),
+                        None => {
+                            let config = SyncClientsConfig {
+                                merge_policy: config.merge_policy,
+                                ..Default::default()
+                            };
+                            state.get_diff(hierarchy, &config)
+                        }
+                    };
+                    Some(client_diff)
                 };
-                let client_diff = client_ref.get_diff(hierarchy, &config.client_config(cid));
+                let client_diff = self.get_from_state(cid, f)?;
                 Some((cid, client_diff))
             })
             .collect()
     }
 
-    pub fn export_entries(
+    fn export_entries(
         &self,
         select: HashMap<ClientId, HashMap<VaultId, Vec<RecordId>>>,
     ) -> HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, Record)>>> {
         select
             .into_iter()
             .filter_map(|(cid, select)| {
-                let client_ref = match self.0.get(&cid) {
-                    Some(state) => ClientRef::from(state),
-                    None => return None,
+                let f = |state: Option<&ClientState>| {
+                    let state = state?;
+                    Some(state.export_entries(select))
                 };
-                let exported = client_ref.export_entries(select);
+                let exported = self.get_from_state(cid, f)?;
                 Some((cid, exported))
             })
             .collect()
     }
 
-    pub fn import_records(
+    fn import_records(
         &mut self,
         records: HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, Record)>>>,
         old_keys: &HashMap<ClientId, HashMap<VaultId, Key<Provider>>>,
@@ -317,15 +243,37 @@ impl SnapshotState {
                 }
             }
             let old_keystore = match old_keys.get(&cid) {
-                Some(ks) => ks,
+                Some(k) => k,
                 None => return,
             };
             let mapped_cid = config.map_clients.get(&cid).copied().unwrap_or(cid);
-            let mut client_ref = match self.0.get_mut(&mapped_cid) {
-                Some(state) => ClientRefMut::from(state),
-                None => return,
+            let import_records = |state: &mut ClientState, config: &SyncClientsConfig| {
+                for (vid, mut records) in records {
+                    if let Some(select_vaults) = config.select_vaults.as_ref() {
+                        if !select_vaults.contains(&vid) {
+                            continue;
+                        }
+                    }
+                    if let Some(select_records) = config.select_records.get(&vid) {
+                        records.retain(|(rid, _)| select_records.contains(rid));
+                    }
+                    let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
+                    state.0.entry(vid).or_insert_with(Key::random);
+                    let old_key = old_keystore.get(&vid).unwrap();
+                    let new_key = state.0.get(&mapped_vid).unwrap();
+                    state.1.import_records(old_key, new_key, vid, records).unwrap()
+                }
             };
-            client_ref.import_records(records, old_keystore, &config.client_config(cid))
+            let f = match config.client_config.get(&cid) {
+                Some(c) => self.update_state(cid, |state| import_records(state, c)),
+                None => {
+                    let config = SyncClientsConfig {
+                        merge_policy: config.merge_policy,
+                        ..Default::default()
+                    };
+                    self.update_state(cid, |state| import_records(state, &config))
+                }
+            };
         })
     }
 }
@@ -365,7 +313,7 @@ mod test {
     #[test]
     fn test_get_hierarchy() -> Result<(), Box<dyn std::error::Error>> {
         let client = Client::default();
-        let hierarchy = ClientRef::try_from(&client)?.get_hierarchy(None);
+        let hierarchy = client.get_hierarchy(None);
         assert!(hierarchy.is_empty());
 
         let location_1 = test_location();
@@ -385,7 +333,7 @@ mod test {
         assert_eq!(vid2, vid23);
         client.write_to_vault(&location_3, test_hint(), test_value())?;
 
-        let hierarchy = ClientRef::try_from(&client)?.get_hierarchy(None);
+        let hierarchy = client.get_hierarchy(None);
 
         assert_eq!(hierarchy.len(), 2);
         let records_1 = hierarchy
@@ -473,23 +421,23 @@ mod test {
 
         let target = Client::default();
 
-        let source_hierarchy_full = ClientRef::try_from(&source)?.get_hierarchy(None);
+        let source_hierarchy_full = source.get_hierarchy(None);
         assert_eq!(source_hierarchy_full.keys().len(), 3);
 
-        let source_hierarchy_partial = ClientRef::try_from(&source)?.get_hierarchy(config.select_vaults.clone());
+        let source_hierarchy_partial = source.get_hierarchy(config.select_vaults.clone());
         assert_eq!(source_hierarchy_partial.keys().len(), 2);
 
-        let target_hierarchy = ClientRef::try_from(&target)?.get_hierarchy(None);
+        let target_hierarchy = target.get_hierarchy(None);
         assert!(target_hierarchy.is_empty());
 
         // Do sync.
         target.sync_with(&source, config)?;
 
         // Check that old state still contains all values
-        let check_hierarchy = ClientRef::try_from(&source)?.get_hierarchy(None);
+        let check_hierarchy = source.get_hierarchy(None);
         assert_eq!(source_hierarchy_full, check_hierarchy);
 
-        let mut target_hierarchy = ClientRef::try_from(&target)?.get_hierarchy(None);
+        let mut target_hierarchy = target.get_hierarchy(None);
         // Only two vaults (Vault-1 and Vault-3) were imported.
         assert_eq!(target_hierarchy.keys().len(), 2);
 
@@ -535,7 +483,7 @@ mod test {
             }
         }
 
-        let mut source_vault_2_hierarchy = ClientRef::try_from(&source)?
+        let mut source_vault_2_hierarchy = source
             .get_hierarchy(None)
             .remove(&vault_path_to_id("vault_2"))
             .expect("Vault does not exist.");
@@ -580,7 +528,7 @@ mod test {
         // == Test merge policy MergePolicy::KeepOld
 
         let target_1 = set_up_target()?;
-        let old_v2_r2_bid = ClientRef::try_from(&target_1)?
+        let old_v2_r2_bid = target_1
             .get_hierarchy(None)
             .remove(&vault_path_to_id("vault_2"))
             .and_then(|vec| vec.into_iter().find(|(rid, _)| rid == &r_ctr_to_id("vault_2", 22)))
@@ -591,7 +539,7 @@ mod test {
             ..Default::default()
         };
         target_1.sync_with(&source, config)?;
-        let mut hierarchy = ClientRef::try_from(&target_1)?.get_hierarchy(None);
+        let mut hierarchy = target_1.get_hierarchy(None);
 
         assert_for_distinct_vaults(&mut hierarchy);
 
@@ -617,7 +565,7 @@ mod test {
             ..Default::default()
         };
         target_2.sync_with(&source, config)?;
-        let mut hierarchy = ClientRef::try_from(&target_2)?.get_hierarchy(None);
+        let mut hierarchy = target_2.get_hierarchy(None);
 
         assert_for_distinct_vaults(&mut hierarchy);
 

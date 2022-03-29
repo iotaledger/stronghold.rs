@@ -15,7 +15,10 @@ impl Stronghold {
         Self::default()
     }
 
-    /// Loads a [`Client`] from `client_path` from a [`Snapshot`] with given `snapshot_path` as [`SnapshotPath`]
+    /// Load the state of a [`Snapshot`] at given `snapshot_path`.
+    /// The [`Snapshot`] is secured in memory and may be used to load further
+    /// clients with [`Stronghold::load_client`].
+    /// Load a [`Client`] at `client_path` from the snapshot.
     ///
     /// # Example
     /// ```no_run
