@@ -30,13 +30,12 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
-        self.client
-            .write_to_vault(
-                &location,
-                RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap(),
-                payload,
-            )
-            .map_err(|e| ClientError::Inner(e.to_string()))
+        self.client.write_to_vault(
+            &location,
+            RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap(),
+            payload,
+        )?;
+        Ok(())
     }
 
     /// Deletes a secret from the vault
@@ -55,9 +54,8 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn revoke_secret(&self, location: Location) -> Result<(), ClientError> {
-        self.client
-            .revoke_data(&location)
-            .map_err(|e| ClientError::Inner(e.to_string()))
+        self.client.revoke_data(&location)?;
+        Ok(())
     }
 
     /// Collects revoked records and deletes them

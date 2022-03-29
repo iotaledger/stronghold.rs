@@ -17,7 +17,7 @@ use crate::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
     sync::{KeyProvider, MergePolicy, SyncClients, SyncClientsConfig},
-    ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, Store,
+    ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, SnapshotError, Store,
 };
 
 use super::snapshot;
@@ -99,7 +99,7 @@ impl Client {
         P: AsRef<Vec<u8>>,
     {
         let vault_id = derive_vault_id(vault_path);
-        let keystore = self.keystore.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let keystore = self.keystore.try_read()?;
 
         Ok(keystore.vault_exists(vault_id))
     }
@@ -111,7 +111,7 @@ impl Client {
     /// ```
     pub async fn record_exists(&self, location: Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
-        let db = self.db.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let db = self.db.try_read()?;
         let contains_record = db.contains_record(vault_id, record_id);
         Ok(contains_record)
     }
@@ -139,17 +139,19 @@ impl Client {
             map_vaults,
             merge_policy,
         };
-        let hierarchy = self.get_hierarchy(config.select_vaults.clone());
-        let diff = self.get_diff(hierarchy, &config);
-        let exported = self.export_entries(diff);
+        let hierarchy = self.get_hierarchy(config.select_vaults.clone())?;
+        let diff = self.get_diff(hierarchy, &config)?;
+        let exported = self.export_entries(diff)?;
         let mut db = self.db.try_write()?;
         let mut key_store = self.keystore.try_write()?;
 
         for (vid, records) in exported {
-            let old_vid = config.map_vaults.remove(&vid).unwrap_or(vid);
-            let old_key = key_store.get_key(old_vid).unwrap();
-            let new_key = key_store.get_or_insert_key(vid, Key::random()).unwrap();
-            db.import_records(&old_key, &new_key, vid, records).unwrap()
+            let mapped_vid = config.map_vaults.remove(&vid).unwrap_or(vid);
+            let old_key = key_store
+                .get_key(vid)
+                .ok_or_else(|| ClientError::Inner(format!("Missing Key for vault {:?}", vid)))?;
+            let new_key = key_store.get_or_insert_key(mapped_vid, Key::random())?;
+            db.import_records(&old_key, &new_key, mapped_vid, records)?
         }
         Ok(())
     }
@@ -160,9 +162,9 @@ impl Client {
     /// ```
     /// ```
     pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
-        let hierarchy = other.get_hierarchy(config.select_vaults.clone());
-        let diff = self.get_diff(hierarchy, &config);
-        let exported = other.export_entries(diff);
+        let hierarchy = other.get_hierarchy(config.select_vaults.clone())?;
+        let diff = self.get_diff(hierarchy, &config)?;
+        let exported = other.export_entries(diff)?;
 
         for (vid, mut records) in exported {
             if let Some(select_vaults) = config.select_vaults.as_ref() {
@@ -174,16 +176,18 @@ impl Client {
                 records.retain(|(rid, _)| select_records.contains(rid));
             }
             let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
-            let old_key = other.keystore.try_read()?.get_key(vid).unwrap();
+            let old_key = other
+                .keystore
+                .try_read()?
+                .get_key(vid)
+                .ok_or_else(|| ClientError::Inner(format!("Missing Key for vault {:?}", vid)))?;
             let new_key = self
                 .keystore
                 .try_write()?
-                .get_or_insert_key(mapped_vid, Key::random())
-                .unwrap();
+                .get_or_insert_key(mapped_vid, Key::random())?;
             self.db
                 .try_write()?
-                .import_records(&old_key, &new_key, mapped_vid, records)
-                .unwrap()
+                .import_records(&old_key, &new_key, mapped_vid, records)?
         }
         Ok(())
     }
@@ -206,7 +210,7 @@ impl Client {
         let (keys, db, st) = state;
 
         // reload keystore
-        let mut keystore = self.keystore.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut keystore = self.keystore.try_write()?;
         let mut new_keystore = KeyStore::<Provider>::default();
         new_keystore
             .rebuild_keystore(keys)
@@ -216,16 +220,12 @@ impl Client {
         drop(keystore);
 
         // reload db
-        let mut view = self.db.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut view = self.db.try_write()?;
         *view = db;
         drop(view);
 
         // reload store
-        let mut store = self
-            .store
-            .cache
-            .try_write()
-            .map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut store = self.store.cache.try_write()?;
         *store = st;
         drop(store);
 
@@ -281,13 +281,14 @@ impl Client {
 impl<'a> SyncClients<'a> for Client {
     type Db = RwLockReadGuard<'a, DbView<Provider>>;
 
-    fn get_db(&'a self) -> Self::Db {
-        self.db.try_read().unwrap()
+    fn get_db(&'a self) -> Result<Self::Db, ClientError> {
+        let db = self.db.try_read()?;
+        Ok(db)
     }
 
-    fn get_key_provider(&'a self) -> KeyProvider<'a> {
-        let ks = self.keystore.try_read().unwrap();
-        KeyProvider::KeyStore(ks)
+    fn get_key_provider(&'a self) -> Result<KeyProvider<'a>, ClientError> {
+        let ks = self.keystore.try_read()?;
+        Ok(KeyProvider::KeyStore(ks))
     }
 }
 

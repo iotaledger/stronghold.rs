@@ -68,7 +68,7 @@ impl Store {
     /// assert!(store.insert(key.clone(), data, None).is_ok());
     /// ```
     pub fn insert(&self, key: Vec<u8>, value: Vec<u8>, lifetime: Option<Duration>) -> Result<(), ClientError> {
-        let mut guard = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut guard = self.cache.try_write()?;
         guard.insert(key, value, lifetime);
 
         Ok(())
@@ -88,7 +88,7 @@ impl Store {
     /// assert!(store.get(key).unwrap().deref().is_some());
     /// ```
     pub fn get(&self, key: Vec<u8>) -> Result<StoreGuard<'_>, ClientError> {
-        let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let guard = self.cache.try_read()?;
 
         // Problem: The returned rwread guard is local to this function, hence we can't return a borrowed ref
         // to the inner value. we could return the guard itself, but would rely on the user to deref the rwguard
@@ -111,7 +111,7 @@ impl Store {
     /// assert!(store.get(key).unwrap().deref().is_none());
     /// ```
     pub fn delete(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
-        let mut guard = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut guard = self.cache.try_write()?;
         Ok(guard.remove(&key))
     }
 
@@ -127,7 +127,7 @@ impl Store {
     /// assert!(store.contains_key(key).unwrap());
     /// ```
     pub fn contains_key(&self, key: Vec<u8>) -> Result<bool, ClientError> {
-        let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let guard = self.cache.try_read()?;
         Ok(guard.get(&key).is_some())
     }
 
@@ -150,7 +150,7 @@ impl Store {
     /// store.reload(cache);
     /// ```
     pub fn reload(&self, cache: Cache<Vec<u8>, Vec<u8>>) -> Result<(), ClientError> {
-        let mut inner = self.cache.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut inner = self.cache.try_write()?;
         *inner = cache;
         Ok(())
     }
