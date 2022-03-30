@@ -96,7 +96,7 @@ impl Client {
     /// ```
     pub async fn vault_exists<P>(&self, vault_path: P) -> Result<bool, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let vault_id = derive_vault_id(vault_path);
         let keystore = self.keystore.try_read()?;

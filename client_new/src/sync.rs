@@ -415,11 +415,11 @@ mod test {
     }
 
     fn vault_path_to_id(path: &str) -> VaultId {
-        derive_vault_id(path.as_bytes().to_vec())
+        derive_vault_id(path.as_bytes())
     }
 
     fn r_ctr_to_id(vault_path: &str, ctr: usize) -> RecordId {
-        derive_record_id_from_counter(vault_path.as_bytes().to_vec(), ctr)
+        derive_record_id_from_counter(vault_path.as_bytes(), ctr)
     }
 
     #[test]

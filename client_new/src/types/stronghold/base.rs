@@ -30,7 +30,7 @@ impl Stronghold {
         snapshot_path: &SnapshotPath,
     ) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
@@ -67,7 +67,7 @@ impl Stronghold {
     /// Loads a client from [`Snapshot`] data
     pub async fn load_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
@@ -98,7 +98,7 @@ impl Stronghold {
     /// # Example
     pub async fn create_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
@@ -144,7 +144,7 @@ impl Stronghold {
     /// # Example
     pub async fn write_client<P>(&self, client_path: P) -> Result<(), ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         self.write(client_id).await
