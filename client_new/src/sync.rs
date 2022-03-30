@@ -52,14 +52,18 @@ impl SyncClientsConfig {
     ///
     /// Note: This is referring to the paths as they are on the source client, not
     /// to the mapped path.
-    pub fn sync_selected_vaults(&mut self, vault_paths: Vec<Vec<u8>>) {
+    pub fn sync_selected_vaults<P: AsRef<[u8]>>(&mut self, vault_paths: Vec<P>) {
         let select_vaults = vault_paths.into_iter().map(derive_vault_id).collect();
         let _ = self.select_vaults.insert(select_vaults);
     }
 
     /// Perform for a vault only a partial sync so that only the specified records
     /// are copied.
-    pub fn sync_selected_record(&mut self, vault_path: Vec<u8>, record_paths: Vec<Vec<u8>>) {
+    pub fn sync_selected_record<V, R>(&mut self, vault_path: V, record_paths: Vec<R>)
+    where
+        V: AsRef<[u8]>,
+        R: AsRef<[u8]>,
+    {
         let select_records = record_paths
             .into_iter()
             .map(|path| derive_record_id(&vault_path, path))
@@ -71,7 +75,7 @@ impl SyncClientsConfig {
     /// Map the `vault_path` from the source to a local `vault_path`.
     /// If no mapping is set for a vault it assumes that the `vault_path` is the same
     /// on source and target.
-    pub fn map_vaults(&mut self, map_vault_paths: HashMap<Vec<u8>, Vec<u8>>) {
+    pub fn map_vaults<P: AsRef<[u8]>>(&mut self, map_vault_paths: HashMap<P, P>) {
         let map_vaults = map_vault_paths
             .into_iter()
             .map(|(path_a, path_b)| (derive_vault_id(path_a), derive_vault_id(path_b)));
@@ -79,14 +83,14 @@ impl SyncClientsConfig {
     }
 }
 
-pub enum KeyProvider<'a> {
+pub(crate) enum KeyProvider<'a> {
     KeyStore(RwLockReadGuard<'a, KeyStore<Provider>>),
     KeyMap(&'a HashMap<VaultId, Key<Provider>>),
 }
 
-pub type ClientHierarchy<T> = HashMap<VaultId, Vec<T>>;
+pub(crate) type ClientHierarchy<T> = HashMap<VaultId, Vec<T>>;
 
-pub trait SyncClients<'a> {
+pub(crate) trait SyncClients<'a> {
     type Db: Deref<Target = DbView<Provider>>;
 
     fn get_db(&'a self) -> Result<Self::Db, ClientError>;
@@ -194,7 +198,7 @@ pub trait SyncClients<'a> {
     }
 }
 
-pub type SnapshotHierarchy<T> = HashMap<ClientId, HashMap<VaultId, Vec<T>>>;
+pub(crate) type SnapshotHierarchy<T> = HashMap<ClientId, HashMap<VaultId, Vec<T>>>;
 
 /// Config for synching two snapshots.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -220,10 +224,10 @@ impl SyncSnapshotsConfig {
     ///
     /// Note: This is referring to the paths as they are on the source, not
     /// to the mapped id.
-    pub fn sync_selected_clients(&mut self, client_paths: Vec<Vec<u8>>) {
+    pub fn sync_selected_clients<P: AsRef<[u8]>>(&mut self, client_paths: Vec<P>) {
         let select_clients = client_paths
             .into_iter()
-            .map(|path| ClientId::load_from_path(&path, &path))
+            .map(|path| ClientId::load_from_path(path.as_ref(), path.as_ref()))
             .collect();
         let _ = self.select_clients.insert(select_clients);
     }
@@ -232,25 +236,25 @@ impl SyncSnapshotsConfig {
     ///
     /// Note: This is referring to the client-path as it is on the source, not
     /// to the mapped path.
-    pub fn config_client_sync(&mut self, client_path: Vec<u8>, config: SyncClientsConfig) {
-        let cid = ClientId::load_from_path(&client_path, &client_path);
+    pub fn config_client_sync<P: AsRef<[u8]>>(&mut self, client_path: P, config: SyncClientsConfig) {
+        let cid = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         self.client_config.insert(cid, config);
     }
 
     /// Map the `client_path` from the source to a local `client_path`.
     /// If no mapping is set for a client it assumes that the `client_path` is the same
     /// on source and target.
-    pub fn map_clients(&mut self, map_client_paths: HashMap<Vec<u8>, Vec<u8>>) {
+    pub fn map_clients<P: AsRef<[u8]>>(&mut self, map_client_paths: HashMap<P, P>) {
         let map_clients = map_client_paths.into_iter().map(|(path_a, path_b)| {
-            let cid_a = ClientId::load_from_path(&path_a, &path_a);
-            let cid_b = ClientId::load_from_path(&path_b, &path_b);
+            let cid_a = ClientId::load_from_path(path_a.as_ref(), path_a.as_ref());
+            let cid_b = ClientId::load_from_path(path_b.as_ref(), path_b.as_ref());
             (cid_a, cid_b)
         });
         self.map_clients.extend(map_clients)
     }
 }
 
-pub trait SyncSnapshots {
+pub(crate) trait SyncSnapshots {
     fn clients(&self) -> Vec<ClientId>;
     fn get_from_state<F, T>(&self, cid: ClientId, f: F) -> Result<T, SnapshotError>
     where
