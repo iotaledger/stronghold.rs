@@ -125,11 +125,13 @@ impl Client {
     /// ```
     pub fn sync_vaults(
         &self,
-        source: VaultId,
-        target: VaultId,
+        source_path: Vec<u8>,
+        target_path: Vec<u8>,
         select_records: Option<Vec<RecordId>>,
         merge_policy: MergePolicy,
     ) -> Result<(), ClientError> {
+        let source = derive_vault_id(source_path);
+        let target = derive_vault_id(target_path);
         let select_vaults = vec![source];
         let map_vaults = [(source, target)].into();
         let select_records = select_records.map(|vec| [(source, vec)].into()).unwrap_or_default();
