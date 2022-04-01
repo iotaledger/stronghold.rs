@@ -6,6 +6,7 @@ use serde::{de::Error, Deserialize, Serialize};
 use thiserror::Error as DeriveError;
 
 use crate::Provider;
+use std::io;
 
 #[derive(Debug, DeriveError)]
 #[non_exhaustive]
@@ -29,8 +30,29 @@ pub enum ClientError {
     ClientDataNotPresent,
 }
 
-pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
+#[cfg(feature = "p2p")]
+#[derive(DeriveError, Debug)]
+pub enum SpawnNetworkError {
+    #[error("network already running")]
+    AlreadySpawned,
 
+    #[error("no client found for loading the config")]
+    ClientNotFound,
+
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("Error loading network config: {0}")]
+    LoadConfig(String),
+
+    #[error("Error deriving noise-keypair: {0}")]
+    DeriveKeypair(String),
+
+    #[error("Inner error occured {0}")]
+    Inner(String),
+}
+
+pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
 #[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]

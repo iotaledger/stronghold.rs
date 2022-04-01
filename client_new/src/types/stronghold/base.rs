@@ -52,7 +52,7 @@ impl Stronghold {
         drop(snapshot);
 
         // Load the client state
-        client.load(client_state, client_id).await?;
+        client.load(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
         let mut clients = self.clients.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
@@ -81,7 +81,7 @@ impl Stronghold {
         drop(snapshot);
 
         // Load the client state
-        client.load(client_state, client_id).await?;
+        client.load(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
         let mut clients = self.clients.try_write().map_err(|_| ClientError::LockAcquireFailed)?;

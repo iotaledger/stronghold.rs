@@ -20,7 +20,7 @@ fn test_get_from_store() -> Result<(), ClientError> {
 
     assert!(store.insert(key.clone(), data, None).is_ok());
     assert!(store.get(key.clone()).is_ok());
-    assert!(store.get(key)?.deref().is_some());
+    assert!(store.get(key)?.is_some());
 
     Ok(())
 }
@@ -34,7 +34,7 @@ fn test_delete_from_store() -> Result<(), ClientError> {
     store.insert(key.clone(), data, None)?;
     let deleted = store.delete(key.clone());
     assert!(deleted.is_ok());
-    assert!(store.get(key)?.deref().is_none());
+    assert!(store.get(key)?.is_none());
 
     Ok(())
 }

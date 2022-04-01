@@ -41,13 +41,11 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
         hint: RecordHint::new(b"").unwrap(),
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
 
     assert!(procedure_result.is_ok());
 
-    let vault_exists = client.vault_exists(b"vault_path".to_vec()).await;
+    let vault_exists = client.vault_exists(b"vault_path".to_vec());
     assert!(vault_exists.is_ok());
     assert!(vault_exists.unwrap());
 
@@ -57,9 +55,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
         private_key: output_location,
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()));
 
     assert!(procedure_result.is_ok());
 
@@ -67,7 +63,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let output: Vec<u8> = procedure_result.into();
 
     // some store data
-    let store = client.store().await;
+    let store = client.store();
 
     let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
 
@@ -96,9 +92,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
         .await?;
 
     // Write the state of the client back into the snapshot
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
 
     assert!(procedure_result.is_ok());
 

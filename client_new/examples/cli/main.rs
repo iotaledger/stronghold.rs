@@ -67,13 +67,13 @@ fn fixed_random_bytes(length: usize) -> Vec<u8> {
 
 async fn command_write_and_read_from_store(key: String, value: String) -> Result<(), ClientError> {
     let client = Client::default();
-    let store = client.store().await;
+    let store = client.store();
 
     info!(r#"Insert value into store "{}" with key "{}""#, value, key);
     store.insert(key.as_bytes().to_vec(), value.as_bytes().to_vec(), None)?;
 
     info!(
-        r#"Store containts key "{}" ? {}"#,
+        r#"Store contains key "{}" ? {}"#,
         key,
         store.contains_key(key.as_bytes().to_vec())?
     );
@@ -81,7 +81,7 @@ async fn command_write_and_read_from_store(key: String, value: String) -> Result
     info!(
         r#"Value for key "{}" ? {:?}"#,
         key,
-        String::from_utf8(store.get(key.as_bytes().to_vec()).unwrap().deref().unwrap().to_vec()).unwrap()
+        String::from_utf8(store.get(key.as_bytes().to_vec()).unwrap().unwrap().to_vec()).unwrap()
     );
 
     Ok(())
@@ -115,9 +115,7 @@ async fn command_generate_key(key_type: String, vault_path: String, record_path:
         hint: RecordHint::new(b"").unwrap(),
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
 
     info!("Key generation successful? {}", procedure_result.is_ok());
 
@@ -128,9 +126,7 @@ async fn command_generate_key(key_type: String, vault_path: String, record_path:
     };
 
     info!("Creating public key");
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
 
     assert!(procedure_result.is_ok());
 
@@ -157,7 +153,7 @@ async fn command_generate_bip39(
         hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
-    let result = client.execute_procedure(bip39_procedure).await.unwrap();
+    let result = client.execute_procedure(bip39_procedure).unwrap();
 
     info!("BIP39 Mnemonic: {}", result);
 }

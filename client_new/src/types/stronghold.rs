@@ -5,21 +5,32 @@
 mod base;
 
 /// p2p Stronghold functionality
+#[cfg(feature = "p2p")]
 mod p2p;
+
+#[cfg(feature = "p2p")]
+pub mod network;
 
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
 
-/// re-export base Stronghold functionlity
+/// re-export base Stronghold functionality
 pub use base::*;
 
 use engine::vault::ClientId;
+
 #[cfg(feature = "p2p")]
 pub use p2p::*;
 
-use crate::{Client, ClientError, Snapshot};
+// #[cfg(feature = "p2p")]
+// pub use network as net;
+
+#[cfg(feature = "p2p")]
+use crate::network::Network;
+
+use crate::{Client, ClientError, Snapshot, Store};
 
 /// The Stronghold is a secure storage for sensitive data. Secrets that are stored inside
 /// a Stronghold can never be read, but only be accessed via cryptographic procedures. Data inside
@@ -35,4 +46,10 @@ pub struct Stronghold {
 
     /// A map of [`ClientId`] to [`Client`]s
     clients: Arc<RwLock<HashMap<ClientId, Client>>>,
+
+    // A per Stronghold session store
+    store: Store,
+
+    #[cfg(feature = "p2p")]
+    network: Arc<RwLock<Option<Network>>>,
 }

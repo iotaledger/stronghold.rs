@@ -11,27 +11,28 @@ use std::{
 
 use crate::ClientError;
 use engine::store::Cache;
+use rlu::Read;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 
-/// The [`StoreGuard`] wraps the [`RwLocKReadGuard`] with an associated key. The
-/// inner value can simply be accessed by a custom `deref` function
-pub struct StoreGuard<'a> {
-    inner: RwLockReadGuard<'a, Cache<Vec<u8>, Vec<u8>>>,
-    key: Vec<u8>,
-}
+// The [`StoreGuard`] wraps the [`RwLocKReadGuard`] with an associated key. The
+// inner value can simply be accessed by a custom `deref` function
+// pub struct StoreGuard<'a> {
+//     inner: RwLockReadGuard<'a, Cache<Vec<u8>, Vec<u8>>>,
+//     key: Vec<u8>,
+// }
 
-impl<'a> StoreGuard<'a> {
-    fn from(inner: RwLockReadGuard<'a, Cache<Vec<u8>, Vec<u8>>>, key: Vec<u8>) -> Self {
-        Self { inner, key }
-    }
-}
+// impl<'a> StoreGuard<'a> {
+//     fn from(inner: RwLockReadGuard<'a, Cache<Vec<u8>, Vec<u8>>>, key: Vec<u8>) -> Self {
+//         Self { inner, key }
+//     }
+// }
 
-impl<'a> StoreGuard<'a> {
-    pub fn deref(&self) -> Option<&Vec<u8>> {
-        let data = self.inner.deref();
-        data.get(&self.key)
-    }
-}
+// impl<'a> StoreGuard<'a> {
+//     pub fn deref(&self) -> Option<&Vec<u8>> {
+//         let data = self.inner.deref();
+//         data.get(&self.key)
+//     }
+// }
 
 pub struct Store {
     pub(crate) cache: Arc<RwLock<Cache<Vec<u8>, Vec<u8>>>>,
@@ -87,13 +88,13 @@ impl Store {
     /// assert!(store.get(key.clone()).is_ok());
     /// assert!(store.get(key).unwrap().deref().is_some());
     /// ```
-    pub fn get(&self, key: Vec<u8>) -> Result<StoreGuard<'_>, ClientError> {
+    pub fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
         let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         // Problem: The returned rwread guard is local to this function, hence we can't return a borrowed ref
         // to the inner value. we could return the guard itself, but would rely on the user to deref the rwguard
         // and then access the value again
-        Ok(StoreGuard::from(guard, key))
+        Ok(guard.get(&key).cloned())
     }
 
     /// Tries to delete the inner vale with `key`

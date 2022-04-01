@@ -10,9 +10,9 @@ on:
       - dev
       - dev-refactor
     paths:
-      - '.github/workflows/format.yml'
-      - '**.rs'
-      - '**.toml'
+      - ".github/workflows/format.yml"
+      - "**.rs"
+      - "**.toml"
 
 jobs:
   format:
@@ -20,7 +20,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, engine/runtime, client, products/commandline, derive, utils, p2p]
+        project:
+          [
+            engine,
+            engine/runtime,
+            client,
+            client_new,
+            products/commandline,
+            derive,
+            utils,
+            p2p,
+          ]
 
     steps:
       - uses: actions/checkout@v2
