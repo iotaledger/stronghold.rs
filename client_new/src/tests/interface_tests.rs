@@ -47,7 +47,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     assert!(procedure_result.is_ok());
 
-    let vault_exists = client.vault_exists(b"vault_path".to_vec()).await;
+    let vault_exists = client.vault_exists(b"vault_path").await;
     assert!(vault_exists.is_ok());
     assert!(vault_exists.unwrap());
 

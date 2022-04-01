@@ -6,13 +6,11 @@
 
 #![allow(clippy::type_complexity)]
 
+use crypto::keys::x25519;
 use engine::{
-    snapshot::{
-        self, read, read_from as read_from_file, write, write_to as write_to_file, Key, ReadError as EngineReadError,
-        WriteError as EngineWriteError,
-    },
+    snapshot::{self, read, read_from as read_from_file, write, write_to as write_to_file, Key},
     store::Cache,
-    vault::{BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
+    vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -23,7 +21,11 @@ use std::{
 };
 use stronghold_utils::random;
 
-use crate::{KeyStore, Location, Provider, SnapshotError};
+use crate::{
+    procedures::{DeriveSecret, X25519DiffieHellman},
+    sync::{self, KeyProvider, SnapshotHierarchy, SyncClients, SyncClientsConfig, SyncSnapshots, SyncSnapshotsConfig},
+    ClientError, KeyStore, Location, Provider, SnapshotError,
+};
 
 type EncryptedClientState = (Vec<u8>, Cache<Vec<u8>, Vec<u8>>);
 
@@ -32,6 +34,18 @@ pub type ClientState = (
     DbView<Provider>,
     Cache<Vec<u8>, Vec<u8>>,
 );
+
+impl<'a> SyncClients<'a> for ClientState {
+    type Db = &'a DbView<Provider>;
+
+    fn get_db(&'a self) -> Result<Self::Db, ClientError> {
+        Ok(&self.1)
+    }
+
+    fn get_key_provider(&'a self) -> Result<KeyProvider<'a>, ClientError> {
+        Ok(KeyProvider::KeyMap(&self.0))
+    }
+}
 
 /// Wrapper for the [`SnapshotState`] data structure.
 #[derive(Default)]
@@ -43,6 +57,10 @@ pub struct Snapshot {
     // Loaded snapshot states with each client state separately encrypted.
     states: HashMap<ClientId, EncryptedClientState>,
 }
+
+/// Data structure that is written to the snapshot.
+#[derive(Deserialize, Serialize, Default)]
+pub struct SnapshotState(pub(crate) HashMap<ClientId, ClientState>);
 
 // impl Default for Snapshot {
 //     fn default() -> Self {
@@ -111,14 +129,11 @@ impl SnapshotPath {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum UseKey {
     Key(snapshot::Key),
     Stored(Location),
 }
-
-/// Data structure that is written to the snapshot.
-#[derive(Deserialize, Serialize, Default)]
-pub struct SnapshotState(HashMap<ClientId, ClientState>);
 
 impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
@@ -138,7 +153,7 @@ impl Snapshot {
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_snapshot_state(&mut self) -> Result<SnapshotState, SnapshotError> {
+    pub fn get_snapshot_state(&self) -> Result<SnapshotState, SnapshotError> {
         let mut state = SnapshotState::default();
         let ids: Vec<ClientId> = self.states.keys().cloned().collect();
         for client_id in ids {
@@ -157,20 +172,15 @@ impl Snapshot {
     }
 
     /// Gets the state component parts as a tuple.
-    pub fn get_state(&mut self, id: ClientId) -> Result<ClientState, SnapshotError> {
+    pub fn get_state(&self, id: ClientId) -> Result<ClientState, SnapshotError> {
         let vid = VaultId(id.0);
         let ((encrypted, store), key) = match self
             .states
             .get(&id)
-            .and_then(|state| self.keystore.take_key(vid).map(|pkey| (state, pkey)))
+            .and_then(|state| self.keystore.get_key(vid).map(|pkey| (state, pkey)))
             .and_then(|(state, pkey)| {
                 let k = &pkey.key;
-                let res = k.borrow().deref().try_into().ok().map(|k| (state, k));
-                self.keystore
-                    .get_or_insert_key(vid, pkey)
-                    .map_err(|e| SnapshotError::Inner(e.to_string()))
-                    .ok();
-                res
+                k.borrow().deref().try_into().ok().map(|k| (state, k))
             }) {
             Some(t) => t,
             None => return Ok((HashMap::default(), DbView::default(), Cache::default())),
@@ -209,7 +219,7 @@ impl Snapshot {
     ///   - named_mut()
     ///   - path_
     pub fn write_to_snapshot(
-        &mut self,
+        &self,
         // name: Option<&str>,
         // path: Option<&Path>,
         snapshot_path: &SnapshotPath,
@@ -222,24 +232,13 @@ impl Snapshot {
             UseKey::Key(k) => k,
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
-                let pkey = self
-                    .keystore
-                    .take_key(vid)
-                    .ok_or(SnapshotError::SnapshotKey(vid, rid))?;
+                let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
                 let mut data = Vec::new();
-                let res = self
-                    .db
-                    .get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
-                        let guarded_data = guarded_data.borrow();
-                        data.extend_from_slice(&*guarded_data);
-                        Ok(())
-                    })
-                    .map_err(|e| SnapshotError::Vault(format!("{}", e)));
-                self.keystore
-                    .insert_key(vid, pkey)
-                    .map_err(|e| SnapshotError::Inner(e.to_string()))
-                    .ok();
-                res?;
+                self.db.get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
+                    let guarded_data = guarded_data.borrow();
+                    data.extend_from_slice(&*guarded_data);
+                    Ok(())
+                })?;
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
@@ -274,9 +273,7 @@ impl Snapshot {
         let mut buffer = Vec::new();
         write(&bytes, &mut buffer, &key, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
-        self.keystore
-            .insert_key(vault_id, pkey)
-            .map_err(|e| SnapshotError::Inner(e.to_string()))?;
+        self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
         Ok(())
     }
@@ -290,51 +287,146 @@ impl Snapshot {
     ) -> Result<(), SnapshotError> {
         // this should return an error
         let key = self.keystore.create_key(vault_id).expect("Could not create key");
-        self.db
-            .write(
-                &key,
-                vault_id,
-                record_id,
-                &snapshot_key,
-                RecordHint::new("").expect("0 <= 24"),
-            )
-            .map_err(|e| SnapshotError::Vault(format!("{}", e)))?;
+        self.db.write(
+            &key,
+            vault_id,
+            record_id,
+            &snapshot_key,
+            RecordHint::new("").expect("0 <= 24"),
+        )?;
+        Ok(())
+    }
+
+    /// Merge another state into the currently loaded snapshot.
+    pub fn merge_state(&mut self, mut state: SnapshotState, config: SyncSnapshotsConfig) -> Result<(), SnapshotError> {
+        let hierarchy = state.get_hierarchy(config.select_clients.clone())?;
+        let diff = self.get_diff(hierarchy, &config)?;
+        let exported = state.export_entries(diff)?;
+        let mut old_keys = HashMap::new();
+        for cid in exported.keys() {
+            let ks = state
+                .0
+                .remove(cid)
+                .ok_or_else(|| SnapshotError::Inner(format!("Missing KeyStore for client {:?}", cid)))?
+                .0;
+            old_keys.insert(*cid, ks);
+        }
+        self.import_records(exported, &old_keys, &config)?;
+        Ok(())
+    }
+
+    /// Deserialize, decompress and decrypt a state received from a remote peer and merge
+    /// it into the local state.
+    ///
+    /// It expects that a x25519 key exists at `local_sk` and that the received snapshot file is encrypted
+    /// with a shared key create from the public key of `local_sk` and the remote's secret key.
+    pub fn import_from_serialized_state(
+        &mut self,
+        bytes: Vec<u8>,
+        local_sk: Location,
+        remote_pk: x25519::PublicKey,
+        config: SyncSnapshotsConfig,
+    ) -> Result<(), SnapshotError> {
+        let (vid, rid) = local_sk.resolve();
+        let vault_key = self
+            .keystore
+            .get_key(vid)
+            .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
+
+        let decrypted = &mut Vec::new();
+        self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
+            let sk = x25519::SecretKey::try_from_slice(&*guard.borrow())?;
+            let shared_key = sk.diffie_hellman(&remote_pk);
+            let pt = engine::snapshot::read(&mut bytes.as_slice(), shared_key.as_bytes(), &[])?;
+            *decrypted = pt;
+            Ok(())
+        })?;
+        let data =
+            engine::snapshot::decompress(decrypted).map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
+        let state: SnapshotState = bincode::deserialize(&data)?;
+        self.merge_state(state, config)
+    }
+
+    /// Export the given hierarchy from the loaded state to a blank `SnapshotState`.
+    /// Serialize, compress and encrypt the state so it can be sent to a remote peer.
+    ///
+    /// The snapshot is encrypted with a shared key that is created in a handshake between
+    /// the local secret key at `local_sk` and the remote public key `remote_pk`.
+    pub fn export_to_serialized_state(
+        &self,
+        select: SnapshotHierarchy<RecordId>,
+        remote_pk: x25519::PublicKey,
+    ) -> Result<(x25519::PublicKey, Vec<u8>), SnapshotError> {
+        let mut blank = SnapshotState::default();
+
+        let mut old_keys = HashMap::new();
+        let mut export = HashMap::new();
+        for (cid, select) in select {
+            let state = self.get_state(cid)?;
+            let exported = state.export_entries(select)?;
+            if exported.is_empty() {
+                continue;
+            }
+            old_keys.insert(cid, state.0);
+            export.insert(cid, exported);
+        }
+
+        blank.import_records(export, &old_keys, &SyncSnapshotsConfig::default())?;
+        let data = bincode::serialize(&blank)?;
+        let compressed_plain = engine::snapshot::compress(data.as_slice());
+        let mut buffer = Vec::new();
+
+        // Perform a handshake with the remote's public key and an ephemeral local key to create the snapshot key.
+        let sk = x25519::SecretKey::generate()?;
+        let shared_key = sk.diffie_hellman(&remote_pk);
+        let pk = sk.public_key();
+        engine::snapshot::write(&compressed_plain, &mut buffer, shared_key.as_bytes(), &[])?;
+        Ok((pk, buffer))
+    }
+}
+
+impl SyncSnapshots for Snapshot {
+    fn clients(&self) -> Vec<ClientId> {
+        self.states.keys().cloned().collect()
+    }
+
+    fn get_from_state<F, T>(&self, cid: ClientId, f: F) -> Result<T, SnapshotError>
+    where
+        F: FnOnce(Option<&ClientState>) -> Result<T, SnapshotError>,
+    {
+        let state = self.get_state(cid)?;
+        f(Some(&state))
+    }
+
+    fn update_state<F>(&mut self, cid: ClientId, f: F) -> Result<(), SnapshotError>
+    where
+        F: FnOnce(&mut ClientState) -> Result<(), SnapshotError>,
+    {
+        let mut state = self.get_state(cid)?;
+        f(&mut state)?;
+        self.add_data(cid, state)?;
         Ok(())
     }
 }
 
-impl From<bincode::Error> for SnapshotError {
-    fn from(e: bincode::Error) -> Self {
-        SnapshotError::CorruptedContent(format!("bincode error: {}", e))
+impl SyncSnapshots for SnapshotState {
+    fn clients(&self) -> Vec<ClientId> {
+        self.0.keys().cloned().collect()
     }
-}
 
-impl From<<Provider as BoxProvider>::Error> for SnapshotError {
-    fn from(e: <Provider as BoxProvider>::Error) -> Self {
-        SnapshotError::Provider(format!("{:?}", e))
+    fn get_from_state<F, T>(&self, cid: ClientId, f: F) -> Result<T, SnapshotError>
+    where
+        F: FnOnce(Option<&ClientState>) -> Result<T, SnapshotError>,
+    {
+        let state = self.0.get(&cid);
+        f(state)
     }
-}
 
-impl From<EngineReadError> for SnapshotError {
-    fn from(e: EngineReadError) -> Self {
-        match e {
-            EngineReadError::CorruptedContent(reason) => SnapshotError::CorruptedContent(reason),
-            EngineReadError::InvalidFile => SnapshotError::InvalidFile("Not a Snapshot.".into()),
-            EngineReadError::Io(io) => SnapshotError::Io(io),
-            EngineReadError::UnsupportedVersion { expected, found } => SnapshotError::InvalidFile(format!(
-                "Unsupported version: expected {:?}, found {:?}.",
-                expected, found
-            )),
-        }
-    }
-}
-
-impl From<EngineWriteError> for SnapshotError {
-    fn from(e: EngineWriteError) -> Self {
-        match e {
-            EngineWriteError::Io(io) => SnapshotError::Io(io),
-            EngineWriteError::CorruptedData(e) => SnapshotError::CorruptedContent(e),
-            EngineWriteError::GenerateRandom(_) => SnapshotError::Io(std::io::ErrorKind::Other.into()),
-        }
+    fn update_state<F>(&mut self, cid: ClientId, f: F) -> Result<(), SnapshotError>
+    where
+        F: FnOnce(&mut ClientState) -> Result<(), SnapshotError>,
+    {
+        let state = self.0.entry(cid).or_default();
+        f(state)
     }
 }
