@@ -22,6 +22,9 @@ pub mod security;
 #[cfg(feature = "std")]
 pub mod procedures;
 
+#[cfg(feature = "std")]
+pub mod sync;
+
 // is this std?
 #[cfg(feature = "std")]
 pub mod utils;

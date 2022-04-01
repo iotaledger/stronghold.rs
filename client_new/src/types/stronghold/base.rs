@@ -15,7 +15,10 @@ impl Stronghold {
         Self::default()
     }
 
-    /// Loads a [`Client`] from `client_path` from a [`Snapshot`] with given `snapshot_path` as [`SnapshotPath`]
+    /// Load the state of a [`Snapshot`] at given `snapshot_path`.
+    /// The [`Snapshot`] is secured in memory and may be used to load further
+    /// clients with [`Stronghold::load_client`].
+    /// Load a [`Client`] at `client_path` from the snapshot.
     ///
     /// # Example
     /// ```no_run
@@ -27,12 +30,12 @@ impl Stronghold {
         snapshot_path: &SnapshotPath,
     ) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut snapshot = self.snapshot.try_write()?;
 
         // CRITICAL SECTION
         let buffer = keyprovider
@@ -55,7 +58,7 @@ impl Stronghold {
         client.load(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut clients = self.clients.try_write()?;
         clients.insert(client_id, client.atomic_ref());
 
         Ok(client)
@@ -64,12 +67,12 @@ impl Stronghold {
     /// Loads a client from [`Snapshot`] data
     pub async fn load_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let snapshot = self.snapshot.try_read()?;
 
         if !snapshot.has_data(client_id) {
             return Err(ClientError::ClientDataNotPresent);
@@ -84,7 +87,7 @@ impl Stronghold {
         client.load(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut clients = self.clients.try_write()?;
         clients.insert(client_id, client.atomic_ref());
 
         Ok(client)
@@ -95,13 +98,13 @@ impl Stronghold {
     /// # Example
     pub async fn create_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut clients = self.clients.try_write()?;
         clients.insert(client_id, client.atomic_ref());
 
         Ok(client)
@@ -111,7 +114,7 @@ impl Stronghold {
     ///
     /// # Example
     pub async fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
-        let clients = self.clients.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let clients = self.clients.try_read()?;
 
         let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
         drop(clients);
@@ -120,7 +123,7 @@ impl Stronghold {
             self.write(client_id).await?;
         }
 
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+        let snapshot = self.snapshot.try_read()?;
 
         // CRITICAL SECTION
         let buffer = keyprovider
@@ -141,7 +144,7 @@ impl Stronghold {
     /// # Example
     pub async fn write_client<P>(&self, client_path: P) -> Result<(), ClientError>
     where
-        P: AsRef<Vec<u8>>,
+        P: AsRef<[u8]>,
     {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         self.write(client_id).await
@@ -151,25 +154,18 @@ impl Stronghold {
     ///
     /// # Example
     async fn write(&self, client_id: ClientId) -> Result<(), ClientError> {
-        let mut snapshot = self.snapshot.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
-        let clients = self.clients.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut snapshot = self.snapshot.try_write()?;
+        let clients = self.clients.try_read()?;
 
         let client = match clients.get(&client_id) {
             Some(client) => client,
             None => return Err(ClientError::ClientDataNotPresent),
         };
 
-        let mut keystore_guard = client
-            .keystore
-            .try_write()
-            .map_err(|_| ClientError::LockAcquireFailed)?;
+        let mut keystore_guard = client.keystore.try_write()?;
 
-        let view = client.db.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
-        let store = client
-            .store
-            .cache
-            .try_read()
-            .map_err(|_| ClientError::LockAcquireFailed)?;
+        let view = client.db.try_read()?;
+        let store = client.store.cache.try_read()?;
 
         // we need some compatibility code here. Keyprovider stores encrypted vec
         // by snapshot requires a mapping to Key<Provider>

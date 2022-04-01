@@ -44,6 +44,12 @@ where
         let enc_key = self.store.remove(&id)?;
         self.master_key.decrypt_key(enc_key, id).ok()
     }
+    /// Gets the encrypted key from the [`KeyStore`].
+    /// Decrypt it with the `master_key` and `vault_id` as salt.
+    pub fn get_key(&self, id: VaultId) -> Option<Key<P>> {
+        let enc_key = self.store.get(&id)?.clone();
+        self.master_key.decrypt_key(enc_key, id).ok()
+    }
 
     /// Checks to see if the vault exists.
     pub fn vault_exists(&self, id: VaultId) -> bool {
@@ -61,7 +67,7 @@ where
     /// Inserts a key into the [`KeyStore`] by [`VaultId`].
     /// If the [`VaultId`] already exists, it just returns the existing [`Key<P>`]
     pub fn get_or_insert_key(&mut self, id: VaultId, key: Key<P>) -> Result<Key<P>, P::Error> {
-        let vault_key = if let Some(key) = self.take_key(id) { key } else { key };
+        let vault_key = if let Some(key) = self.get_key(id) { key } else { key };
         let enc_key = self.master_key.encrypt_key(&vault_key, id)?;
         self.store.insert(id, enc_key);
         Ok(vault_key)
@@ -81,7 +87,7 @@ where
     pub fn rebuild_keystore(&mut self, keys: HashMap<VaultId, Key<P>>) -> Result<(), P::Error> {
         let mut new_ks = KeyStore::default();
         for (id, key) in keys.into_iter() {
-            new_ks.get_or_insert_key(id, key)?;
+            new_ks.insert_key(id, key)?;
         }
         *self = new_ks;
         Ok(())

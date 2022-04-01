@@ -70,12 +70,12 @@ impl Location {
                 record_path,
             } => {
                 let vid = derive_vault_id(vault_path);
-                let rid = RecordId::load_from_path(vid.as_ref(), record_path);
+                let rid = derive_record_id(vault_path, record_path);
                 (vid, rid)
             }
             Location::Counter { vault_path, counter } => {
                 let vid = derive_vault_id(vault_path);
-                let rid = derive_record_id(vault_path, *counter);
+                let rid = derive_record_id_from_counter(vault_path, *counter);
 
                 (vid, rid)
             }
@@ -91,15 +91,25 @@ impl AsRef<Location> for Location {
 
 pub fn derive_vault_id<P>(path: P) -> VaultId
 where
-    P: AsRef<Vec<u8>>,
+    P: AsRef<[u8]>,
 {
     VaultId::load_from_path(path.as_ref(), path.as_ref())
 }
 
 // Derives the counter [`RecordId`] from the given vault path and the counter value.
-pub fn derive_record_id<P>(vault_path: P, counter: usize) -> RecordId
+pub fn derive_record_id<V, R>(vault_path: V, record_path: R) -> RecordId
 where
-    P: AsRef<Vec<u8>>,
+    V: AsRef<[u8]>,
+    R: AsRef<[u8]>,
+{
+    let vid = derive_vault_id(vault_path);
+    RecordId::load_from_path(vid.as_ref(), record_path.as_ref())
+}
+
+// Derives the counter [`RecordId`] from the given vault path and the counter value.
+pub fn derive_record_id_from_counter<P>(vault_path: P, counter: usize) -> RecordId
+where
+    P: AsRef<[u8]>,
 {
     let vault_path = vault_path.as_ref();
 
