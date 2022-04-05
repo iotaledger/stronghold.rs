@@ -9,7 +9,7 @@ use stronghold_p2p::{
 };
 
 use crate::{
-    network::{FirewallChannelSender, Network, NetworkConfig, Permissions},
+    network_old::{FirewallChannelSender, Network, NetworkConfig, Permissions},
     procedures::{FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, StrongholdProcedure},
     Client, ClientError, FatalEngineError, Location, SpawnNetworkError, Stronghold,
 };
@@ -39,26 +39,32 @@ impl Stronghold {
     /// for authentication and encryption on the transport layer.
     ///
     /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
-    pub async fn spawn_p2p(
-        &mut self,
-
-        client_path: Vec<u8>, // we need a reference to the current client
+    pub async fn spawn_p2p<P>(
+        &self,
+        client_path: P, // transform to [u8]
         network_config: NetworkConfig,
         keypair: Option<Location>,
-    ) -> Result<(), SpawnNetworkError> {
-        let mut network = self
-            .network
-            .try_write()
-            .map_err(|_| SpawnNetworkError::Inner(ClientError::LockAcquireFailed.to_string()))?;
+    ) -> Result<(), SpawnNetworkError>
+    where
+        P: AsRef<[u8]>,
+    {
+        // could this result in a dead-lock?
+        let mut network = self.network.lock().await;
 
         if network.is_some() {
             return Err(SpawnNetworkError::AlreadySpawned);
         }
 
-        let client = self
-            .load_client(client_path)
-            .await
-            .map_err(|_| SpawnNetworkError::ClientNotFound)?;
+        let client = match self
+            .load_client(client_path.as_ref())
+            .map_err(|_| SpawnNetworkError::ClientNotFound)
+        {
+            Ok(client) => client,
+            Err(_) => match self.get_client(client_path) {
+                Ok(client) => client,
+                Err(e) => return Err(SpawnNetworkError::ClientNotFound),
+            },
+        };
 
         let keypair = match keypair {
             Some(location) => {
@@ -72,7 +78,7 @@ impl Stronghold {
         };
 
         // set inner network reference
-        *network = Some(Network::new(network_config, keypair).await?);
+        network.replace(Network::new(network_config, keypair).await?);
 
         Ok(())
     }
@@ -84,7 +90,7 @@ impl Stronghold {
     /// Optionally pass a [`FirewallChannelSender`] for asynchronous firewall interaction.
     /// See [`NetworkConfig::with_async_firewall`] for more info.
     pub async fn spawn_p2p_load_config(
-        &mut self,
+        &self,
         client_path: Vec<u8>, // we need a reference to the current client
         key: Vec<u8>,
         keypair: Option<Location>,
@@ -92,14 +98,11 @@ impl Stronghold {
     ) -> Result<(), SpawnNetworkError> {
         let client = self
             .load_client(client_path.clone())
-            .await
             .map_err(|_| SpawnNetworkError::ClientNotFound)?;
 
         let store = client.store();
 
-        let guard = store
-            .get(key.clone())
-            .map_err(|e| SpawnNetworkError::Inner(e.to_string()))?;
+        let guard = store.get(&key).map_err(|e| SpawnNetworkError::Inner(e.to_string()))?;
 
         let config_bytes =
             guard.ok_or_else(|| SpawnNetworkError::LoadConfig(format!("No config found at key {:?}", key)))?;
@@ -116,8 +119,8 @@ impl Stronghold {
     /// Return `false` if there is no active network actor.
     /// Optionally store the current config (known addresses of remote peers and firewall rules) in the store
     /// at the specified `key`.
-    pub async fn stop_p2p(&mut self, write_config: Option<Vec<u8>>) -> Result<(), ClientError> {
-        let mut network = self.network.try_write().map_err(|_| ClientError::LockAcquireFailed)?;
+    pub async fn stop_p2p(&self, write_config: Option<Vec<u8>>) -> Result<(), ClientError> {
+        let mut network = self.network.lock().await;
         if network.is_none() {
             return Ok(());
         }
@@ -138,17 +141,7 @@ impl Stronghold {
     }
 
     /// Export the config and state of the p2p-layer.
-    pub async fn export_config(&mut self) -> NetworkConfig {
-        todo!()
-    }
-
-    /// Start listening on the swarm to the given address. If not address is provided, it will be assigned by the OS.
-    pub async fn start_listening(&self, address: Option<Multiaddr>) -> Result<Multiaddr, ListenErr> {
-        todo!()
-    }
-
-    /// Stop listening on the swarm.
-    pub async fn stop_listening(&self) -> Result<(), ClientError> {
+    pub async fn export_config(&self) -> NetworkConfig {
         todo!()
     }
 
@@ -254,6 +247,7 @@ impl Stronghold {
     }
 
     /// Returns a list of the available records and their `RecordHint` values of a remote vault.
+    #[deprecated]
     pub async fn list_remote_hints_and_ids<V: Into<Vec<u8>>>(
         &self,
         peer: PeerId,
@@ -263,28 +257,28 @@ impl Stronghold {
         todo!()
     }
 
-    /// Executes a runtime command at a remote Stronghold.
-    /// It is required that the peer has successfully been added with the `add_peer` method.
-    pub async fn remote_procedure_exec<P>(
-        &self,
-        peer: PeerId,
-        client_path: Vec<u8>,
-        procedure: P,
-    ) -> Result<Result<P::Output, ProcedureError>, P2pError>
-    where
-        P: Procedure + Into<StrongholdProcedure>,
-    {
-        todo!()
-    }
+    // Executes a runtime command at a remote Stronghold.
+    // It is required that the peer has successfully been added with the `add_peer` method.
+    // pub async fn remote_procedure_exec<P>(
+    //     &self,
+    //     peer: PeerId,
+    //     client_path: Vec<u8>,
+    //     procedure: P,
+    // ) -> Result<Result<P::Output, ProcedureError>, P2pError>
+    // where
+    //     P: Procedure + Into<StrongholdProcedure>,
+    // {
+    //     todo!()
+    // }
 
-    /// Executes multiple runtime commands at a remote Stronghold.
-    /// It is required that the peer has successfully been added with the `add_peer` method.
-    pub async fn remote_procedure_exec_chained(
-        &self,
-        peer: PeerId,
-        client_path: Vec<u8>,
-        procedures: Vec<StrongholdProcedure>,
-    ) -> Result<Result<Vec<ProcedureOutput>, ProcedureError>, P2pError> {
-        todo!()
-    }
+    // Executes multiple runtime commands at a remote Stronghold.
+    // It is required that the peer has successfully been added with the `add_peer` method.
+    // pub async fn remote_procedure_exec_chained(
+    //     &self,
+    //     peer: PeerId,
+    //     client_path: Vec<u8>,
+    //     procedures: Vec<StrongholdProcedure>,
+    // ) -> Result<Result<Vec<ProcedureOutput>, ProcedureError>, P2pError> {
+    //     todo!()
+    // }
 }

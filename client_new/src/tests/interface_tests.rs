@@ -31,7 +31,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let snapshot = Snapshot::default();
 
     // create a new empty client
-    let client = stronghold.create_client(client_path.clone()).await?;
+    let client = stronghold.create_client(client_path.clone())?;
 
     let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
 
@@ -65,21 +65,19 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     // some store data
     let store = client.store();
 
-    let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
+    let vault_location = Location::const_generic(vault_path.to_vec(), b"".to_vec());
+    let vault = client.vault(b"vault_path");
 
     // create a new secret inside the vault
     assert!(vault
-        .write_secret(
-            Location::const_generic(vault_path.clone(), b"record-path".to_vec()),
-            vec![],
-        )
+        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec()), vec![],)
         .is_ok());
 
     // write client into snapshot
-    stronghold.write_client(client_path.clone()).await?;
+    stronghold.write_client(client_path.clone())?;
 
     // commit all to snapshot file
-    stronghold.commit(&snapshot_path, &keyprovider).await?;
+    stronghold.commit(&snapshot_path, &keyprovider)?;
 
     //// -- reset stronghold, re-load snapshot from disk
 
@@ -87,9 +85,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let stronghold = stronghold.reset();
 
     println!("load client from snapshot file");
-    let client = stronghold
-        .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await?;
+    let client = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)?;
 
     // Write the state of the client back into the snapshot
     let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));

@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This is the port of client::state::p2p
+//!
+//! TODO:
+//! - Request needs counter to improve security for replay attacks
+//!     - both sides: check counters, send counters
 
-use crate::{ClientError, Location, RecordError, SwarmInfo};
+use crate::{Client, ClientError, Location, RecordError, Stronghold, SwarmInfo};
 use engine::vault::{RecordHint, RecordId};
 use futures::{channel::mpsc::TryRecvError, future, stream::FusedStream, Stream};
 // TODO: ShClientRequest -> ShRequest -> Client
@@ -37,8 +41,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
 use stronghold_p2p::{
     firewall::{FirewallRequest, FirewallRules, FwRequest, Rule},
-    AddressInfo, ChannelSinkConfig, ConnectionLimits, EventChannel, InitKeypair, ListenErr, Multiaddr, PeerId,
-    ReceiveRequest, StrongholdP2p, StrongholdP2pBuilder,
+    AddressInfo, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
+    Multiaddr, PeerId, ReceiveRequest, RelayNotSupported, StrongholdP2p, StrongholdP2pBuilder,
 };
 
 use crate::procedures::{self, ProcedureError, ProcedureOutput, StrongholdProcedure};
@@ -73,15 +77,17 @@ macro_rules! sh_result_mapping {
 #[derive(Default)]
 pub struct Network {
     /// Interface of stronghold-p2p for all network interaction.
-    pub inner: Arc<futures::lock::Mutex<Option<StrongholdP2p<ShRequest, ShResult, AccessRequest>>>>,
+    pub inner:
+        Arc<futures::lock::Mutex<Option<StrongholdP2p<StrongholdRequest, StrongholdNetworkResult, AccessRequest>>>>,
     /// Actor registry from which the address of the target client and snapshot actor can be queried.
     // pub registry: Addr<Registry>,
     /// Channel through which inbound requests are received.
     /// This channel is only inserted temporary on [`Network::new`], and is handed
     /// to the stream handler in `<Self as Actor>::started`.
-    pub _inbound_request_rx: Option<futures::channel::mpsc::Receiver<ReceiveRequest<ShRequest, ShResult>>>,
+    pub _inbound_request_rx:
+        Option<futures::channel::mpsc::Receiver<ReceiveRequest<StrongholdRequest, StrongholdNetworkResult>>>,
     /// Cache the network config so it can be returned on `ExportConfig`.
-    pub _config: Option<NetworkConfig>,
+    pub _config: Arc<futures::lock::Mutex<Option<NetworkConfig>>>,
 }
 
 impl Network {
@@ -123,82 +129,353 @@ impl Network {
         }
 
         let network = builder.build().await?;
+
         Ok(Self {
             inner: Arc::new(futures::lock::Mutex::new(Some(network))),
             _inbound_request_rx: Some(inbound_request_rx),
-            _config: Some(network_config),
+            _config: Arc::new(futures::lock::Mutex::new(Some(network_config))),
         })
     }
 
     // moved from old src::actors::p2p
 
-    /// Request handler
-    pub async fn handle_request(&self) {
-        todo!()
+    // obsolete. this will be handled by [`Stronghold`]
+    // Handle a request. This should be part of an event loop
+    //
+    // # Example
+    // pub async fn receive_request(&self, request: ReceiveRequest<StrongholdRequest, StrongholdNetworkResult>) {
+    //     let ReceiveRequest {
+    //         response_tx, request, ..
+    //     } = request;
+
+    //     match request {
+    //         StrongholdRequest::ClientRequest { client_path, request } => {
+    //             let client = Client::default(); // self.stronghold.load_client(client_path).await.unwrap();
+
+    //             match request {
+    //                 ClientRequest::CheckVault { vault_path } => {
+    //                     let result = client.vault_exists(vault_path).unwrap();
+    //                     response_tx.send(StrongholdNetworkResult::Bool(result));
+    //                 }
+    //                 _ => todo!(),
+    //             };
+    //             todo!()
+    //         }
+    //         StrongholdRequest::SnapshotRequest { request } => todo!(),
+    //     }
+    // }
+
+    /// Send a request
+    ///
+    /// # Example
+    pub async fn send_request<P>(
+        &self,
+        peer: PeerId,
+        client_path: P,
+        request: StrongholdRequest,
+    ) -> Result<StrongholdNetworkResult, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+
+        network
+            .send_request(peer, request)
+            .await
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     pub async fn export_config(&self) -> Result<NetworkConfig, ClientError> {
-        todo!()
+        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let config = match &mut *config {
+            Some(config) => config,
+            None => return Err(ClientError::Inner("No network config present".to_string())),
+        };
+
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+
+        let config = config.clone();
+        let address_info = network.export_address_info().await;
+        let network_config = config.with_address_info(address_info);
+        Ok(network_config)
     }
 
-    pub async fn set_firewall_default(&self) {
-        todo!()
+    /// Sets default firewall rules with [`Permissions`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn set_firewall_default(&self, permissions: Permissions) -> Result<(), ClientError> {
+        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let config = match &mut *config {
+            Some(config) => config,
+            None => return Err(ClientError::Inner("No network config present".to_string())),
+        };
+
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+        let default_permissions = config.permissions_default_mut();
+        *default_permissions = permissions.clone();
+
+        network.set_firewall_default(Some(permissions.into_rule())).await;
+
+        Ok(())
     }
 
-    pub async fn set_firewall_rule(&self) {
-        todo!()
+    /// Sets a firewall rule for [`PeerId`] with [`Permissions`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn set_firewall_rule(&self, peer: PeerId, permissions: Permissions) -> Result<(), ClientError> {
+        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let config = match &mut *config {
+            Some(config) => config,
+            None => return Err(ClientError::Inner("No network config present".to_string())),
+        };
+
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+
+        config.peer_permissions_mut().insert(peer, permissions.clone());
+        network.set_peer_rule(peer, permissions.into_rule()).await;
+
+        Ok(())
     }
 
-    pub async fn remove_firewall_rule(&self) {
-        todo!()
+    /// Removes a firewall rule for [`PeerId`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remove_firewall_rule(&self, peer: PeerId) -> Result<(), ClientError> {
+        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let config = match &mut *config {
+            Some(config) => config,
+            None => return Err(ClientError::Inner("No network config present".to_string())),
+        };
+
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+
+        config.peer_permissions_mut().remove(&peer);
+        network.remove_peer_rule(peer).await;
+
+        Ok(())
     }
 
-    pub async fn get_swarm_info(&self) -> SwarmInfo {
-        todo!()
+    /// Returns the [`SwarmInfo`]
+    ///
+    /// # Example
+    /// ```no_run
+    /// ```
+    pub async fn get_swarm_info(&self) -> Result<SwarmInfo, ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("".to_string())),
+        };
+
+        let listeners = network.listeners().await;
+        let local_peer_id = network.peer_id();
+        let connections = network.established_connections().await;
+        Ok(SwarmInfo {
+            local_peer_id,
+            listeners,
+            connections,
+        })
     }
 
-    pub async fn start_listenening(&self) -> Result<Multiaddr, ListenErr> {
-        todo!()
+    /// Starts listening on given multiadress or `0.0.0.0` listen on all interfaces
+    ///
+    /// # Example
+    /// ```no_run
+    /// ```
+    pub async fn start_listenening(&self, multiaddr: Option<Multiaddr>) -> Result<Multiaddr, ListenErr> {
+        let mut network = self.inner.try_lock().ok_or(ListenErr::Shutdown)?; // wrong error
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ListenErr::Shutdown), // wrong error
+        };
+        let addr = multiaddr.unwrap_or_else(|| "/ip4/0.0.0.0/tcp/0".parse().unwrap());
+        network.start_listening(addr).await
     }
 
-    pub async fn start_listening_relay(&self) {
-        todo!()
+    /// Start listening as relay
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn start_listening_relay(
+        &self,
+        relay: PeerId,
+        relay_addr: Option<Multiaddr>,
+    ) -> Result<Multiaddr, ListenRelayErr> {
+        let mut network = self.inner.try_lock().ok_or(ListenRelayErr::ProtocolNotSupported)?; // wrong error
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ListenRelayErr::ProtocolNotSupported), // wrong return error
+        };
+        network.start_relayed_listening(relay, relay_addr).await
     }
 
-    pub async fn stop_listening(&self) {
-        todo!()
+    /// Stop listening
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn stop_listening(&self) -> Result<(), ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())), // wrong return error
+        };
+        network.stop_listening().await;
+        Ok(())
     }
 
-    pub async fn stop_listening_addr(&self) {
-        todo!()
+    /// Stop listening on [`MultiAddr`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn stop_listening_addr(&self, addr: Multiaddr) -> Result<(), ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())), // wrong return error
+        };
+        network.stop_listening_addr(addr).await;
+        Ok(())
     }
 
-    pub async fn stop_listening_relay(&self) {
-        todo!()
+    /// Stop listening has relay
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn stop_listening_relay(&self, peer: PeerId) -> Result<(), ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())), // wrong return error
+        };
+
+        network.stop_listening_relay(peer).await;
+
+        Ok(())
     }
 
-    pub async fn connect_peer(&self) {
-        todo!()
+    /// Try to connect to a peer
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn connect_peer(&self, peer: PeerId) -> Result<Multiaddr, DialErr> {
+        let mut network = self.inner.try_lock().ok_or(DialErr::Shutdown)?; // wrong error
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(DialErr::Shutdown), // wrong return error
+        };
+        network.connect_peer(peer).await
     }
 
-    pub async fn get_peer_address(&self) {
-        todo!()
+    /// Try to get [`Multiaddr`] from [`Peer`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn get_peer_address(&self, peer: PeerId) -> Result<Vec<Multiaddr>, ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())),
+        };
+
+        Ok(network.get_addrs(peer).await)
     }
 
-    pub async fn add_peer_address(&self) {
-        todo!()
+    /// Adds a [`Peer`] [`Multiaddr`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn add_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())),
+        };
+
+        network.add_address(peer, address).await;
+        Ok(())
     }
 
-    pub async fn remove_peer_address(&self) {
-        todo!()
+    /// Removes a [`Peer`] [`Multiaddr`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remove_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())),
+        };
+
+        network.remove_address(peer, address).await;
+        Ok(())
     }
 
-    pub async fn add_dialing_relay(&self) {
-        todo!()
+    /// Adds a dialing relay
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn add_dialing_relay(
+        &self,
+        relay: PeerId,
+        relay_addr: Option<Multiaddr>,
+    ) -> Result<Result<Option<Multiaddr>, RelayNotSupported>, ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())),
+        };
+
+        Ok(network.add_dialing_relay(relay, relay_addr).await)
     }
 
-    pub async fn remove_dialing_relay(&self, peer_id: PeerId) {
-        // self.inner.as_mut().unwrap().remove_dialing_relay(peer_id);
+    /// Removes the dialing relay
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remove_dialing_relay(&self, peer: PeerId) -> Result<bool, ClientError> {
+        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let network = match &mut *network {
+            Some(network) => network,
+            None => return Err(ClientError::Inner("No network handler present".to_string())),
+        };
+
+        Ok(network.remove_dialing_relay(peer).await)
     }
 }
 
@@ -320,7 +597,7 @@ impl NetworkConfig {
         self
     }
 
-    /// Interact with the firewall in an asynchronous manner.
+    /// Interact with the firewall asynchronously.
     /// Ignore default rules in the firewall. Instead, when a remote peer sends an inbound request and no explicit
     /// permissions have been set for this peers, a [`PermissionsRequest`] is sent through this channel to
     /// query for the firewall rules that should be applied.
@@ -756,11 +1033,10 @@ impl FwRequest<SnapshotRequest> for AccessRequest {
     }
 }
 
-impl FwRequest<ShRequest> for AccessRequest {
-    fn from_request(request: &ShRequest) -> Self {
-        // m-m-m-monster match
+impl FwRequest<StrongholdRequest> for AccessRequest {
+    fn from_request(request: &StrongholdRequest) -> Self {
         match request {
-            client_request @ ShRequest::ClientRequest { client_path, request } => {
+            client_request @ StrongholdRequest::ClientRequest { client_path, request } => {
                 let client_path = client_path.clone();
                 let required_access = match request {
                     ClientRequest::CheckVault { vault_path } | ClientRequest::ListIds { vault_path } => {
@@ -773,12 +1049,12 @@ impl FwRequest<ShRequest> for AccessRequest {
                             vault_path: location.vault_path().to_vec(),
                         }]
                     }
-                    #[cfg(test)]
-                    ClientRequest::ReadFromVault { location } => {
-                        vec![Access::Clone {
-                            vault_path: location.vault_path().to_vec(),
-                        }]
-                    }
+                    // #[cfg(test)]
+                    // ClientRequest::ReadFromVault { location } => {
+                    //     vec![Access::Clone {
+                    //         vault_path: location.vault_path().to_vec(),
+                    //     }]
+                    // }
                     ClientRequest::WriteToRemoteVault { location, .. } | ClientRequest::RevokeData { location } => {
                         vec![Access::Write {
                             vault_path: location.vault_path().to_vec(),
@@ -829,7 +1105,7 @@ impl FwRequest<ShRequest> for AccessRequest {
                     required_access,
                 }
             }
-            snapshot_request @ ShRequest::SnapshotRequest { request } => match request {
+            snapshot_request @ StrongholdRequest::SnapshotRequest { request } => match request {
                 SnapshotRequest::GetRemoteHierarchy {} => todo!(),
                 SnapshotRequest::ExportRemoteDiff {} => todo!(),
             },
@@ -878,7 +1154,7 @@ impl FwRequest<ShRequest> for AccessRequest {
 pub type RemoteRecordError = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShRequest {
+pub enum StrongholdRequest {
     ClientRequest {
         client_path: Vec<u8>,
         request: ClientRequest,
@@ -941,10 +1217,10 @@ pub enum ClientRequest {
     Procedures {
         procedures: Vec<StrongholdProcedure>,
     },
-    #[cfg(test)]
-    ReadFromVault {
-        location: Location,
-    },
+    // #[cfg(test)]
+    // ReadFromVault {
+    //     location: Location,
+    // },
 }
 
 // enum_from_inner!(Request from CheckVault);
@@ -959,7 +1235,7 @@ pub enum ClientRequest {
 // enum_from_inner!(Request from ReadFromVault);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShResult {
+pub enum StrongholdNetworkResult {
     Empty(()),
     Data(Option<Vec<u8>>),
     Bool(bool),
@@ -968,22 +1244,22 @@ pub enum ShResult {
     Proc(Result<Vec<ProcedureOutput>, ProcedureError>),
 }
 
-sh_result_mapping!(ShResult::Empty => ());
-sh_result_mapping!(ShResult::Bool => bool);
-sh_result_mapping!(ShResult::Data => Option<Vec<u8>>);
-sh_result_mapping!(ShResult::ListIds => Vec<(RecordId, RecordHint)>);
-sh_result_mapping!(ShResult::Proc => Result<Vec<ProcedureOutput>, ProcedureError>);
+sh_result_mapping!(StrongholdNetworkResult::Empty => ());
+sh_result_mapping!(StrongholdNetworkResult::Bool => bool);
+sh_result_mapping!(StrongholdNetworkResult::Data => Option<Vec<u8>>);
+sh_result_mapping!(StrongholdNetworkResult::ListIds => Vec<(RecordId, RecordHint)>);
+sh_result_mapping!(StrongholdNetworkResult::Proc => Result<Vec<ProcedureOutput>, ProcedureError>);
 
-impl From<Result<(), RecordError>> for ShResult {
+impl From<Result<(), RecordError>> for StrongholdNetworkResult {
     fn from(inner: Result<(), RecordError>) -> Self {
-        ShResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
+        StrongholdNetworkResult::WriteRemoteVault(inner.map_err(|e| e.to_string()))
     }
 }
 
-impl TryFrom<ShResult> for Result<(), RemoteRecordError> {
+impl TryFrom<StrongholdNetworkResult> for Result<(), RemoteRecordError> {
     type Error = ();
-    fn try_from(t: ShResult) -> Result<Self, Self::Error> {
-        if let ShResult::WriteRemoteVault(result) = t {
+    fn try_from(t: StrongholdNetworkResult) -> Result<Self, Self::Error> {
+        if let StrongholdNetworkResult::WriteRemoteVault(result) = t {
             Ok(result)
         } else {
             Err(())

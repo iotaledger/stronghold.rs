@@ -24,10 +24,12 @@ use std::{
     error::Error,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+use zeroize::Zeroize;
 
 #[cfg(feature = "p2p")]
 use stronghold_p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 
+#[derive(Clone)]
 pub struct Client {
     // A keystore
     pub(crate) keystore: Arc<RwLock<KeyStore<Provider>>>,
@@ -58,27 +60,13 @@ impl Drop for Client {
 }
 
 impl Client {
-    /// Returns [`Self`] with atomic references to the same client to be shared in concurrent setups
-    ///
-    /// # Example
-    /// ```no_run
-    /// ```
-    pub(crate) fn atomic_ref(&self) -> Client {
-        Self {
-            keystore: self.keystore.clone(),
-            db: self.db.clone(),
-            id: self.id,
-            store: self.store.atomic_ref(),
-        }
-    }
-
     /// Returns an atomic reference to the [`Store`]
     ///
     /// # Example
     /// ```
     /// ```
     pub fn store(&self) -> Store {
-        self.store.atomic_ref()
+        self.store.clone()
     }
 
     /// Returns a [`Vault`] according to path
@@ -86,12 +74,13 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub fn vault(&self, vault_path: Location) -> ClientVault {
-        let (vault_id, _) = vault_path.resolve();
-
+    pub fn vault<P>(&self, vault_path: P) -> ClientVault
+    where
+        P: AsRef<[u8]>,
+    {
         ClientVault {
-            client: self.atomic_ref(),
-            id: vault_id,
+            client: self.clone(),
+            vault_path: vault_path.as_ref().to_vec(),
         }
     }
 
@@ -110,7 +99,8 @@ impl Client {
         Ok(keystore.vault_exists(vault_id))
     }
 
-    /// Returns Ok, if the record exists
+    /// Returns Ok(true), if the record exsist. Ok(false), if not. An error is being
+    /// returned, if inner database could not be unlocked.
     ///
     /// # Example
     /// ```
@@ -214,7 +204,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub(crate) fn load(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
+    pub(crate) fn restore(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
         let (keys, db, st) = state;
 
         // reload keystore
@@ -286,6 +276,20 @@ impl Client {
     }
 }
 
+impl<'a> SyncClients<'a> for Client {
+    type Db = RwLockReadGuard<'a, DbView<Provider>>;
+
+    fn get_db(&'a self) -> Result<Self::Db, ClientError> {
+        let db = self.db.try_read()?;
+        Ok(db)
+    }
+
+    fn get_key_provider(&'a self) -> Result<KeyProvider<'a>, ClientError> {
+        let ks = self.keystore.try_read()?;
+        Ok(KeyProvider::KeyStore(ks))
+    }
+}
+
 #[cfg(feature = "p2p")]
 impl Client {
     /// This generates a new [`Keypair`] and stores it in a [`Location`]. The new
@@ -308,7 +312,7 @@ impl Client {
             .to_protobuf_encoding()
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
-        let vault = self.vault(location.clone());
+        let vault = self.vault(location.vault_path());
         vault.write_secret(location, bytes)?;
 
         Ok(())
@@ -333,6 +337,7 @@ impl Client {
         };
         self.get_guard(&location, f)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
+
         let id_keys = id_keys.unwrap();
         let keypair = NoiseKeypair::new()
             .into_authentic(&id_keys)
@@ -340,17 +345,34 @@ impl Client {
         let peer_id = PeerId::from_public_key(&id_keys.public());
         Ok((peer_id, keypair))
     }
-}
-impl<'a> SyncClients<'a> for Client {
-    type Db = RwLockReadGuard<'a, DbView<Provider>>;
 
-    fn get_db(&'a self) -> Result<Self::Db, ClientError> {
-        let db = self.db.try_read()?;
-        Ok(db)
+    // --- remote client impl
+
+    pub async fn remote_procedure_exec(&self) {
+        todo!()
     }
 
-    fn get_key_provider(&'a self) -> Result<KeyProvider<'a>, ClientError> {
-        let ks = self.keystore.try_read()?;
-        Ok(KeyProvider::KeyStore(ks))
+    pub async fn remote_procedure_exec_chained(&self) {
+        todo!()
+    }
+
+    pub async fn remote_vault_exists(&self) {
+        todo!()
+    }
+
+    pub async fn remote_record_exists(&self) {
+        todo!()
+    }
+
+    pub async fn remote_vault(&self) -> Result<ClientVault, ClientError> {
+        todo!()
+    }
+
+    pub async fn remote_sync_with(&self, peer: PeerId, config: SyncClientsConfig) {
+        todo!()
+    }
+
+    pub async fn remote_sync_vaults(&self) {
+        todo!()
     }
 }

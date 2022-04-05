@@ -44,6 +44,7 @@ where
         let enc_key = self.store.remove(&id)?;
         self.master_key.decrypt_key(enc_key, id).ok()
     }
+
     /// Gets the encrypted key from the [`KeyStore`].
     /// Decrypt it with the `master_key` and `vault_id` as salt.
     pub fn get_key(&self, id: VaultId) -> Option<Key<P>> {

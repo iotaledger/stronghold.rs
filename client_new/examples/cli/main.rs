@@ -224,13 +224,13 @@ async fn command_write_and_read_from_store(key: String, value: String) -> Result
     info!(
         r#"Store contains key "{}" ? {}"#,
         key,
-        store.contains_key(key.as_bytes().to_vec())?
+        store.contains_key(key.as_bytes())?
     );
 
     info!(
         r#"Value for key "{}" ? {:?}"#,
         key,
-        String::from_utf8(store.get(key.as_bytes().to_vec()).unwrap().unwrap().to_vec()).unwrap()
+        String::from_utf8(store.get(key.as_bytes()).unwrap().unwrap().to_vec()).unwrap()
     );
 
     Ok(())
@@ -358,14 +358,13 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
 
     let client = stronghold
         .create_client(client_path.clone())
-        .await
         .expect("Cannot creat client");
 
     let output_location = output.to_location();
 
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
-        output: output_location.clone(),
+        output: output_location,
         hint: RecordHint::new(b"").unwrap(),
     };
 
@@ -375,7 +374,6 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
 
     stronghold
         .write_client(client_path)
-        .await
         .expect("Store client state into snapshot state failed");
 
     // calculate hash from key
@@ -384,7 +382,6 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
         "Snapshot created successully? {}",
         stronghold
             .commit(&SnapshotPath::from_path(path), &KeyProvider::try_from(key).unwrap())
-            .await
             .is_ok()
     );
 }
@@ -402,7 +399,6 @@ async fn command_read_snapshot(path: String, client_path: String, key: String, p
 
     let client = stronghold
         .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await
         .expect("Could not load client from Snapshot");
 
     // get the public key
@@ -440,7 +436,6 @@ async fn command_bip39_recover(
 
     let client = stronghold
         .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await
         .expect("Could not load client from Snapshot");
 
     // get the public key

@@ -20,6 +20,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use stronghold_utils::random;
+use zeroize::Zeroize;
 
 use crate::{
     procedures::{DeriveSecret, X25519DiffieHellman},
@@ -61,16 +62,6 @@ pub struct Snapshot {
 /// Data structure that is written to the snapshot.
 #[derive(Deserialize, Serialize, Default)]
 pub struct SnapshotState(pub(crate) HashMap<ClientId, ClientState>);
-
-// impl Default for Snapshot {
-//     fn default() -> Self {
-//         Snapshot {
-//             keystore: KeyStore::default(),
-//             db: DbView::default(),
-//             states: HashMap::default(),
-//         }
-//     }
-// }
 
 /// A handle for snapshot file locations.
 ///
@@ -159,14 +150,6 @@ impl Snapshot {
         for client_id in ids {
             let client_state = self.get_state(client_id)?;
             state.0.insert(client_id, client_state);
-            // match self.get_state(client_id) {
-            //     Ok(client_state) => {
-
-            //     }
-            //     Err(_) => {
-            //         // File not present, could not retrieve previous state
-            //     }
-            // };
         }
         Ok(state)
     }
@@ -190,6 +173,18 @@ impl Snapshot {
         Ok((keys, db, store.clone()))
     }
 
+    /// Purges a [`Client`] from the [`SnapshotState`]. The next write to the Snapshot file
+    /// will delete the existing [`Client`].
+    pub fn purge_client(&mut self, id: ClientId) -> Result<(), SnapshotError> {
+        if let Some((a, b)) = self.states.get_mut(&id) {
+            a.zeroize();
+        }
+
+        self.states.remove(&id);
+
+        Ok(())
+    }
+
     /// Checks to see if the [`ClientId`] exists in the snapshot hashmap.
     pub fn has_data(&self, cid: ClientId) -> bool {
         self.states.contains_key(&cid)
@@ -202,11 +197,6 @@ impl Snapshot {
         key: Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        // let data = match path {
-        //     Some(p) => read_from_file(p, &key, &[])?,
-        //     None => read_from_file(&snapshot::files::get_path(name)?, &key, &[])?,
-        // };
-
         let data = read_from_file(snapshot_path.as_path(), &key, &[])?;
 
         let state = bincode::deserialize(&data)?;
@@ -218,13 +208,7 @@ impl Snapshot {
     /// TODO: This should be split into two functions :
     ///   - named_mut()
     ///   - path_
-    pub fn write_to_snapshot(
-        &self,
-        // name: Option<&str>,
-        // path: Option<&Path>,
-        snapshot_path: &SnapshotPath,
-        use_key: UseKey,
-    ) -> Result<(), SnapshotError> {
+    pub fn write_to_snapshot(&self, snapshot_path: &SnapshotPath, use_key: UseKey) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
         let data = bincode::serialize(&state)?;
 
@@ -242,17 +226,6 @@ impl Snapshot {
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
-
-        // // TODO: This is a hack and probably should be removed when we add proper error handling.
-        // let f = move || match path {
-        //     Some(p) => write_to_file(&data, p, &key, &[]),
-        //     None => write_to_file(&data, &snapshot::files::get_path(name)?, &key, &[]),
-        // };
-
-        // match f() {
-        //     Ok(()) => Ok(()),
-        //     Err(_) => f().map_err(|e| e.into()),
-        // }
 
         write_to_file(&data, snapshot_path.as_path(), &key, &[]).map_err(|e| e.into())
     }

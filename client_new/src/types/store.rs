@@ -34,26 +34,9 @@ use serde::{de::DeserializeSeed, Deserialize, Serialize};
 //     }
 // }
 
+#[derive(Clone, Default)]
 pub struct Store {
     pub(crate) cache: Arc<RwLock<Cache<Vec<u8>, Vec<u8>>>>,
-}
-
-impl Default for Store {
-    fn default() -> Self {
-        Self {
-            cache: Arc::new(RwLock::new(Cache::default())),
-        }
-    }
-}
-
-impl Clone for Store {
-    fn clone(&self) -> Self {
-        let cloned = self.cache.read().expect("").clone();
-
-        Self {
-            cache: Arc::new(RwLock::new(cloned)),
-        }
-    }
 }
 
 impl Store {
@@ -70,7 +53,7 @@ impl Store {
     /// ```
     pub fn insert(&self, key: Vec<u8>, value: Vec<u8>, lifetime: Option<Duration>) -> Result<(), ClientError> {
         let mut guard = self.cache.try_write()?;
-        guard.insert(key, value, lifetime);
+        guard.insert(key.to_vec(), value, lifetime);
 
         Ok(())
     }
@@ -88,13 +71,13 @@ impl Store {
     /// assert!(store.get(key.clone()).is_ok());
     /// assert!(store.get(key).unwrap().deref().is_some());
     /// ```
-    pub fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
         let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
 
         // Problem: The returned rwread guard is local to this function, hence we can't return a borrowed ref
         // to the inner value. we could return the guard itself, but would rely on the user to deref the rwguard
         // and then access the value again
-        Ok(guard.get(&key).cloned())
+        Ok(guard.get(&key.to_vec()).cloned())
     }
 
     /// Tries to delete the inner vale with `key`
@@ -111,9 +94,9 @@ impl Store {
     /// assert!(deleted.is_ok());
     /// assert!(store.get(key).unwrap().deref().is_none());
     /// ```
-    pub fn delete(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, ClientError> {
+    pub fn delete(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write()?;
-        Ok(guard.remove(&key))
+        Ok(guard.remove(&key.to_vec()))
     }
 
     /// Checks the [`Store`], if the provided key exists
@@ -127,16 +110,9 @@ impl Store {
     /// store.insert(key.clone(), data, None).unwrap();
     /// assert!(store.contains_key(key).unwrap());
     /// ```
-    pub fn contains_key(&self, key: Vec<u8>) -> Result<bool, ClientError> {
+    pub fn contains_key(&self, key: &[u8]) -> Result<bool, ClientError> {
         let guard = self.cache.try_read()?;
-        Ok(guard.get(&key).is_some())
-    }
-
-    /// Returns an clone of inner cache of [`Self`]
-    pub(crate) fn atomic_ref(&self) -> Self {
-        Self {
-            cache: self.cache.clone(),
-        }
+        Ok(guard.get(&key.to_vec()).is_some())
     }
 
     /// Reloads the [`Store`] with a given [`Cache`]
@@ -179,3 +155,6 @@ impl<'a> Deserialize<'a> for Store {
         })
     }
 }
+
+#[cfg(feature = "p2p")]
+impl Store {}

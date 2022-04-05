@@ -6,20 +6,20 @@ use crate::{ClientError, Store};
 #[test]
 fn test_insert_into_store() {
     let store = Store::default();
-    let key = b"some key".to_vec();
+    let key = b"some key";
     let data = b"some data".to_vec();
 
-    assert!(store.insert(key, data, None).is_ok());
+    assert!(store.insert(key.to_vec(), data, None).is_ok());
 }
 
 #[test]
 fn test_get_from_store() -> Result<(), ClientError> {
     let store = Store::default();
-    let key = b"some key".to_vec();
+    let key = b"some key";
     let data = b"some data".to_vec();
 
-    assert!(store.insert(key.clone(), data, None).is_ok());
-    assert!(store.get(key.clone()).is_ok());
+    assert!(store.insert(key.to_vec(), data, None).is_ok());
+    assert!(store.get(&key.clone()).is_ok());
     assert!(store.get(key)?.is_some());
 
     Ok(())
@@ -28,11 +28,11 @@ fn test_get_from_store() -> Result<(), ClientError> {
 #[test]
 fn test_delete_from_store() -> Result<(), ClientError> {
     let store = Store::default();
-    let key = b"some key".to_vec();
+    let key = b"some key";
     let data = b"some data".to_vec();
 
-    store.insert(key.clone(), data, None)?;
-    let deleted = store.delete(key.clone());
+    store.insert(key.to_vec(), data, None)?;
+    let deleted = store.delete(&key.clone());
     assert!(deleted.is_ok());
     assert!(store.get(key)?.is_none());
 
@@ -42,9 +42,9 @@ fn test_delete_from_store() -> Result<(), ClientError> {
 #[test]
 fn test_contains_key() -> Result<(), ClientError> {
     let store = Store::default();
-    let key = b"some key".to_vec();
+    let key = b"some key";
     let data = b"some data".to_vec();
-    store.insert(key.clone(), data, None)?;
+    store.insert(key.to_vec(), data, None)?;
     assert!(store.contains_key(key).unwrap());
     Ok(())
 }
