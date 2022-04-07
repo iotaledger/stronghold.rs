@@ -1,6 +1,9 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+// THIS IS JUST A PLACEHOLDER MODULE AND SHALL BE REPLACED BY STRONGHOLD.rs MODULE
+// ALL METHODS SHOWN HERE SHOULD BE MOVED / REPLACED BY THE NEW CLIENT INTERFACE UPDATE
+
 use engine::vault::{RecordHint, RecordId};
 use std::time::Duration;
 use stronghold_p2p::{
@@ -32,57 +35,6 @@ pub enum P2pError {
 }
 
 impl Stronghold {
-    /// Spawn the p2p-network actor and swarm.
-    /// The `keypair`parameter can be provided as location in which a keypair is stored,
-    /// (either via [`Client::generate_p2p_keypair`] or [`Client::write_p2p_keypair`]).
-    /// A new noise [`AuthenticKeypair`] and the [`PeerId`] will be derived from this keypair and used
-    /// for authentication and encryption on the transport layer.
-    ///
-    /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
-    pub async fn spawn_p2p<P>(
-        &self,
-        client_path: P, // transform to [u8]
-        network_config: NetworkConfig,
-        keypair: Option<Location>,
-    ) -> Result<(), SpawnNetworkError>
-    where
-        P: AsRef<[u8]>,
-    {
-        // could this result in a dead-lock?
-        let mut network = self.network.lock().await;
-
-        if network.is_some() {
-            return Err(SpawnNetworkError::AlreadySpawned);
-        }
-
-        let client = match self
-            .load_client(client_path.as_ref())
-            .map_err(|_| SpawnNetworkError::ClientNotFound)
-        {
-            Ok(client) => client,
-            Err(_) => match self.get_client(client_path) {
-                Ok(client) => client,
-                Err(e) => return Err(SpawnNetworkError::ClientNotFound),
-            },
-        };
-
-        let keypair = match keypair {
-            Some(location) => {
-                let (peer_id, noise_keypair) = client
-                    .derive_noise_keypair(location)
-                    .map_err(|e| SpawnNetworkError::Inner(e.to_string()))?;
-
-                Some(InitKeypair::Authenticated { peer_id, noise_keypair })
-            }
-            None => None,
-        };
-
-        // set inner network reference
-        network.replace(Network::new(network_config, keypair).await?);
-
-        Ok(())
-    }
-
     /// Spawn the p2p-network actor and swarm, load the config from a former running network-actor.
     /// The `key` parameter species the location in which in the config is stored, i.e.
     /// the key that was set on [`Stronghold::stop_p2p`].

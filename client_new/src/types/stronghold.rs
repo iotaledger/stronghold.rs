@@ -9,14 +9,18 @@ mod p2p_old;
 pub mod network_old;
 
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     sync::{Arc, RwLock},
 };
 
 use crate::{
-    procedures::Runner, Client, ClientError, ClientState, KeyProvider, LoadFromPath, Snapshot, SnapshotPath, Store,
-    UseKey,
+    procedures::Runner, Client, ClientError, ClientState, KeyProvider, LoadFromPath, Location, Snapshot, SnapshotPath,
+    Store, UseKey,
 };
+
+#[cfg(feature = "p2p")]
+use crate::{Peer, SpawnNetworkError};
+
 use engine::vault::ClientId;
 #[cfg(feature = "p2p")]
 use futures::{future, StreamExt};
@@ -24,13 +28,18 @@ use futures::{future, StreamExt};
 pub use p2p_old::*;
 
 #[cfg(feature = "p2p")]
+use stronghold_p2p::{
+    identity::{Keypair, PublicKey},
+    InitKeypair,
+};
+#[cfg(feature = "p2p")]
 use stronghold_p2p::{Executor, ListenErr, Multiaddr, PeerId};
 
 #[cfg(feature = "p2p")]
 use crate::network_old::Network;
 
 #[cfg(feature = "p2p")]
-use self::network_old::StrongholdNetworkResult;
+use self::network_old::{ClientRequest, NetworkConfig, StrongholdNetworkResult};
 
 use std::ops::Deref;
 
@@ -54,6 +63,9 @@ pub struct Stronghold {
 
     #[cfg(feature = "p2p")]
     network: Arc<futures::lock::Mutex<Option<Network>>>,
+
+    #[cfg(feature = "p2p")]
+    peers: Arc<futures::lock::Mutex<HashMap<PeerId, Peer>>>,
 }
 
 impl Stronghold {
@@ -204,8 +216,11 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
-        let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+        let client = Client {
+            id: client_id,
+            ..Default::default()
+        };
 
         // insert client as ref into Strongholds client ref
         let mut clients = self.clients.try_write()?;
@@ -297,7 +312,14 @@ impl Stronghold {
 
 #[cfg(feature = "p2p")]
 impl Stronghold {
-    // pub async fn spawn_p2p() {}
+    /// Processes [`ClientRequests`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub(crate) fn handle_client_request(&self, request: ClientRequest) -> Result<(), ClientError> {
+        todo!()
+    }
 
     /// Serve requests to remote Stronghold clients. This call is blocking.
     /// Accepts a receiver to terminate the listener.
@@ -368,13 +390,52 @@ impl Stronghold {
         }
     }
 
-    /// Loads a remote [`Client`] and returns it.
+    /// Creates a [`Peer`] from a [`PublicKey`] and returns it.
     ///
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_load_client(&self, peer: PeerId) -> Result<Client, ClientError> {
-        todo!()
+    pub async fn create_remote_client(&self, public_key: PublicKey) -> Result<Peer, ClientError> {
+        let peer_id = public_key.to_peer_id();
+        let mut peers = self.peers.lock().await;
+        match peers.entry(peer_id) {
+            Entry::Occupied(o) => Ok(o.get().clone()),
+            Entry::Vacant(v) => {
+                let peer = Peer::new(*v.key(), self.clone());
+                v.insert(peer.clone());
+                Ok(peer)
+            }
+        }
+    }
+
+    /// Creates a new empty [`Client`] with an identity [`Keypair`] stored at [`Location`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn create_client_with_keys<P>(
+        &self,
+        client_path: P,
+        keypair: Keypair,
+        location: Location,
+    ) -> Result<Client, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+        let client = Client {
+            id: client_id,
+            ..Default::default()
+        };
+
+        // insert client as ref into Strongholds client ref
+        let mut clients = self.clients.try_write()?;
+        clients.insert(client_id, client.clone());
+
+        // write the keypair into the loation in the vault
+        client.write_p2p_keypair(keypair, location)?;
+
+        Ok(client)
     }
 
     /// Start listening on the swarm to the given address. If no address is provided, it will be assigned by the OS.
@@ -407,9 +468,64 @@ impl Stronghold {
                 return Err(ClientError::NoValuePresent(
                     "Stronghold: Network value not present".to_string(),
                 ))
-            } // wrong error
+            }
         };
 
         network.stop_listening().await
+    }
+
+    /// Spawn the p2p-network actor and swarm.
+    /// The `keypair`parameter can be provided as location in which a keypair is stored,
+    /// (either via [`Client::generate_p2p_keypair`] or [`Client::write_p2p_keypair`]).
+    /// A new noise [`AuthenticKeypair`] and the [`PeerId`] will be derived from this keypair and used
+    /// for authentication and encryption on the transport layer.
+    ///
+    /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn spawn_p2p<P>(
+        &self,
+        client_path: P,
+        network_config: NetworkConfig,
+        keypair: Option<Location>,
+    ) -> Result<(), SpawnNetworkError>
+    where
+        P: AsRef<[u8]>,
+    {
+        // could this result in a dead-lock?
+        let mut network = self.network.lock().await;
+
+        if network.is_some() {
+            return Err(SpawnNetworkError::AlreadySpawned);
+        }
+
+        let client = match self
+            .load_client(client_path.as_ref())
+            .map_err(|_| SpawnNetworkError::ClientNotFound)
+        {
+            Ok(client) => client,
+            Err(_) => match self.get_client(client_path) {
+                Ok(client) => client,
+                Err(e) => return Err(SpawnNetworkError::ClientNotFound),
+            },
+        };
+
+        let keypair = match keypair {
+            Some(location) => {
+                let (peer_id, noise_keypair) = client
+                    .derive_noise_keypair(location)
+                    .map_err(|e| SpawnNetworkError::Inner(e.to_string()))?;
+
+                Some(InitKeypair::Authenticated { peer_id, noise_keypair })
+            }
+            None => None,
+        };
+
+        // set inner network reference
+        network.replace(Network::new(network_config, keypair).await?);
+
+        Ok(())
     }
 }

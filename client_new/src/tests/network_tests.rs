@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use engine::vault::RecordHint;
-use stronghold_p2p::{identity::Keypair, OutboundFailure, PeerId};
+use stronghold_p2p::{
+    identity::{Keypair, PublicKey},
+    OutboundFailure, PeerId,
+};
 // use crate::{
 //     network::{ClientAccess, FirewallChannel},
 //     p2p::{identity::Keypair, NetworkConfig, OutboundFailure, P2pError, PeerId, Permissions, SwarmInfo},
@@ -503,25 +506,144 @@ async fn test_p2p_firewall_old() {
 }
 
 #[tokio::test]
-async fn test_p2p() {
+async fn test_p2p_cycle() {
+    // -- setup
+    let key_pair = Keypair::generate_ed25519();
     let remote_client_path = rand::bytestring(1024);
-    let stronghold = Stronghold::default();
+    let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
 
-    assert!(stronghold.create_client(remote_client_path.clone()).is_ok());
+    // we need to create a client on the remote that accepts incoming requests
+    let _ = remote
+        .create_client(remote_client_path.clone())
+        .expect("Failed to create Peer");
 
-    assert!(stronghold.spawn_p2p(remote_client_path, config, None).await.is_ok());
+    let result = remote.spawn_p2p(remote_client_path, config, None).await;
+    assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
 
     let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
 
-    let result = stronghold.start_listening(None).await;
-    assert!(result.is_ok());
+    let result = remote.start_listening(None).await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
-    // keep handle to serving
-    let stronghold_clone = stronghold.clone();
+    // clone remote which will be moved into a background task
+    let remote_stronghold_server = remote.clone();
+
+    // keep handle to server
+    let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
+
+    // --- tear down ---
+    // send termination signal
+    let result = sender_terminate_signal.send(());
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // await server event loop shutdown
+    let result = server.await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // shutdown listening
+    let result = remote.stop_listening().await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+}
+
+#[tokio::test]
+async fn test_p2p_write_read_to_remote_store() {
+    // -- setup
+    let key_pair = Keypair::generate_ed25519();
+    let remote_client_path = rand::bytestring(1024);
+    let remote = Stronghold::default();
+    let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
+
+    // we need to create a client on the remote that accepts incoming requests
+    let result = remote.create_client(remote_client_path.clone());
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let result = remote.spawn_p2p(remote_client_path, config, None).await;
+    assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
+
+    let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
+
+    let result = remote.start_listening(None).await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let remote_address = result.unwrap();
+    let remote_peer_id = PeerId::from_public_key(&key_pair.public());
+
+    // clone remote which will be moved into a background task
+    let remote_stronghold_server = remote.clone();
+
+    // keep handle to server
+    let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
+
+    // tests come here
+    {
+        // FIXME: the peer should be created from the local stronghold, dialing in a connection
+        // to the remote instance, returning with a valid peer
+        let local = Stronghold::default();
+        let result = local.add_peer(remote_peer_id, Some(remote_address)).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let result = local.create_remote_client(key_pair.public()).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let peer = result.unwrap();
+    }
+
+    // --- tear down ---
+    // send termination signal
+    let result = sender_terminate_signal.send(());
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // await server event loop shutdown
+    let result = server.await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // shutdown listening
+    let result = remote.stop_listening().await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+}
+
+/// This tests creates two instances of Stronghold:
+/// - a server instance with some key to run some procedures against
+/// - a client instance that retrieves a Peer from the remote instances and calls remote procedures
+///
+/// The server instance creates an ephemeral key stored under a client defined by a `client_path`. The public key
+/// of the client, will be used to remotely execute function calls.
+#[tokio::test]
+async fn test_p2p_config() {
+    let remote_client_path = rand::bytestring(1024);
+    let remote = Stronghold::default();
+    let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
+
+    // generate a new keypair
+    let remote_keypair = Keypair::generate_ed25519();
+    let remote_keypair_location =
+        Location::const_generic(b"remote-keypair-location".to_vec(), b"remote-keypair-location".to_vec());
+    let _ = remote.create_client_with_keys(
+        remote_client_path.clone(),
+        remote_keypair,
+        remote_keypair_location.clone(),
+    );
+
+    let result = remote.create_client(remote_client_path.clone());
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let result = remote
+        .spawn_p2p(remote_client_path, config, Some(remote_keypair_location))
+        .await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
+
+    let result = remote.start_listening(None).await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // keep handle to server
+    let stronghold_clone = remote.clone();
     let server = tokio::spawn(async move { stronghold_clone.serve(receiver_terminate_signal).await });
 
     // test cases here
+    // ..
 
     // send termination signal
     assert!(sender_terminate_signal.send(()).is_ok());
@@ -530,13 +652,9 @@ async fn test_p2p() {
     assert!(server.await.is_ok());
 
     // shutdown listening
-    let result = stronghold.stop_listening().await;
+    let result = remote.stop_listening().await;
     println!("stop listening: {:?}", result);
     assert!(result.is_ok());
-}
-#[tokio::test]
-async fn test_p2p_config() {
-    //
 }
 #[tokio::test]
 async fn test_p2p_firewall() {

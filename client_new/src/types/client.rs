@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::snapshot;
 
-// use engine::{
-//     new_runtime::memories::buffer::Buffer,
-//     vault::{view::Record, BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
-// };
-
 use crate::{
     derive_vault_id,
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
     sync::{KeyProvider, MergePolicy, SyncClients, SyncClientsConfig},
-    ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, SnapshotError, Store,
+    ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, SnapshotError, Store, Stronghold,
 };
 use engine::{
     new_runtime::memories::buffer::Buffer,
@@ -24,12 +19,13 @@ use std::{
     error::Error,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
 
 #[cfg(feature = "p2p")]
 use stronghold_p2p::{identity::Keypair, AuthenticKeypair, NoiseKeypair, PeerId};
 
-#[derive(Clone)]
+#[derive(Clone, GuardDebug)]
 pub struct Client {
     // A keystore
     pub(crate) keystore: Arc<RwLock<KeyStore<Provider>>>,
@@ -42,6 +38,9 @@ pub struct Client {
 
     // Contains the Record Ids for the most recent Record in each vault.
     pub store: Store,
+
+    #[cfg(feature = "p2p")]
+    pub(crate) peer_id: PeerId,
 }
 
 impl Default for Client {
@@ -51,12 +50,11 @@ impl Default for Client {
             db: Arc::new(RwLock::new(DbView::new())),
             id: ClientId::default(),
             store: Store::default(),
+
+            #[cfg(feature = "p2p")]
+            peer_id: PeerId::random(),
         }
     }
-}
-
-impl Drop for Client {
-    fn drop(&mut self) {}
 }
 
 impl Client {
@@ -345,33 +343,98 @@ impl Client {
         let peer_id = PeerId::from_public_key(&id_keys.public());
         Ok((peer_id, keypair))
     }
+}
 
-    // --- remote client impl
+/// [`Peer`] represents a remote [`Client`]. It contains no inner state, and its
+/// sole purpose is to work with remotes
+#[cfg(feature = "p2p")]
+#[derive(Clone, GuardDebug)]
+pub struct Peer {
+    /// the id of the remote peer
+    peer_id: Arc<PeerId>,
 
+    /// reference to networking
+    stronghold: Stronghold,
+    // The remote client path
+    // Is this necessary?
+    // remote_client_path: Arc<Vec<u8>>,
+}
+
+#[cfg(feature = "p2p")]
+impl Peer {
+    /// Creates a new [`Peer`] from a [`PeerId`] and a reference to [`Stronghold`] for p2p functionality
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub(crate) fn new(peer_id: PeerId, stronghold: Stronghold) -> Self {
+        Peer {
+            peer_id: peer_id.into(),
+            stronghold,
+        }
+    }
+
+    /// Executes a procedure on the remote
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn remote_procedure_exec(&self) {
         todo!()
     }
 
-    pub async fn remote_procedure_exec_chained(&self) {
+    /// Executes sequential procedures on the remote.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_procedure_exec_chained(&self) -> Result<ProcedureOutput, ClientError> {
         todo!()
     }
 
-    pub async fn remote_vault_exists(&self) {
+    /// Checks, if a remote vault exists and returns
+    /// - Ok(true), if the vault exists
+    /// - Ok(false), if the vault does not exist
+    ///  
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_vault_exists<P>(&self, vault_path: P) -> Result<bool, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
         todo!()
     }
 
-    pub async fn remote_record_exists(&self) {
+    /// Checks, if a remote record exists and returns
+    /// - Ok(true), if the record exists
+    /// - Ok(false), if the record does not exist
+    ///  
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_record_exists<P>(&self, record_path: P) -> Result<bool, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
         todo!()
     }
 
-    pub async fn remote_vault(&self) -> Result<ClientVault, ClientError> {
-        todo!()
-    }
-
+    /// Synchronizes local entries with a remote instance. Giving config, what entries
+    /// need to be sychronized. This involves an diffie-helmann key exchanged.
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn remote_sync_with(&self, peer: PeerId, config: SyncClientsConfig) {
         todo!()
     }
 
+    /// Synchronizes the the local vault with a remote vault.
+    ///
+    /// # Example
+    /// ```
+    /// ```
     pub async fn remote_sync_vaults(&self) {
         todo!()
     }
