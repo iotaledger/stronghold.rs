@@ -82,10 +82,10 @@ pub struct Network {
     /// Channel through which inbound requests are received.
     /// This channel is only inserted temporary on [`Network::new`], and is handed
     /// to the stream handler in `<Self as Actor>::started`.
-    pub _inbound_request_rx:
+    pub inbound_request_rx:
         Option<futures::channel::mpsc::Receiver<ReceiveRequest<StrongholdRequest, StrongholdNetworkResult>>>,
     /// Cache the network config so it can be returned on `ExportConfig`.
-    pub _config: Arc<futures::lock::Mutex<Option<NetworkConfig>>>,
+    pub config: Arc<futures::lock::Mutex<Option<NetworkConfig>>>,
 }
 
 impl Network {
@@ -130,8 +130,8 @@ impl Network {
 
         Ok(Self {
             inner: Arc::new(futures::lock::Mutex::new(Some(network))),
-            _inbound_request_rx: Some(inbound_request_rx),
-            _config: Arc::new(futures::lock::Mutex::new(Some(network_config))),
+            inbound_request_rx: Some(inbound_request_rx),
+            config: Arc::new(futures::lock::Mutex::new(Some(network_config))),
         })
     }
 
@@ -188,7 +188,7 @@ impl Network {
     }
 
     pub async fn export_config(&self) -> Result<NetworkConfig, ClientError> {
-        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
             Some(config) => config,
             None => return Err(ClientError::Inner("No network config present".to_string())),
@@ -212,7 +212,7 @@ impl Network {
     /// ```
     /// ```
     pub async fn set_firewall_default(&self, permissions: Permissions) -> Result<(), ClientError> {
-        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
             Some(config) => config,
             None => return Err(ClientError::Inner("No network config present".to_string())),
@@ -237,7 +237,7 @@ impl Network {
     /// ```
     /// ```
     pub async fn set_firewall_rule(&self, peer: PeerId, permissions: Permissions) -> Result<(), ClientError> {
-        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
             Some(config) => config,
             None => return Err(ClientError::Inner("No network config present".to_string())),
@@ -261,7 +261,7 @@ impl Network {
     /// ```
     /// ```
     pub async fn remove_firewall_rule(&self, peer: PeerId) -> Result<(), ClientError> {
-        let mut config = self._config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+        let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
             Some(config) => config,
             None => return Err(ClientError::Inner("No network config present".to_string())),

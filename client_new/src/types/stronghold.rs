@@ -41,12 +41,15 @@ use stronghold_p2p::{
 use stronghold_p2p::{Executor, ListenErr, Multiaddr, PeerId};
 
 #[cfg(feature = "p2p")]
+use futures::{channel::mpsc::UnboundedReceiver, future::Either};
+
+#[cfg(feature = "p2p")]
 use crate::network_old::Network;
 
 #[cfg(feature = "p2p")]
 use self::network_old::StrongholdRequest;
 #[cfg(feature = "p2p")]
-use self::network_old::{ClientRequest, NetworkConfig, StrongholdNetworkResult};
+use self::network_old::{ClientRequest, NetworkConfig, SnapshotRequest, StrongholdNetworkResult};
 
 use std::ops::Deref;
 
@@ -317,6 +320,17 @@ impl Stronghold {
 
 // networking functionality
 
+/// This enum is solely used for steering the control flow
+/// of a serving [`Stronghold`] instance
+#[cfg(feature = "p2p")]
+pub(crate) enum ServeCommand {
+    /// Continue Serving
+    Continue,
+
+    /// Terminate Serving
+    Terminate,
+}
+
 #[cfg(feature = "p2p")]
 impl Stronghold {
     /// Processes [`ClientRequest`]s
@@ -387,15 +401,12 @@ impl Stronghold {
     /// # Example
     /// ```
     /// ```
-    pub(crate) fn handle_snapshot_request<P>(
+    pub(crate) fn handle_snapshot_request(
         &self,
-        client_path: P,
+        // client_path: P,
         tx: Sender<StrongholdNetworkResult>,
-        request: ClientRequest,
-    ) -> Result<(), ClientError>
-    where
-        P: AsRef<[u8]>,
-    {
+        request: SnapshotRequest,
+    ) -> Result<(), ClientError> {
         todo!()
     }
 
@@ -405,31 +416,46 @@ impl Stronghold {
     /// # Example
     /// ```
     /// ```
-    pub async fn serve(&self, mut shutdown: futures::channel::oneshot::Receiver<()>) -> Result<(), ClientError> {
-        let mut network = self.network.lock().await;
+    pub async fn serve(&self, mut shutdown: UnboundedReceiver<()>) -> Result<(), ClientError> {
+        use future::FutureExt;
 
-        let mut rx = network.as_mut().unwrap()._inbound_request_rx.take().unwrap();
+        let mut network = self.network.lock().await;
+        let mut rx = network.as_mut().unwrap().inbound_request_rx.take().unwrap();
         drop(network);
 
-        // executor.exec(Box::pin(async move {
+        // we keep handling all requests in a busy loop, blocking on receiving requests while
+        // being able to respond to termination requests.
         loop {
-            match shutdown.try_recv() {
-                Ok(inner) => {
-                    if inner.is_some() {
+            match futures::future::select(
+                Box::pin(async {
+                    let _ = shutdown.next().await;
+                    ServeCommand::Terminate
+                }),
+                Box::pin(async {
+                    if let Some(inner) = rx.next().await {
+                        // request handling comes here
+                        match inner.request {
+                            network_old::StrongholdRequest::ClientRequest { client_path, request } => {
+                                if let Err(e) = self.handle_client_request(client_path, inner.response_tx, request) {
+                                    // handle error. log it?
+                                }
+                            }
+                            network_old::StrongholdRequest::SnapshotRequest { request } => {
+                                if let Err(e) = self.handle_snapshot_request(inner.response_tx, request) {
+                                    // handle error. log it?
+                                }
+                            }
+                        };
+                    }
+                    ServeCommand::Continue
+                }),
+            )
+            .await
+            {
+                Either::Left((cmd, _)) | Either::Right((cmd, _)) => {
+                    if let ServeCommand::Terminate = cmd {
                         return Ok(());
                     }
-                }
-                Err(e) => return Err(ClientError::Inner(e.to_string())),
-            };
-
-            if let Some(inner) = rx.next().await {
-                // handler function here
-                match inner.request {
-                    network_old::StrongholdRequest::ClientRequest { client_path, request } => {
-                        self.handle_client_request(client_path, inner.response_tx, request)?;
-                    }
-
-                    network_old::StrongholdRequest::SnapshotRequest { request } => {}
                 }
             }
         }

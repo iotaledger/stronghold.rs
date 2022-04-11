@@ -1,10 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{future, sync::Arc, time::Duration};
+
 use engine::vault::RecordHint;
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
-    OutboundFailure, PeerId,
+    AddressInfo, OutboundFailure, PeerId,
 };
 // use crate::{
 //     network::{ClientAccess, FirewallChannel},
@@ -15,13 +17,15 @@ use stronghold_p2p::{
 //     Location,
 //     Stronghold,
 // };
-// use futures::StreamExt;
 use crypto::{keys::slip10::Chain, utils::rand as crypto_rand};
+use futures::SinkExt;
 use stronghold_utils::random as rand;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    network_old::{ClientAccess, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions},
+    network_old::{
+        ClientAccess, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions, StrongholdNetworkResult,
+    },
     procedures::{Slip10Derive, Slip10DeriveInput, Slip10Generate},
     Location, P2pError, Stronghold, SwarmInfo,
 };
@@ -521,7 +525,7 @@ async fn test_p2p_cycle() {
     let result = remote.spawn_p2p(remote_client_path, config, None).await;
     assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
 
-    let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
+    let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
 
     let result = remote.start_listening(None).await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
@@ -534,7 +538,7 @@ async fn test_p2p_cycle() {
 
     // --- tear down ---
     // send termination signal
-    let result = sender_terminate_signal.send(());
+    let result = sender_terminate_signal.send(()).await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
     // await server event loop shutdown
@@ -569,13 +573,13 @@ async fn test_p2p_write_read_to_remote_store() {
         .await;
     assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
 
-    let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
+    let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
 
     let result = remote.start_listening(None).await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
     let remote_address = result.unwrap();
-    println!("Listening on: {:?}", remote_address);
+
     let remote_peer_id = PeerId::from_public_key(&remote_public_key);
 
     // clone remote which will be moved into a background task
@@ -583,7 +587,7 @@ async fn test_p2p_write_read_to_remote_store() {
 
     // keep handle to server
     let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
-
+    println!("Listening on: {:?}", remote_address);
     // tests come here
     {
         let local_client_path = rand::bytestring(1024);
@@ -613,6 +617,7 @@ async fn test_p2p_write_read_to_remote_store() {
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
         // connect peer
+        println!("Create peer");
         let peer = result.unwrap();
         let result = peer.connect().await;
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
@@ -620,23 +625,33 @@ async fn test_p2p_write_read_to_remote_store() {
         let key = rand::bytestring(1024);
         let data = rand::bytestring(1024);
 
-        let result = peer.remote_write_store(key.clone(), data, None).await;
+        println!("Write to remote store");
+        let result = peer.remote_write_store(key.clone(), data.clone(), None).await;
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
+        println!("Read from remote store");
         let result = peer.remote_read_store(key).await;
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        if let StrongholdNetworkResult::Data(recv_data) = result.unwrap() {
+            assert!(recv_data.is_some(), "Received data is None");
+            assert_eq!(recv_data.unwrap(), data);
+        }
     }
 
     // --- tear down ---
     // send termination signal
-    let result = sender_terminate_signal.send(());
+    println!("Terminate");
+    let result = sender_terminate_signal.send(()).await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
     // await server event loop shutdown
+    println!("Await shutdown");
     let result = server.await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
     // shutdown listening
+    println!("Stop Listening");
     let result = remote.stop_listening().await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 }
@@ -671,7 +686,7 @@ async fn test_p2p_config() {
         .await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
-    let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
+    let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
 
     let result = remote.start_listening(None).await;
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
@@ -684,7 +699,7 @@ async fn test_p2p_config() {
     // ..
 
     // send termination signal
-    assert!(sender_terminate_signal.send(()).is_ok());
+    assert!(sender_terminate_signal.send(()).await.is_ok());
 
     // await server event loop shutdown
     assert!(server.await.is_ok());
