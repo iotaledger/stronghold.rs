@@ -102,15 +102,6 @@ impl Stronghold {
         todo!()
     }
 
-    /// Add dial information for a remote peers.
-    /// This will attempt to connect the peer directly either by the address if one is provided, or by peer id
-    /// if the peer is already known e.g. from multicast DNS.
-    /// If the peer is not a relay and can not be reached directly, it will be attempted to reach it via the relays,
-    /// if there are any.
-    pub async fn add_peer(&self, peer: PeerId, address: Option<Multiaddr>) -> Result<Multiaddr, DialErr> {
-        todo!()
-    }
-
     /// Add a relay to the list of relays that may be tried to use if a remote peer can not be reached directly.
     pub async fn add_dialing_relay(
         &self,

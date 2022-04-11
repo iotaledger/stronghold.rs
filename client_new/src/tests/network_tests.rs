@@ -549,16 +549,24 @@ async fn test_p2p_cycle() {
 #[tokio::test]
 async fn test_p2p_write_read_to_remote_store() {
     // -- setup
-    let key_pair = Keypair::generate_ed25519();
+    let remote_key_pair = Keypair::generate_ed25519();
+    let remote_public_key = remote_key_pair.public();
+    let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
     let remote_client_path = rand::bytestring(1024);
     let remote = Stronghold::default();
-    let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
+    let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
 
     // we need to create a client on the remote that accepts incoming requests
     let result = remote.create_client(remote_client_path.clone());
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
-    let result = remote.spawn_p2p(remote_client_path, config, None).await;
+    let client = result.unwrap();
+    let result = client.write_p2p_keypair(remote_key_pair, remote_key_path.clone());
+    assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
+
+    let result = remote
+        .spawn_p2p(remote_client_path.clone(), config, Some(remote_key_path))
+        .await;
     assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
 
     let (sender_terminate_signal, receiver_terminate_signal) = futures::channel::oneshot::channel();
@@ -567,7 +575,8 @@ async fn test_p2p_write_read_to_remote_store() {
     assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
     let remote_address = result.unwrap();
-    let remote_peer_id = PeerId::from_public_key(&key_pair.public());
+    println!("Listening on: {:?}", remote_address);
+    let remote_peer_id = PeerId::from_public_key(&remote_public_key);
 
     // clone remote which will be moved into a background task
     let remote_stronghold_server = remote.clone();
@@ -577,16 +586,45 @@ async fn test_p2p_write_read_to_remote_store() {
 
     // tests come here
     {
-        // FIXME: the peer should be created from the local stronghold, dialing in a connection
-        // to the remote instance, returning with a valid peer
+        let local_client_path = rand::bytestring(1024);
+        let local_key_pair = Keypair::generate_ed25519();
+        let local_public_key = local_key_pair.public();
+        let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());
+        let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
         let local = Stronghold::default();
-        let result = local.add_peer(remote_peer_id, Some(remote_address)).await;
+
+        let result = local.create_client_with_keys(local_client_path.clone(), local_key_pair, local_key_path);
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
-        let result = local.create_remote_client(key_pair.public()).await;
+        let result = local.spawn_p2p(local_client_path, config, None).await;
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
+        let result = local.add_peer_addr(remote_peer_id, remote_address).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let local_address = result.unwrap();
+        let result = remote
+            .add_peer_addr(PeerId::from_public_key(&local_public_key), local_address)
+            .await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        // create peer
+        let result = local.create_remote_client(remote_public_key, remote_client_path).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        // connect peer
         let peer = result.unwrap();
+        let result = peer.connect().await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let key = rand::bytestring(1024);
+        let data = rand::bytestring(1024);
+
+        let result = peer.remote_write_store(key.clone(), data, None).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let result = peer.remote_read_store(key).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
     }
 
     // --- tear down ---

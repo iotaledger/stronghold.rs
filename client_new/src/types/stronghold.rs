@@ -23,10 +23,15 @@ use crate::{Peer, SpawnNetworkError};
 
 use engine::vault::ClientId;
 #[cfg(feature = "p2p")]
+use futures::channel::oneshot::Sender;
+
+#[cfg(feature = "p2p")]
 use futures::{future, StreamExt};
 #[cfg(feature = "p2p")]
 pub use p2p_old::*;
 
+#[cfg(feature = "p2p")]
+use stronghold_p2p::DialErr;
 #[cfg(feature = "p2p")]
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
@@ -38,6 +43,8 @@ use stronghold_p2p::{Executor, ListenErr, Multiaddr, PeerId};
 #[cfg(feature = "p2p")]
 use crate::network_old::Network;
 
+#[cfg(feature = "p2p")]
+use self::network_old::StrongholdRequest;
 #[cfg(feature = "p2p")]
 use self::network_old::{ClientRequest, NetworkConfig, StrongholdNetworkResult};
 
@@ -312,12 +319,83 @@ impl Stronghold {
 
 #[cfg(feature = "p2p")]
 impl Stronghold {
-    /// Processes [`ClientRequests`]
+    /// Processes [`ClientRequest`]s
     ///
     /// # Example
     /// ```
     /// ```
-    pub(crate) fn handle_client_request(&self, request: ClientRequest) -> Result<(), ClientError> {
+    pub(crate) fn handle_client_request<P>(
+        &self,
+        client_path: P,
+        tx: Sender<StrongholdNetworkResult>,
+        request: ClientRequest,
+    ) -> Result<(), ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        // load client
+        let client = self.get_client(client_path).unwrap(); // get or load client?
+
+        match request {
+            network_old::ClientRequest::CheckVault { vault_path } => {
+                let result = client.vault_exists(vault_path);
+
+                tx.send(StrongholdNetworkResult::Bool(result.unwrap())).unwrap();
+                Ok(())
+            }
+            network_old::ClientRequest::CheckRecord { location } => todo!(),
+            network_old::ClientRequest::ListIds { vault_path } => todo!(),
+            network_old::ClientRequest::WriteToRemoteVault {
+                location,
+                payload,
+                hint,
+            } => {
+                let vault = client.vault(location.vault_path());
+                let result = vault.write_secret(location, payload);
+
+                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
+                Ok(())
+            }
+
+            network_old::ClientRequest::WriteToVault {
+                location,
+                payload,
+                hint,
+            } => todo!(),
+            network_old::ClientRequest::RevokeData { location } => todo!(),
+            network_old::ClientRequest::ReadFromStore { key } => {
+                let store = client.store();
+                let result = store.get(&key)?;
+                tx.send(StrongholdNetworkResult::Data(result))
+                    .map_err(|_| ClientError::Inner("Failed to send response".to_string()))?;
+                Ok(())
+            }
+            network_old::ClientRequest::WriteToStore { key, payload, lifetime } => {
+                let store = client.store();
+                store.insert(key, payload, lifetime)?;
+
+                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
+                Ok(())
+            }
+            network_old::ClientRequest::DeleteFromStore { key } => todo!(),
+            network_old::ClientRequest::Procedures { procedures } => todo!(),
+        }
+    }
+
+    /// Processes [`SnapshotRequest`]s
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub(crate) fn handle_snapshot_request<P>(
+        &self,
+        client_path: P,
+        tx: Sender<StrongholdNetworkResult>,
+        request: ClientRequest,
+    ) -> Result<(), ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
         todo!()
     }
 
@@ -348,42 +426,9 @@ impl Stronghold {
                 // handler function here
                 match inner.request {
                     network_old::StrongholdRequest::ClientRequest { client_path, request } => {
-                        // load client
-                        let client = self.load_client(client_path).unwrap();
-
-                        match request {
-                            network_old::ClientRequest::CheckVault { vault_path } => {
-                                let result = client.vault_exists(vault_path);
-
-                                let tx = inner.response_tx;
-                                tx.send(StrongholdNetworkResult::Bool(result.unwrap())).unwrap();
-                            }
-                            network_old::ClientRequest::CheckRecord { location } => todo!(),
-                            network_old::ClientRequest::ListIds { vault_path } => todo!(),
-                            network_old::ClientRequest::WriteToRemoteVault {
-                                location,
-                                payload,
-                                hint,
-                            } => {
-                                let vault = client.vault(location.vault_path());
-                                let result = vault.write_secret(location, payload);
-
-                                let tx = inner.response_tx;
-                                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
-                            }
-
-                            network_old::ClientRequest::WriteToVault {
-                                location,
-                                payload,
-                                hint,
-                            } => todo!(),
-                            network_old::ClientRequest::RevokeData { location } => todo!(),
-                            network_old::ClientRequest::ReadFromStore { key } => todo!(),
-                            network_old::ClientRequest::WriteToStore { key, payload, lifetime } => todo!(),
-                            network_old::ClientRequest::DeleteFromStore { key } => todo!(),
-                            network_old::ClientRequest::Procedures { procedures } => todo!(),
-                        }
+                        self.handle_client_request(client_path, inner.response_tx, request)?;
                     }
+
                     network_old::StrongholdRequest::SnapshotRequest { request } => {}
                 }
             }
@@ -395,13 +440,16 @@ impl Stronghold {
     /// # Example
     /// ```
     /// ```
-    pub async fn create_remote_client(&self, public_key: PublicKey) -> Result<Peer, ClientError> {
+    pub async fn create_remote_client<P>(&self, public_key: PublicKey, client_path: P) -> Result<Peer, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
         let peer_id = public_key.to_peer_id();
         let mut peers = self.peers.lock().await;
         match peers.entry(peer_id) {
             Entry::Occupied(o) => Ok(o.get().clone()),
             Entry::Vacant(v) => {
-                let peer = Peer::new(*v.key(), self.clone());
+                let peer = Peer::new(*v.key(), client_path, self.clone());
                 v.insert(peer.clone());
                 Ok(peer)
             }
@@ -527,5 +575,67 @@ impl Stronghold {
         network.replace(Network::new(network_config, keypair).await?);
 
         Ok(())
+    }
+
+    /// Adds a [`Multiadress`] for a peer, represented by the [`PeerId`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn add_peer_addr(&self, peer: PeerId, address: Multiaddr) -> Result<Multiaddr, DialErr> {
+        let network = self.network.lock().await;
+        let network = match &*network {
+            Some(network) => network,
+            None => return Err(DialErr::NoAddresses),
+        };
+
+        network.add_peer_address(peer, address.clone()).await.map(|_| address)
+    }
+
+    /// Tries to connect to a remote Peer, if the peer is already known by [`Multiaddr`] or
+    /// mDNS. If the peer is not know, try to add it first via [`Self::add_peer`].
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn connect(&self, peer: PeerId) -> Result<(), DialErr> {
+        let network = self.network.lock().await;
+        let network = match &*network {
+            Some(network) => network,
+            None => return Err(DialErr::Aborted),
+        };
+
+        network.connect_peer(peer).await.map(|_| ()) // returned Multiadress
+    }
+
+    /// Sends a request to an already connected remote Peer.
+    /// TBD: THIS NEEDS MORE EXPLANATION
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn send<P, R>(
+        &self,
+        peer_id: PeerId,
+        client_path: P,
+        request: R,
+    ) -> Result<StrongholdNetworkResult, ClientError>
+    where
+        P: AsRef<[u8]>,
+        R: Into<StrongholdRequest>,
+    {
+        // FIXME: this call just passes through to network. The abstraction is
+        // just one more layer of redundancy.
+        let network = self.network.lock().await;
+        let network = match &*network {
+            Some(network) => network,
+            None => {
+                return Err(ClientError::NoValuePresent(
+                    "inner network reference not present".to_string(),
+                ))
+            }
+        };
+
+        network.send_request(peer_id, client_path, request.into()).await
     }
 }

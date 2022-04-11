@@ -34,11 +34,14 @@ pub enum ClientError {
     #[error("Engine error occured({0})")]
     Engine(String),
 
-    #[error("BoxProvider error: {0}")]
+    #[error("BoxProvider error: ({0})")]
     Provider(String),
 
     #[error("Error loading client data. No data present")]
     ClientDataNotPresent,
+
+    #[error("Connection failure ({0})")]
+    ConnectionFailure(String),
 }
 
 #[cfg(feature = "p2p")]

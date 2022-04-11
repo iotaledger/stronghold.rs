@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 use super::snapshot;
 
+#[cfg(feature = "p2p")]
+use crate::network_old::{SnapshotRequest, StrongholdNetworkResult, StrongholdRequest};
+
 use crate::{
     derive_vault_id,
     procedures::{
@@ -18,7 +21,10 @@ use std::{
     collections::HashMap,
     error::Error,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    time::Duration,
 };
+#[cfg(feature = "p2p")]
+use stronghold_p2p::DialErr;
 use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
 
@@ -357,7 +363,7 @@ pub struct Peer {
     stronghold: Stronghold,
     // The remote client path
     // Is this necessary?
-    // remote_client_path: Arc<Vec<u8>>,
+    remote_client_path: Arc<Vec<u8>>,
 }
 
 #[cfg(feature = "p2p")]
@@ -367,11 +373,24 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub(crate) fn new(peer_id: PeerId, stronghold: Stronghold) -> Self {
+    pub(crate) fn new<P>(peer_id: PeerId, remote_client_path: P, stronghold: Stronghold) -> Self
+    where
+        P: AsRef<[u8]>,
+    {
         Peer {
             peer_id: peer_id.into(),
             stronghold,
+            remote_client_path: Arc::new(remote_client_path.as_ref().to_vec()),
         }
+    }
+
+    /// Connects to a remote [`Stronghold`] instance
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn connect(&self) -> Result<(), DialErr> {
+        self.stronghold.connect(*self.peer_id).await
     }
 
     /// Executes a procedure on the remote
@@ -437,5 +456,48 @@ impl Peer {
     /// ```
     pub async fn remote_sync_vaults(&self) {
         todo!()
+    }
+
+    /// Write to remote store
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_write_store(
+        &self,
+        key: Vec<u8>,
+        payload: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> Result<StrongholdNetworkResult, ClientError> {
+        // FIXME:
+        self.stronghold
+            .send(
+                *self.peer_id,
+                (*self.remote_client_path).clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path: (*self.remote_client_path).clone(),
+                    request: crate::network_old::ClientRequest::WriteToStore { key, payload, lifetime },
+                },
+            )
+            .await
+    }
+
+    /// Read from remote store and return an optional result.
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_read_store(&self, key: Vec<u8>) -> Result<StrongholdNetworkResult, ClientError> {
+        // FIXME:
+        self.stronghold
+            .send(
+                *self.peer_id,
+                (*self.remote_client_path).clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path: (*self.remote_client_path).clone(),
+                    request: crate::network_old::ClientRequest::ReadFromStore { key },
+                },
+            )
+            .await
     }
 }

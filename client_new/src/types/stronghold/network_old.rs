@@ -10,8 +10,6 @@
 use crate::{Client, ClientError, Location, RecordError, Stronghold, SwarmInfo};
 use engine::vault::{RecordHint, RecordId};
 use futures::{channel::mpsc::TryRecvError, future, stream::FusedStream, Stream};
-// TODO: ShClientRequest -> ShRequest -> Client
-// TODO: ShSnapshotRequest -> ShRequest -> Snapshot
 // use crate::{
 //     actors::{
 //         secure_messages::{
@@ -417,11 +415,11 @@ impl Network {
     /// # Example
     /// ```
     /// ```
-    pub async fn add_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), ClientError> {
-        let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
+    pub async fn add_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), DialErr> {
+        let mut network = self.inner.lock().await;
         let network = match &mut *network {
             Some(network) => network,
-            None => return Err(ClientError::Inner("No network handler present".to_string())),
+            None => return Err(DialErr::Aborted),
         };
 
         network.add_address(peer, address).await;
