@@ -1,18 +1,29 @@
 {
-  "name": "documentation",
+  "name": "stronghold",
   "version": "0.0.0",
-  "private": "true",
   "scripts": {
-    "start": "iota-wiki-cli start",
-    "clean": "iota-wiki-cli clean",
-    "setup": "iota-wiki-cli setup",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "docusaurus start"
   },
   "license": "UNLICENSED",
   "engines": {
     "node": ">=14.14.0"
   },
   "dependencies": {
-    "iota-wiki-cli": "git+https://github.com/iota-community/iota-wiki-cli.git#v1.3.0"
+    "@docusaurus/plugin-content-docs": "^2.0.0-beta.17",
+    "remark-code-import": "^0.3.0",
+    "remark-import-partial": "^0.0.2",
+    "remark-remove-comments": "^0.2.0"
+  },
+  "devDependencies": {
+    "@docusaurus/core": "latest",
+    "@docusaurus/theme-classic": "latest",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1"
+  },
+  "peerDependencies": {
+    "@docusaurus/core": "^2.0.0-beta.17",
+    "@docusaurus/theme-classic": "^2.0.0-beta.17",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1"
   }
 }

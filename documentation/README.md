@@ -10,28 +10,18 @@ The documentation is built using [Docusaurus 2](https://docusaurus.io/). The dep
 ## Installation
 
 ```console
-npm i
-npm run setup
+yarn
 ```
 
-This command checks out a local copy of the wiki and creates links to the content.
+This command installs all needed dependencies.
 
 ## Local Development
 
 ```console
-npm start
+yarn start
 ```
 
 This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
-
-## Tear Down
-
-```console
-npm run clean
-```
-
-This command deletes the local wiki and local links.
-
 
 ## Including .md file
 
