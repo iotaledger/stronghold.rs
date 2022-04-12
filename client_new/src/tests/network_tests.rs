@@ -691,6 +691,7 @@ async fn test_p2p_write_read_to_remote_store() {
 
     // keep handle to server
     let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
+
     // tests come here
     {
         let local_client_path = rand::bytestring(1024);

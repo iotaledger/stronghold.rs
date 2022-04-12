@@ -43,7 +43,7 @@ impl Store {
     /// Inserts a `value` into the store with `key`
     ///
     /// # Example
-    /// ```no_run
+    /// ```ignore
     /// use iota_stronghold_new::Store;
     ///
     /// let store = Store::default();
@@ -61,7 +61,7 @@ impl Store {
     /// Tries to get the stored value via `key`
     ///
     /// # Example
-    /// ```no_run
+    /// ```ignore
     /// use iota_stronghold_new::Store;
     ///
     /// let store = Store::default();
@@ -83,7 +83,7 @@ impl Store {
     /// Tries to delete the inner vale with `key`
     ///
     /// # Example
-    /// ```no_run
+    /// ```ignore
     /// use iota_stronghold_new::Store;
     ///
     /// let store = Store::default();
@@ -101,7 +101,7 @@ impl Store {
 
     /// Checks the [`Store`], if the provided key exists
     /// # Example
-    /// ```
+    /// ```ignore
     /// use iota_stronghold_new::Store;
     ///
     /// let store = Store::default();
