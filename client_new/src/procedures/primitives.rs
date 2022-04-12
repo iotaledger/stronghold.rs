@@ -486,9 +486,7 @@ fn ed25519_secret_key(guard: Buffer<u8>) -> Result<ed25519::SecretKey, crypto::E
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateKey {
     pub ty: KeyType,
-
     pub output: Location,
-
     pub hint: RecordHint,
 }
 

@@ -398,7 +398,10 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_procedure_exec(&self, procedure: StrongholdProcedure) -> Result<Option<Vec<u8>>, ClientError> {
+    pub async fn remote_procedure_exec(
+        &self,
+        procedure: StrongholdProcedure,
+    ) -> Result<StrongholdNetworkResult, ClientError> {
         self.remote_procedure_exec_chained(vec![procedure]).await
     }
 
@@ -410,7 +413,7 @@ impl Peer {
     pub async fn remote_procedure_exec_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
-    ) -> Result<Option<Vec<u8>>, ClientError> {
+    ) -> Result<StrongholdNetworkResult, ClientError> {
         let client_path = (*self.remote_client_path).clone();
 
         let result = self
@@ -425,15 +428,17 @@ impl Peer {
             )
             .await;
 
-        match result {
-            Ok(inner) => match inner {
-                StrongholdNetworkResult::Data(optinal_data) => Ok(optinal_data),
-                _ => Err(ClientError::Inner(
-                    "Unexpected data type returned from request".to_string(),
-                )),
-            },
-            Err(_) => Err(ClientError::NoValuePresent("Executing procedure failed.".to_string())),
-        }
+        // match result {
+        //     Ok(inner) => match inner {
+        //         StrongholdNetworkResult::Data(optional_data) => Ok(optional_data),
+        //         StrongholdNetworkResult::Proc()
+        //         _ => Err(ClientError::Inner(
+        //             "Unexpected data type returned from request".to_string(),
+        //         )),
+        //     },
+        //     Err(_) => Err(ClientError::NoValuePresent("Executing procedure failed.".to_string())),
+        // }
+        result
     }
 
     /// Checks, if a remote vault exists and returns

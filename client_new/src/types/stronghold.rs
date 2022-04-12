@@ -406,7 +406,8 @@ impl Stronghold {
 
             network_old::ClientRequest::Procedures { procedures } => {
                 let result = client.execure_procedure_chained(procedures);
-                tx.send(StrongholdNetworkResult::Proc(result)).unwrap();
+                assert!(result.is_ok());
+                assert!(tx.send(StrongholdNetworkResult::Proc(result)).is_ok());
 
                 Ok(())
             }
