@@ -1047,6 +1047,11 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                             vault_path: location.vault_path().to_vec(),
                         }]
                     }
+                    ClientRequest::DeleteData { location } => {
+                        vec![Access::List {
+                            vault_path: location.vault_path().to_vec(),
+                        }]
+                    }
                     // #[cfg(test)]
                     // ClientRequest::ReadFromVault { location } => {
                     //     vec![Access::Clone {
@@ -1058,7 +1063,6 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                             vault_path: location.vault_path().to_vec(),
                         }]
                     }
-                    // THIS IS TEST ONLY! MAYBE REMOVE IT?
                     ClientRequest::ReadFromStore { .. } => vec![Access::ReadStore],
                     ClientRequest::WriteToStore { .. } | ClientRequest::DeleteFromStore { .. } => {
                         vec![Access::WriteStore]
@@ -1092,11 +1096,7 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                             }
                         })
                         .collect(),
-                    ClientRequest::WriteToVault {
-                        location,
-                        payload,
-                        hint,
-                    } => todo!(),
+                    ClientRequest::WriteToVault { location, payload } => todo!(),
                 };
                 AccessRequest {
                     client_path,
@@ -1178,6 +1178,7 @@ pub enum ClientRequest {
     CheckVault {
         vault_path: Vec<u8>,
     },
+
     CheckRecord {
         location: Location,
     },
@@ -1187,18 +1188,19 @@ pub enum ClientRequest {
     WriteToRemoteVault {
         location: Location,
         payload: Vec<u8>,
-
         // we can discard this
-        hint: RecordHint,
+        // hint: RecordHint,
     },
     WriteToVault {
         location: Location,
         payload: Vec<u8>,
-
         // we can discard this
-        hint: RecordHint,
+        // hint: RecordHint,
     },
     RevokeData {
+        location: Location,
+    },
+    DeleteData {
         location: Location,
     },
     ReadFromStore {
@@ -1234,7 +1236,7 @@ pub enum ClientRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StrongholdNetworkResult {
-    Empty(()),
+    Empty(()), // macro failure to require empty tuple
     Data(Option<Vec<u8>>),
     Bool(bool),
     WriteRemoteVault(Result<(), RemoteRecordError>),

@@ -90,7 +90,6 @@ impl SnapshotPath {
         P: AsRef<Path>,
     {
         assert!(name.as_ref().is_relative());
-        // assert!(name.as_ref().is_file());
         assert!(engine::snapshot::files::home_dir().is_ok());
 
         let path = engine::snapshot::files::home_dir().unwrap();
@@ -108,7 +107,6 @@ impl SnapshotPath {
         P: AsRef<Path>,
     {
         assert!(path.as_ref().is_absolute());
-
         Self {
             path: path.as_ref().to_path_buf(),
         }
@@ -205,9 +203,6 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    /// TODO: This should be split into two functions :
-    ///   - named_mut()
-    ///   - path_
     pub fn write_to_snapshot(&self, snapshot_path: &SnapshotPath, use_key: UseKey) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
         let data = bincode::serialize(&state)?;

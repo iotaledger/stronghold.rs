@@ -1,6 +1,6 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use super::snapshot;
+use super::{location, snapshot};
 
 #[cfg(feature = "p2p")]
 use crate::network_old::{SnapshotRequest, StrongholdNetworkResult, StrongholdRequest};
@@ -109,7 +109,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub fn record_exists(&mut self, location: Location) -> Result<bool, ClientError> {
+    pub fn record_exists(&self, location: Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
         let db = self.db.try_read()?;
         let contains_record = db.contains_record(vault_id, record_id);
@@ -398,8 +398,8 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_procedure_exec(&self) {
-        todo!()
+    pub async fn remote_procedure_exec(&self, procedure: StrongholdProcedure) -> Result<Option<Vec<u8>>, ClientError> {
+        self.remote_procedure_exec_chained(vec![procedure]).await
     }
 
     /// Executes sequential procedures on the remote.
@@ -407,8 +407,33 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_procedure_exec_chained(&self) -> Result<ProcedureOutput, ClientError> {
-        todo!()
+    pub async fn remote_procedure_exec_chained(
+        &self,
+        procedures: Vec<StrongholdProcedure>,
+    ) -> Result<Option<Vec<u8>>, ClientError> {
+        let client_path = (*self.remote_client_path).clone();
+
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::Procedures { procedures },
+                },
+            )
+            .await;
+
+        match result {
+            Ok(inner) => match inner {
+                StrongholdNetworkResult::Data(optinal_data) => Ok(optinal_data),
+                _ => Err(ClientError::Inner(
+                    "Unexpected data type returned from request".to_string(),
+                )),
+            },
+            Err(_) => Err(ClientError::NoValuePresent("Executing procedure failed.".to_string())),
+        }
     }
 
     /// Checks, if a remote vault exists and returns
@@ -422,7 +447,35 @@ impl Peer {
     where
         P: AsRef<[u8]>,
     {
-        todo!()
+        let client_path = (*self.remote_client_path).clone();
+        let vault_path = vault_path.as_ref().to_vec();
+
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::CheckVault {
+                        vault_path: vault_path.clone(),
+                    },
+                },
+            )
+            .await;
+
+        match result {
+            Ok(inner) => match inner {
+                StrongholdNetworkResult::Bool(b) => Ok(b),
+                _ => Err(ClientError::Inner(
+                    "Unexpected data type returned from request".to_string(),
+                )),
+            },
+            Err(_) => Err(ClientError::NoValuePresent(format!(
+                "Vault at path ({:?}) does not exist. ",
+                vault_path
+            ))),
+        }
     }
 
     /// Checks, if a remote record exists and returns
@@ -432,11 +485,37 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_record_exists<P>(&self, record_path: P) -> Result<bool, ClientError>
+    pub async fn remote_record_exists<P>(&self, vault_path: P, record_path: P) -> Result<bool, ClientError>
     where
-        P: AsRef<[u8]>,
+        P: AsRef<Vec<u8>>,
     {
-        todo!()
+        let client_path = (*self.remote_client_path).clone();
+        let location = Location::generic(vault_path.as_ref().clone(), record_path.as_ref().clone());
+
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::CheckRecord { location },
+                },
+            )
+            .await;
+
+        match result {
+            Ok(inner) => match inner {
+                StrongholdNetworkResult::Bool(b) => Ok(b),
+                _ => Err(ClientError::Inner(
+                    "Unexpected data type returned from request".to_string(),
+                )),
+            },
+            Err(_) => Err(ClientError::NoValuePresent(format!(
+                "Record at path ({:?}) does not exist. ",
+                record_path.as_ref()
+            ))),
+        }
     }
 
     /// Synchronizes local entries with a remote instance. Giving config, what entries
@@ -469,13 +548,14 @@ impl Peer {
         payload: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> Result<StrongholdNetworkResult, ClientError> {
-        // FIXME:
+        let client_path = (*self.remote_client_path).clone();
+
         self.stronghold
             .send(
                 *self.peer_id,
-                (*self.remote_client_path).clone(),
+                client_path.clone(),
                 StrongholdRequest::ClientRequest {
-                    client_path: (*self.remote_client_path).clone(),
+                    client_path,
                     request: crate::network_old::ClientRequest::WriteToStore { key, payload, lifetime },
                 },
             )
@@ -487,17 +567,103 @@ impl Peer {
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_read_store(&self, key: Vec<u8>) -> Result<StrongholdNetworkResult, ClientError> {
-        // FIXME:
+    pub async fn remote_read_store<P>(&self, key: P) -> Result<StrongholdNetworkResult, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let client_path = (*self.remote_client_path).clone();
+
         self.stronghold
             .send(
                 *self.peer_id,
-                (*self.remote_client_path).clone(),
+                client_path.clone(),
                 StrongholdRequest::ClientRequest {
-                    client_path: (*self.remote_client_path).clone(),
-                    request: crate::network_old::ClientRequest::ReadFromStore { key },
+                    client_path,
+                    request: crate::network_old::ClientRequest::ReadFromStore {
+                        key: key.as_ref().to_vec(),
+                    },
                 },
             )
             .await
+    }
+
+    /// Removes an entry from the remote ['Store`].
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_delete_store<P>(&self, key: P) -> Result<StrongholdNetworkResult, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let client_path = (*self.remote_client_path).clone();
+
+        self.stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::DeleteFromStore {
+                        key: key.as_ref().to_vec(),
+                    },
+                },
+            )
+            .await
+    }
+
+    /// Writes secret data in the remote vault
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_write_secret<P>(
+        &self,
+        vault_path: P,
+        record_path: P,
+        payload: Vec<u8>,
+    ) -> Result<(), ClientError>
+    where
+        P: AsRef<Vec<u8>>,
+    {
+        let client_path = (*self.remote_client_path).clone();
+        let location = Location::const_generic(vault_path.as_ref().to_vec(), record_path.as_ref().to_vec());
+
+        self.stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::WriteToVault { location, payload },
+                },
+            )
+            .await
+            .map(|_| ())
+    }
+
+    /// Removes a secret from a remote [`Stronghold`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub async fn remote_remove_secret<P>(&self, vault_path: P, record_path: P) -> Result<(), ClientError>
+    where
+        P: AsRef<Vec<u8>>,
+    {
+        let client_path = (*self.remote_client_path).clone();
+        let location = Location::const_generic(vault_path.as_ref().to_vec(), record_path.as_ref().to_vec());
+
+        self.stronghold
+            .send(
+                *self.peer_id,
+                client_path.clone(),
+                StrongholdRequest::ClientRequest {
+                    client_path,
+                    request: crate::network_old::ClientRequest::RevokeData { location },
+                },
+            )
+            .await
+            .map(|_| ())
     }
 }

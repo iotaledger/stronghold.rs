@@ -32,6 +32,15 @@ impl Location {
         }
     }
 
+    /// Returns the `record_path` from the [`Location`]. If the [`Location`] type is [`Self::Counter`],
+    /// the `vault_path` will be returned.
+    pub fn record_path(&self) -> &[u8] {
+        match self {
+            Self::Generic { record_path, .. } => record_path,
+            Self::Counter { vault_path, .. } => vault_path,
+        }
+    }
+
     /// Creates a generic location from types that implement [`Into<Vec<u8>>`].
     pub fn generic<V: Into<Vec<u8>>, R: Into<Vec<u8>>>(vault_path: V, record_path: R) -> Self {
         Self::Generic {

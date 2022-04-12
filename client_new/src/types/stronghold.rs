@@ -23,10 +23,13 @@ use crate::{Peer, SpawnNetworkError};
 
 use engine::vault::ClientId;
 #[cfg(feature = "p2p")]
+use futures::channel::mpsc::UnboundedSender;
+#[cfg(feature = "p2p")]
 use futures::channel::oneshot::Sender;
 
 #[cfg(feature = "p2p")]
-use futures::{future, StreamExt};
+use futures::{future, SinkExt, StreamExt};
+
 #[cfg(feature = "p2p")]
 pub use p2p_old::*;
 
@@ -357,13 +360,14 @@ impl Stronghold {
                 tx.send(StrongholdNetworkResult::Bool(result.unwrap())).unwrap();
                 Ok(())
             }
-            network_old::ClientRequest::CheckRecord { location } => todo!(),
-            network_old::ClientRequest::ListIds { vault_path } => todo!(),
-            network_old::ClientRequest::WriteToRemoteVault {
-                location,
-                payload,
-                hint,
-            } => {
+            network_old::ClientRequest::CheckRecord { location } => {
+                let result = client.record_exists(location);
+                tx.send(StrongholdNetworkResult::Bool(result.unwrap())).unwrap();
+
+                Ok(())
+            }
+
+            network_old::ClientRequest::WriteToRemoteVault { location, payload } => {
                 let vault = client.vault(location.vault_path());
                 let result = vault.write_secret(location, payload);
 
@@ -371,12 +375,13 @@ impl Stronghold {
                 Ok(())
             }
 
-            network_old::ClientRequest::WriteToVault {
-                location,
-                payload,
-                hint,
-            } => todo!(),
-            network_old::ClientRequest::RevokeData { location } => todo!(),
+            network_old::ClientRequest::DeleteData { location } => {
+                let vault = client.vault(location.vault_path());
+                match vault.delete_secret(location.record_path()) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
             network_old::ClientRequest::ReadFromStore { key } => {
                 let store = client.store();
                 let result = store.get(&key)?;
@@ -391,8 +396,23 @@ impl Stronghold {
                 tx.send(StrongholdNetworkResult::Empty(())).unwrap();
                 Ok(())
             }
-            network_old::ClientRequest::DeleteFromStore { key } => todo!(),
-            network_old::ClientRequest::Procedures { procedures } => todo!(),
+            network_old::ClientRequest::DeleteFromStore { key } => {
+                let store = client.store();
+                store.delete(&key)?;
+
+                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
+                Ok(())
+            }
+
+            network_old::ClientRequest::Procedures { procedures } => {
+                let result = client.execure_procedure_chained(procedures);
+                tx.send(StrongholdNetworkResult::Proc(result)).unwrap();
+
+                Ok(())
+            }
+            network_old::ClientRequest::WriteToVault { location, payload } => todo!(),
+            network_old::ClientRequest::RevokeData { location } => todo!(),
+            network_old::ClientRequest::ListIds { vault_path } => todo!(),
         }
     }
 
@@ -419,6 +439,7 @@ impl Stronghold {
     pub async fn serve(&self, mut shutdown: UnboundedReceiver<()>) -> Result<(), ClientError> {
         use future::FutureExt;
 
+        // FIXME: pull the [`network`]-type up
         let mut network = self.network.lock().await;
         let mut rx = network.as_mut().unwrap().inbound_request_rx.take().unwrap();
         drop(network);

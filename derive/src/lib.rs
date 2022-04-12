@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Proc macros for Stronghold.
-#![warn(missing_docs)]
 
 mod comm;
 

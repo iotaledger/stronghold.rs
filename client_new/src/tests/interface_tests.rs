@@ -105,4 +105,4 @@ async fn test_load_client_from_snapshot() {}
 async fn test_load_multiple_clients_from_snapshot() {}
 
 #[tokio::test]
-async fn test_multiple_clients_modifikation_from_and_to_snapshot() {}
+async fn test_multiple_clients_modification_from_and_to_snapshot() {}
