@@ -202,11 +202,6 @@ pub enum Command {
     },
 }
 
-/// Returns a fixed sized vector of random bytes
-fn fixed_random_bytes(length: usize) -> Vec<u8> {
-    std::iter::repeat_with(rand::random::<u8>).take(length).collect()
-}
-
 /// Calculates the Blake2b from a String
 fn hash_blake2b(input: String) -> Vec<u8> {
     let mut hasher = Blake2b256::new();
@@ -262,7 +257,6 @@ async fn command_generate_key(key_type: String, location: VaultLocation) {
     let generate_key_procedure = GenerateKey {
         ty: keytype.clone(),
         output: output_location.clone(),
-        hint: RecordHint::new(b"").unwrap(),
     };
 
     let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
@@ -296,7 +290,6 @@ async fn command_generate_bip39(passphrase: Option<String>, language: MnemonicLa
         passphrase,
         language,
         output: output_location,
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     let result = client.execute_procedure(bip39_procedure).unwrap();
@@ -315,7 +308,6 @@ async fn command_slip10_generate(size: Option<NonZeroUsize>, location: VaultLoca
     let slip10_generate = Slip10Generate {
         size_bytes: size.map(|nzu| nzu.get()),
         output: output_location,
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!(
@@ -332,7 +324,6 @@ async fn command_slip10_derive(chain: ChainInput, input: VaultLocation, output: 
     let slip10_generate = Slip10Generate {
         size_bytes: None, // take default vaule
         output: output_location.clone(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     client.execute_procedure(slip10_generate).unwrap();
@@ -342,7 +333,6 @@ async fn command_slip10_derive(chain: ChainInput, input: VaultLocation, output: 
         chain: chain.chain,
         input: Slip10DeriveInput::Seed(output_location),
         output: output.to_location(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!(
@@ -365,7 +355,6 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
         output: output_location,
-        hint: RecordHint::new(b"").unwrap(),
     };
 
     client
@@ -443,7 +432,6 @@ async fn command_bip39_recover(
         passphrase,
         mnemonic,
         output: output.to_location(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!("Recovering BIP39");

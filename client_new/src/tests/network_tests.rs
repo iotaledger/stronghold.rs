@@ -3,7 +3,6 @@
 
 use std::{future, sync::Arc, time::Duration};
 
-use engine::vault::RecordHint;
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
     AddressInfo, OutboundFailure, PeerId,
@@ -29,13 +28,6 @@ use crate::{
     procedures::{GenerateKey, KeyType, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure},
     Location, P2pError, Stronghold, SwarmInfo,
 };
-
-/// Creates a random [`RecordHint`]
-pub fn record_hint() -> RecordHint {
-    let mut bs = [0; 24];
-    crypto_rand::fill(&mut bs).expect("Unable to fill record hint");
-    bs.into()
-}
 
 /// Generates a random [`Location`].
 pub fn location() -> Location {
@@ -836,7 +828,6 @@ async fn test_write_remote_secret_export_public_key() {
         let proc = GenerateKey {
             ty: KeyType::Ed25519,
             output: output.clone(),
-            hint: RecordHint::new(b"").unwrap(),
         };
         let result = peer.remote_procedure_exec(StrongholdProcedure::GenerateKey(proc)).await;
         assert!(result.is_ok(), "Key generation failed on remote side: {:?}", result);

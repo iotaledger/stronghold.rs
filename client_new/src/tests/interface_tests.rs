@@ -38,7 +38,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
         output: output_location.clone(),
-        hint: RecordHint::new(b"").unwrap(),
+        // hint: RecordHint::new(b"").unwrap(),
     };
 
     let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
@@ -94,6 +94,9 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn purge_client() {}
 
 #[tokio::test]
 async fn write_client_to_snapshot() {}

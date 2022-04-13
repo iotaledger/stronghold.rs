@@ -4,7 +4,7 @@
 use crate::{FatalEngineError, Location, Provider, RecordError, VaultError};
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{BoxProvider, RecordHint, VaultId},
+    vault::{BoxProvider, VaultId},
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, string::FromUtf8Error};
@@ -22,13 +22,13 @@ pub trait Runner {
         &self,
         location0: &Location,
         location1: &Location,
-        hint: RecordHint,
+        // hint: RecordHint,
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
 
-    fn write_to_vault(&self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
+    fn write_to_vault(&self, location1: &Location, value: Vec<u8>) -> Result<(), RecordError>;
 
     fn revoke_data(&self, location: &Location) -> Result<(), RecordError>;
 
@@ -60,13 +60,13 @@ pub trait GenerateSecret: Sized {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError>;
 
-    fn target(&self) -> (&Location, RecordHint);
+    fn target(&self) -> &Location;
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
-        let (target, hint) = self.target();
+        let target = self.target();
         let target = target.clone();
         let Products { output, secret } = self.generate()?;
-        runner.write_to_vault(&target, hint, secret)?;
+        runner.write_to_vault(&target, secret)?;
         Ok(output)
     }
 }
@@ -79,14 +79,14 @@ pub trait DeriveSecret: Sized {
 
     fn source(&self) -> &Location;
 
-    fn target(&self) -> (&Location, RecordHint);
+    fn target(&self) -> &Location;
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
-        let (target, hint) = self.target();
+        let target = self.target();
         let target = target.clone();
         let f = |guard| self.derive(guard);
-        let output = runner.exec_proc(&source, &target, hint, f)?;
+        let output = runner.exec_proc(&source, &target, f)?;
         Ok(output)
     }
 }

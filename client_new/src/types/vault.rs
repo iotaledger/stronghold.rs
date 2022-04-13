@@ -31,11 +31,7 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
-        self.client.write_to_vault(
-            &location,
-            RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap(),
-            payload,
-        )?;
+        self.client.write_to_vault(&location, payload)?;
         Ok(())
     }
 
