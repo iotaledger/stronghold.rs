@@ -45,6 +45,7 @@ use stronghold_p2p::{Executor, ListenErr, Multiaddr, PeerId};
 
 #[cfg(feature = "p2p")]
 use futures::{channel::mpsc::UnboundedReceiver, future::Either};
+use stronghold_utils::GuardDebug;
 
 #[cfg(feature = "p2p")]
 use crate::network_old::Network;
@@ -63,7 +64,7 @@ use std::ops::Deref;
 /// also persists data written into a Stronghold by creating Snapshots of the current state. The
 /// Snapshot itself is encrypted and can be accessed by a key.
 /// TODO: more epic description
-#[derive(Default, Clone)]
+#[derive(Default, Clone, GuardDebug)]
 pub struct Stronghold {
     /// a reference to the [`Snapshot`]
     snapshot: Arc<RwLock<Snapshot>>,

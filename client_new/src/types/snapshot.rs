@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     convert::Infallible,
+    fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -115,6 +116,12 @@ impl SnapshotPath {
     /// Returns [`Self`] as Path
     pub fn as_path(&self) -> &Path {
         &self.path
+    }
+}
+
+impl Display for SnapshotPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SnapshotPath: {:?}", self.path)
     }
 }
 
