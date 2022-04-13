@@ -109,7 +109,7 @@ impl Client {
     /// # Example
     /// ```
     /// ```
-    pub fn record_exists(&self, location: Location) -> Result<bool, ClientError> {
+    pub fn record_exists(&self, location: &Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
         let db = self.db.try_read()?;
         let contains_record = db.contains_record(vault_id, record_id);

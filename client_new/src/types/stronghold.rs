@@ -361,7 +361,7 @@ impl Stronghold {
                 Ok(())
             }
             network_old::ClientRequest::CheckRecord { location } => {
-                let result = client.record_exists(location);
+                let result = client.record_exists(&location);
                 tx.send(StrongholdNetworkResult::Bool(result.unwrap())).unwrap();
 
                 Ok(())
@@ -413,6 +413,8 @@ impl Stronghold {
             }
             network_old::ClientRequest::WriteToVault { location, payload } => todo!(),
             network_old::ClientRequest::RevokeData { location } => todo!(),
+
+            // TODO: remove list recordhints and recordids.
             network_old::ClientRequest::ListIds { vault_path } => todo!(),
         }
     }
