@@ -11,6 +11,9 @@
 pub use crate::{internal::Provider, security::*, types::*, utils::*};
 
 #[cfg(feature = "std")]
+pub(crate) use crate::sync::SnapshotHierarchy;
+
+#[cfg(feature = "std")]
 pub mod types;
 
 #[cfg(feature = "std")]

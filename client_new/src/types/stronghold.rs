@@ -10,17 +10,20 @@ pub mod network_old;
 
 use std::{
     collections::{hash_map::Entry, HashMap},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockWriteGuard},
 };
 
 use crate::{
-    procedures::Runner, Client, ClientError, ClientState, KeyProvider, LoadFromPath, Location, Snapshot, SnapshotPath,
-    Store, UseKey,
+    procedures::Runner,
+    sync::{SyncSnapshots, SyncSnapshotsConfig},
+    Client, ClientError, ClientState, KeyProvider, LoadFromPath, Location, RemoteMergeError, RemoteVaultError,
+    Snapshot, SnapshotPath, Store, UseKey,
 };
 
 #[cfg(feature = "p2p")]
 use crate::{Peer, SpawnNetworkError};
 
+use crypto::keys::x25519;
 use engine::vault::ClientId;
 #[cfg(feature = "p2p")]
 use futures::channel::mpsc::UnboundedSender;
@@ -63,7 +66,6 @@ use std::ops::Deref;
 /// kernel supplied memory guards, that prevent memory dumps, or a combination of both. The Stronghold
 /// also persists data written into a Stronghold by creating Snapshots of the current state. The
 /// Snapshot itself is encrypted and can be accessed by a key.
-/// TODO: more epic description
 #[derive(Default, Clone, GuardDebug)]
 pub struct Stronghold {
     /// a reference to the [`Snapshot`]
@@ -221,6 +223,17 @@ impl Stronghold {
         Ok(())
     }
 
+    /// Returns a reference to the local [`Snapshot`]
+    ///
+    /// # Example
+    /// ```
+    /// ```
+    pub fn get_snapshot(&self) -> Result<RwLockWriteGuard<Snapshot>, ClientError> {
+        let snapshot = self.snapshot.try_write()?;
+
+        Ok(snapshot)
+    }
+
     /// Creates a new, empty [`Client`]
     ///
     /// # Example
@@ -324,6 +337,23 @@ impl Stronghold {
 
 // networking functionality
 
+// macro_rules! impl_request_handler {
+//     ($name:ident, ($self:ident, $request:ident, $client_path:ident, $tx:ident),  $body:expr) => {
+//         pub(crate) fn $name<P, R>(
+//             $self,
+//             $request: R,
+//             $client_path: P,
+//             $tx: Sender<R::Response>,
+//         ) -> Result<(), ClientError>
+//         where
+//             P: AsRef<[u8]>,
+//             R: Request<Response = bool>,
+//         {
+//             $body
+//         }
+//     };
+// }
+
 /// This enum is solely used for steering the control flow
 /// of a serving [`Stronghold`] instance
 #[cfg(feature = "p2p")]
@@ -412,11 +442,25 @@ impl Stronghold {
 
                 Ok(())
             }
-            network_old::ClientRequest::WriteToVault { location, payload } => todo!(),
-            network_old::ClientRequest::RevokeData { location } => todo!(),
 
-            // TODO: remove list recordhints and recordids.
-            network_old::ClientRequest::ListIds { vault_path } => todo!(),
+            // what is the difference to "WriteToRemoteVault" ?
+            network_old::ClientRequest::WriteToVault { location, payload } => {
+                let vault_path = location.vault_path();
+                let vault = client.vault(vault_path);
+                vault.write_secret(location, payload)?;
+                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
+
+                Ok(())
+            }
+            network_old::ClientRequest::RevokeData { location } => {
+                let record_path = location.record_path();
+                let vault = client.vault(location.vault_path());
+                vault.revoke_secret(record_path)?;
+
+                tx.send(StrongholdNetworkResult::Empty(())).unwrap();
+
+                Ok(())
+            }
         }
     }
 
@@ -431,7 +475,38 @@ impl Stronghold {
         tx: Sender<StrongholdNetworkResult>,
         request: SnapshotRequest,
     ) -> Result<(), ClientError> {
-        todo!()
+        match request {
+            SnapshotRequest::ExportRemoteDiff { dh_pub_key, diff } => {
+                let snapshot = self.snapshot.try_read()?;
+
+                let result = snapshot.export_to_serialized_state(diff, x25519::PublicKey::from_bytes(dh_pub_key));
+
+                let result = match result {
+                    Ok((public_key, encrypted)) => {
+                        let mut pk = [0u8; 32];
+                        pk.copy_from_slice(public_key.as_slice());
+
+                        Ok((encrypted, pk))
+                    }
+                    Err(e) => Err(RemoteMergeError::ReadExported(e.to_string())),
+                };
+
+                tx.send(StrongholdNetworkResult::Exported(result)).expect("msg");
+
+                Ok(())
+            }
+            SnapshotRequest::GetRemoteHierarchy => {
+                let snapshot = self.snapshot.try_read()?;
+                let hierarchy = snapshot.get_hierarchy(Some(snapshot.clients()));
+
+                // FIXME: the error mapping is wrong
+                tx.send(StrongholdNetworkResult::Hierarchy(
+                    hierarchy.map_err(|e| RemoteVaultError::Record(e.to_string())),
+                ))
+                .expect("Could not send request");
+                Ok(())
+            }
+        }
     }
 
     /// Serve requests to remote Stronghold clients. This call is blocking.
@@ -689,4 +764,42 @@ impl Stronghold {
 
         network.send_request(peer_id, client_path, request.into()).await
     }
+
+    // TODO: experimental api
+    // pub async fn send_request<P, R>(
+    //     &self,
+    //     peer_id: Option<PeerId>,
+    //     client_path: P,
+    //     request: R,
+    // ) -> Result<R::Response, ClientError>
+    // where
+    //     P: AsRef<[u8]>,
+    //     R: Request,
+    // {
+    //     // // FIXME: this call just passes through to network. The abstraction is
+    //     // // just one more layer of redundancy.
+    //     // let network = self.network.lock().await;
+    //     // let network = match &*network {
+    //     //     Some(network) => network,
+    //     //     None => {
+    //     //         return Err(ClientError::NoValuePresent(
+    //     //             "inner network reference not present".to_string(),
+    //     //         ))
+    //     //     }
+    //     // };
+
+    //     // network.send_request(peer_id, client_path, request.into()).await
+    //     todo!()
+    // }
+
+    // // FIXME: experimental api
+    // impl_request_handler!(handle_check_vault, (self, request, client_path, tx), {
+    //     let CheckVault { vault_path, counter } = *request.inner().downcast()?;
+
+    //     // load client
+    //     let client = self.get_client(client_path)?;
+    //     tx.send(client.vault_exists(vault_path)?).unwrap();
+
+    //     Ok(())
+    // });
 }

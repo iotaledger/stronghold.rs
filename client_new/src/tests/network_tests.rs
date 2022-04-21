@@ -26,6 +26,7 @@ use crate::{
         ClientAccess, FirewallChannel, FirewallChannelSender, NetworkConfig, Permissions, StrongholdNetworkResult,
     },
     procedures::{GenerateKey, KeyType, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure},
+    sync::{SyncClientsConfig, SyncSnapshotsConfig},
     Location, P2pError, Stronghold, SwarmInfo,
 };
 
@@ -913,4 +914,119 @@ async fn test_p2p_config() {
 #[tokio::test]
 async fn test_p2p_firewall() {
     //
+}
+
+#[tokio::test]
+async fn test_synchronize_snapshots() {
+    // -- setup
+    let remote_key_pair = Keypair::generate_ed25519();
+    let remote_public_key = remote_key_pair.public();
+    let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
+    let remote_client_path = rand::bytestring(1024);
+    let remote = Stronghold::default();
+    let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
+
+    // we need to create a client on the remote that accepts incoming requests
+    let result = remote.create_client(remote_client_path.clone());
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let client = result.unwrap();
+    let result = client.write_p2p_keypair(remote_key_pair, remote_key_path.clone());
+    assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
+
+    let result = remote
+        .spawn_p2p(remote_client_path.clone(), config, Some(remote_key_path))
+        .await;
+    assert!(result.is_ok(), "Assertion Failed=  {:?}", result);
+
+    let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
+
+    let result = remote.start_listening(None).await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    let remote_address = result.unwrap();
+
+    let remote_peer_id = PeerId::from_public_key(&remote_public_key);
+
+    // clone remote which will be moved into a background task
+    let remote_stronghold_server = remote.clone();
+
+    // keep handle to server
+    let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
+
+    // tests come here
+    {
+        let local_client_path = rand::bytestring(1024);
+        let local_key_pair = Keypair::generate_ed25519();
+        let local_public_key = local_key_pair.public();
+        let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());
+        let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
+        let local = Stronghold::default();
+
+        let result = local.create_client_with_keys(local_client_path.clone(), local_key_pair, local_key_path);
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+        let local_client = result.unwrap();
+
+        let result = local.spawn_p2p(local_client_path, config, None).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let result = local.add_peer_addr(remote_peer_id, remote_address).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        let local_address = result.unwrap();
+        let result = remote
+            .add_peer_addr(PeerId::from_public_key(&local_public_key), local_address)
+            .await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        // -- create peer --
+        let result = local.create_remote_client(remote_public_key, remote_client_path).await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        // connect peer
+        let peer = result.unwrap();
+        let result = peer.connect().await;
+        assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+        // load sync config with replacing everything
+        let full_sync_config = SyncSnapshotsConfig::new(crate::sync::MergePolicy::Replace);
+
+        let result = peer.remote_sync(full_sync_config).await;
+        assert!(result.is_ok());
+
+        // prepare procedure to generate key on remote side
+        // let remote_vault_path = rand::bytestring(1024);
+        // let remote_record_path = rand::bytestring(1024);
+        // let output = Location::const_generic(remote_vault_path, remote_record_path);
+
+        // let proc = GenerateKey {
+        //     ty: KeyType::Ed25519,
+        //     output: output.clone(),
+        // };
+        // let result = peer.remote_procedure_exec(StrongholdProcedure::GenerateKey(proc)).await;
+        // assert!(result.is_ok(), "Key generation failed on remote side: {:?}", result);
+
+        // let proc = crate::procedures::PublicKey {
+        //     ty: KeyType::Ed25519,
+        //     private_key: output,
+        // };
+        // let result = peer.remote_procedure_exec(StrongholdProcedure::PublicKey(proc)).await;
+        // assert!(result.is_ok(), "Exporting public key failed");
+        // if let StrongholdNetworkResult::Proc(pk) = result.unwrap() {
+        //     assert!(pk.is_ok(), "Public key not contained")
+        // }
+    }
+
+    // --- tear down ---
+    // send termination signal
+    let result = sender_terminate_signal.send(()).await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // await server event loop shutdown
+    let result = server.await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
+
+    // shutdown listening
+    let result = remote.stop_listening().await;
+    assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 }

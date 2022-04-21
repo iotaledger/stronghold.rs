@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{convert::Infallible, fmt::Debug, sync::TryLockError};
+use std::{any::Any, convert::Infallible, fmt::Debug, sync::TryLockError};
 
 use engine::{
     snapshot::{ReadError as EngineReadError, WriteError as EngineWriteError},
@@ -10,7 +10,7 @@ use engine::{
 use serde::{de::Error, Deserialize, Serialize};
 use thiserror::Error as DeriveError;
 
-use crate::Provider;
+use crate::{Client, Provider};
 use std::io;
 
 #[derive(Debug, DeriveError)]
@@ -90,6 +90,12 @@ impl From<<Provider as BoxProvider>::Error> for ClientError {
     }
 }
 
+impl From<Box<dyn Any>> for ClientError {
+    fn from(b: Box<dyn Any>) -> Self {
+        ClientError::Inner("'Any' type error".into())
+    }
+}
+
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
@@ -131,6 +137,29 @@ pub enum SnapshotError {
 
     #[error("Inner error: ({0})")]
     Inner(String),
+}
+
+pub type RemoteRecordError = String;
+
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+pub enum RemoteVaultError {
+    #[error("vault `{0:?}` does not exist")]
+    VaultNotFound(VaultId),
+
+    #[error("record error: `{0:?}`")]
+    Record(RemoteRecordError),
+}
+
+#[derive(DeriveError, Debug, Clone, Serialize, Deserialize)]
+pub enum RemoteMergeError {
+    #[error("parsing snapshot state from bytestring failed: {0}")]
+    ReadExported(String),
+
+    #[error("converting snapshot state into bytestring failed: {0}")]
+    WriteExported(String),
+
+    #[error("vault error: {0}")]
+    Vault(RemoteVaultError),
 }
 
 impl From<ClientError> for SnapshotError {

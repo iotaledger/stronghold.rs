@@ -7,8 +7,12 @@
 //! - Request needs counter to improve security for replay attacks
 //!     - both sides: check counters, send counters
 
-use crate::{Client, ClientError, Location, RecordError, Stronghold, SwarmInfo};
-use engine::vault::{RecordHint, RecordId};
+use crate::{
+    Client, ClientError, Location, RecordError, RemoteMergeError, RemoteVaultError, SnapshotHierarchy, Stronghold,
+    SwarmInfo,
+};
+use crypto::keys::x25519;
+use engine::vault::{BlobId, ClientId, RecordHint, RecordId, VaultId};
 use futures::{channel::mpsc::TryRecvError, future, stream::FusedStream, Stream};
 // use crate::{
 //     actors::{
@@ -77,8 +81,6 @@ pub struct Network {
     /// Interface of stronghold-p2p for all network interaction.
     pub inner:
         Arc<futures::lock::Mutex<Option<StrongholdP2p<StrongholdRequest, StrongholdNetworkResult, AccessRequest>>>>,
-    /// Actor registry from which the address of the target client and snapshot actor can be queried.
-    // pub registry: Addr<Registry>,
     /// Channel through which inbound requests are received.
     /// This channel is only inserted temporary on [`Network::new`], and is handed
     /// to the stream handler in `<Self as Actor>::started`.
@@ -1024,20 +1026,20 @@ pub enum Access {
     WriteStore,
 }
 
-impl FwRequest<SnapshotRequest> for AccessRequest {
-    fn from_request(request: &SnapshotRequest) -> Self {
-        //
-        todo!()
-    }
-}
+// impl FwRequest<SnapshotRequest> for AccessRequest {
+//     fn from_request(request: &SnapshotRequest) -> Self {
+//         //
+//         todo!()
+//     }
+// }
 
 impl FwRequest<StrongholdRequest> for AccessRequest {
     fn from_request(request: &StrongholdRequest) -> Self {
         match request {
-            client_request @ StrongholdRequest::ClientRequest { client_path, request } => {
+            StrongholdRequest::ClientRequest { client_path, request } => {
                 let client_path = client_path.clone();
                 let required_access = match request {
-                    ClientRequest::CheckVault { vault_path } | ClientRequest::ListIds { vault_path } => {
+                    ClientRequest::CheckVault { vault_path } => {
                         vec![Access::List {
                             vault_path: vault_path.clone(),
                         }]
@@ -1103,9 +1105,9 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                     required_access,
                 }
             }
-            snapshot_request @ StrongholdRequest::SnapshotRequest { request } => match request {
+            StrongholdRequest::SnapshotRequest { request } => match request {
                 SnapshotRequest::GetRemoteHierarchy {} => todo!(),
-                SnapshotRequest::ExportRemoteDiff {} => todo!(),
+                SnapshotRequest::ExportRemoteDiff { diff, dh_pub_key } => todo!(),
             },
         }
     }
@@ -1158,7 +1160,6 @@ pub enum StrongholdRequest {
         request: ClientRequest,
     },
     SnapshotRequest {
-        // client_path: Vec<u8>,
         request: SnapshotRequest,
     },
 }
@@ -1166,11 +1167,25 @@ pub enum StrongholdRequest {
 // pub client_request: ClientRequest,
 // pub snapshot_request: SnapshotRequest
 
+// pub type SnapshotStateHierarchy = HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>;
+// pub type SnapshotStateHierarchy = HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SnapshotRequest {
-    GetRemoteHierarchy {},
-    ExportRemoteDiff {},
+    GetRemoteHierarchy,
+    ExportRemoteDiff {
+        diff: SnapshotHierarchy<RecordId>,
+        dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
+    },
 }
+
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub enum SnapshotRequest {
+//     GetRemoteHierarchy(GetRemoteHierarchy),
+//     ExportRemoteDiff(ExportRemoteDiff),
+// }
+
+pub struct ExportRemoteDiff {}
 
 // Wrapper for Requests to a remote Secure Client
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1182,9 +1197,9 @@ pub enum ClientRequest {
     CheckRecord {
         location: Location,
     },
-    ListIds {
-        vault_path: Vec<u8>,
-    },
+    // ListIds {
+    //     vault_path: Vec<u8>,
+    // },
     WriteToRemoteVault {
         location: Location,
         payload: Vec<u8>,
@@ -1242,6 +1257,10 @@ pub enum StrongholdNetworkResult {
     WriteRemoteVault(Result<(), RemoteRecordError>),
     ListIds(Vec<(RecordId, RecordHint)>),
     Proc(Result<Vec<ProcedureOutput>, ProcedureError>),
+
+    // add to support snapshot format
+    Hierarchy(Result<SnapshotHierarchy<(RecordId, BlobId)>, RemoteVaultError>),
+    Exported(Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError>),
 }
 
 sh_result_mapping!(StrongholdNetworkResult::Empty => ());

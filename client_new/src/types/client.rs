@@ -4,18 +4,18 @@ use super::{location, snapshot};
 
 #[cfg(feature = "p2p")]
 use crate::network_old::{SnapshotRequest, StrongholdNetworkResult, StrongholdRequest};
-
 use crate::{
     derive_vault_id,
     procedures::{
         FatalProcedureError, Procedure, ProcedureError, ProcedureOutput, Products, Runner, StrongholdProcedure,
     },
-    sync::{KeyProvider, MergePolicy, SyncClients, SyncClientsConfig},
+    sync::{KeyProvider, MergePolicy, SyncClients, SyncClientsConfig, SyncSnapshots, SyncSnapshotsConfig},
     ClientError, ClientState, ClientVault, KeyStore, Location, Provider, RecordError, SnapshotError, Store, Stronghold,
 };
+use crypto::keys::x25519;
 use engine::{
     new_runtime::memories::buffer::Buffer,
-    vault::{view::Record, BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
+    vault::{view::Record, BoxProvider, ClientId, DbView, Id, Key, RecordHint, RecordId, VaultId},
 };
 use std::{
     collections::HashMap,
@@ -428,16 +428,6 @@ impl Peer {
             )
             .await;
 
-        // match result {
-        //     Ok(inner) => match inner {
-        //         StrongholdNetworkResult::Data(optional_data) => Ok(optional_data),
-        //         StrongholdNetworkResult::Proc()
-        //         _ => Err(ClientError::Inner(
-        //             "Unexpected data type returned from request".to_string(),
-        //         )),
-        //     },
-        //     Err(_) => Err(ClientError::NoValuePresent("Executing procedure failed.".to_string())),
-        // }
         result
     }
 
@@ -524,22 +514,91 @@ impl Peer {
     }
 
     /// Synchronizes local entries with a remote instance. Giving config, what entries
-    /// need to be sychronized. This involves an diffie-helmann key exchanged.
+    /// need to be sychronized. This involves an diffie-helmann key exchange.
     ///
     /// # Example
     /// ```
     /// ```
-    pub async fn remote_sync_with(&self, peer: PeerId, config: SyncClientsConfig) {
-        todo!()
-    }
+    pub async fn remote_sync(&self, config: SyncSnapshotsConfig) -> Result<(), ClientError> {
+        let mut ephemeral = [0u8; x25519::SECRET_KEY_LENGTH];
+        crypto::utils::rand::fill(&mut ephemeral).expect("Could not fill ephemeral key");
+        let ephemeral_key = x25519::SecretKey::from_bytes(ephemeral);
 
-    /// Synchronizes the the local vault with a remote vault.
-    ///
-    /// # Example
-    /// ```
-    /// ```
-    pub async fn remote_sync_vaults(&self) {
-        todo!()
+        let mut ephemeral_public_key_bytes = [0u8; x25519::PUBLIC_KEY_LENGTH];
+        ephemeral_public_key_bytes.copy_from_slice(ephemeral_key.public_key().as_slice());
+
+        let mut vault_path = [0u8; 24];
+        crypto::utils::rand::fill(&mut vault_path).expect("Could not fill random vault_path");
+
+        let mut record_path = [0u8; 24];
+        crypto::utils::rand::fill(&mut record_path).expect("Could not fill random record_path");
+
+        let random_key_location = Location::const_generic(vault_path.to_vec(), record_path.to_vec());
+
+        // get remote hierarchy
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                (*self.remote_client_path).clone(),
+                StrongholdRequest::SnapshotRequest {
+                    request: SnapshotRequest::GetRemoteHierarchy,
+                },
+            )
+            .await?;
+
+        // unwrap remote hierarchy
+        let hierarchy = match result {
+            StrongholdNetworkResult::Hierarchy(inner) => inner,
+            _ => return Err(ClientError::Inner("Unknown Return type".to_owned())),
+        };
+
+        // get snapshot and write ephemeral key
+        let mut snapshot = self.stronghold.get_snapshot()?;
+        let vault_id = VaultId::load(&vault_path).unwrap();
+        let record_id = RecordId::load(&record_path).unwrap();
+        snapshot
+            .store_secret_key(ephemeral, vault_id, record_id)
+            .expect("Could not store ephemeral key");
+
+        // calculate diff from local snapshot with remote hiearchy
+        let diff = snapshot
+            .get_diff(hierarchy.unwrap(), &config)
+            .expect("Failed to get diff");
+
+        // send diff to remote Stronghold instance to export snapshot and retrieve
+        // the encrypted snapshot
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                (*self.remote_client_path).clone(),
+                StrongholdRequest::SnapshotRequest {
+                    request: SnapshotRequest::ExportRemoteDiff {
+                        dh_pub_key: ephemeral_public_key_bytes,
+                        diff,
+                    },
+                },
+            )
+            .await?;
+
+        // extract exported and encrypted snapshot data
+        let (exported, remote_public_key_bytes) = match result {
+            StrongholdNetworkResult::Exported(inner) => {
+                let (exported, remote_public_key_bytes) = inner.expect("Export of remote snapshot failed");
+                (exported, remote_public_key_bytes)
+            }
+            _ => return Err(ClientError::Inner("Getting remote snapshot export failed".to_string())),
+        };
+
+        let remote_public_key = x25519::PublicKey::from_bytes(remote_public_key_bytes);
+
+        // import encrypted snapshot data to our own
+        snapshot
+            .import_from_serialized_state(exported, random_key_location, remote_public_key, config)
+            .expect("Could not import serialized state");
+
+        Ok(())
     }
 
     /// Write to remote store

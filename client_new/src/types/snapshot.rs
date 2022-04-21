@@ -121,7 +121,7 @@ impl SnapshotPath {
 
 impl Display for SnapshotPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SnapshotPath: {:?}", self.path)
+        write!(f, "SnapshotPath: {:}", self.path.display())
     }
 }
 
@@ -269,6 +269,32 @@ impl Snapshot {
             &snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
+        Ok(())
+    }
+
+    /// Stores a secert [`crypto::keys::x25519::SecretKey`] as bytes at given location.
+    /// The stored secret will later be used to decrypt a snapshot
+    pub fn store_secret_key<K>(
+        &mut self,
+        mut encryption_key: K, // [u8; 32] + Zeroize
+        vault_id: VaultId,
+        record_id: RecordId,
+    ) -> Result<(), SnapshotError>
+    where
+        K: AsRef<[u8]> + AsMut<[u8]> + Zeroize,
+    {
+        // this should return an error
+        let key = self.keystore.create_key(vault_id).expect("Could not create key");
+        self.db.write(
+            &key,
+            vault_id,
+            record_id,
+            encryption_key.as_ref(),
+            RecordHint::new("").expect("0 <= 24"),
+        )?;
+
+        encryption_key.as_mut().zeroize();
+
         Ok(())
     }
 

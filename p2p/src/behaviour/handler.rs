@@ -14,7 +14,7 @@
 // all copies or substantial portions of the Software.
 
 mod protocol;
-use crate::{behaviour::EMPTY_QUEUE_SHRINK_THRESHOLD, RequestId, RqRsMessage};
+use crate::{behaviour::EMPTY_QUEUE_SHRINK_THRESHOLD, Request, RequestId};
 use futures::{channel::oneshot, future::BoxFuture, prelude::*, stream::FuturesUnordered};
 use libp2p::{
     core::upgrade::{NegotiationError, UpgradeError},
@@ -45,7 +45,7 @@ type PendingInboundFuture<Rq, Rs> = BoxFuture<'static, Result<(RequestId, Rq, on
 #[derive(Debug)]
 pub enum HandlerInEvent<Rq>
 where
-    Rq: RqRsMessage,
+    Rq: Request,
 {
     // Send an outbound request.
     SendRequest { request_id: RequestId, request: Rq },
@@ -59,8 +59,8 @@ where
 #[derive(Debug)]
 pub enum HandlerOutEvent<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     // Received an inbound request from remote.
     ReceivedRequest {
@@ -94,8 +94,8 @@ where
 /// `ResponseProtocol` by performing the respective handshake (send `Rq` - receive `Rs` | receive `Rq` - send `Rs`).
 pub struct Handler<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     // Protocol versions that are potentially supported.
     supported_protocols: SmallVec<[MessageProtocol; 2]>,
@@ -125,8 +125,8 @@ where
 
 impl<Rq, Rs> Handler<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     pub fn new(
         supported_protocols: SmallVec<[MessageProtocol; 2]>,
@@ -190,8 +190,8 @@ where
 
 impl<Rq, Rs> ConnectionHandler for Handler<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     type InEvent = HandlerInEvent<Rq>;
     type OutEvent = HandlerOutEvent<Rq, Rs>;

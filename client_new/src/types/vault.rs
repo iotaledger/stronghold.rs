@@ -95,5 +95,5 @@ impl ClientVault {
     }
 }
 
-#[cfg(feature = "p2p")]
-impl ClientVault {}
+// #[cfg(feature = "p2p")]
+// impl ClientVault {}

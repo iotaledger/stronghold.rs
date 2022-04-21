@@ -32,6 +32,7 @@ stronghold-p2p          = { package = "stronghold-p2p",     path = "../p2p", opt
 rlu                     = { package = "stronghold-rlu",     path = "../rlu/"}
 engine                  = { package = "stronghold_engine",  path = "../engine" }
 stronghold_utils        = { package = "stronghold-utils",   path = "../utils/" }
+stronghold_derive       = { package = "stronghold-derive",   path = "../derive" }
 
 [dev-dependencies]
 tokio                   = { version = "1.15.0", features = ["full"] }
