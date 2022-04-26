@@ -8,4 +8,5 @@ mod stronghold_test_std {}
 mod stronghold_test_p2p {}
 
 #[cfg(test)]
+#[cfg(feature = "p2p")]
 mod dispatch_mapper;

@@ -71,7 +71,7 @@ use p2p::{
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, marker::PhantomData, str::FromStr, sync::Arc, time::Duration};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 use tokio::io::{stdin, AsyncBufReadExt, BufReader, Lines, Stdin};
 
 const RETRY_USER_INPUT_MAX: usize = 3;
@@ -204,7 +204,7 @@ async fn on_firewall_request(
                         // Create rule that only permits ping-messages.
                         let rule: Rule<RequestPermission> = Rule::Restricted {
                             restriction: Arc::new(allow_only_ping),
-                            _maker: PhantomData,
+                            // _maker: PhantomData,
                         };
                         rule_tx.send(rule).unwrap();
                         break;

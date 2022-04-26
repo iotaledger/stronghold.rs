@@ -545,20 +545,23 @@ impl Peer {
                     request: SnapshotRequest::GetRemoteHierarchy,
                 },
             )
-            .await?;
+            .await;
+
+        assert!(result.is_ok(), "Failed to get remote hierarchy: {:?}", result);
 
         // unwrap remote hierarchy
-        let hierarchy = match result {
+        let hierarchy = match result.unwrap() {
             StrongholdNetworkResult::Hierarchy(inner) => inner,
             _ => return Err(ClientError::Inner("Unknown Return type".to_owned())),
         };
 
         // get snapshot and write ephemeral key
         let mut snapshot = self.stronghold.get_snapshot()?;
+
         let vault_id = VaultId::load(&vault_path).unwrap();
         let record_id = RecordId::load(&record_path).unwrap();
         snapshot
-            .store_secret_key(ephemeral, vault_id, record_id)
+            .store_secret_key(ephemeral, random_key_location.clone())
             .expect("Could not store ephemeral key");
 
         // calculate diff from local snapshot with remote hiearchy

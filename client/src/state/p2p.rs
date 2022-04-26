@@ -29,7 +29,7 @@ use p2p::{
 };
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, fmt, io, pin::Pin, sync::Arc, time::Duration};
 
 #[cfg(test)]
 use crate::actors::secure_testing::ReadFromVault;
@@ -469,7 +469,7 @@ impl Permissions {
         let restriction = move |rq: &AccessRequest| self.is_permitted(rq);
         Rule::Restricted {
             restriction: Arc::new(restriction),
-            _maker: PhantomData,
+            // _maker: PhantomData,
         }
     }
 

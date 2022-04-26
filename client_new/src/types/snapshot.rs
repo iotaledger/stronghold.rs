@@ -277,12 +277,13 @@ impl Snapshot {
     pub fn store_secret_key<K>(
         &mut self,
         mut encryption_key: K, // [u8; 32] + Zeroize
-        vault_id: VaultId,
-        record_id: RecordId,
+        location: Location,
     ) -> Result<(), SnapshotError>
     where
         K: AsRef<[u8]> + AsMut<[u8]> + Zeroize,
     {
+        let (vault_id, record_id) = location.resolve();
+
         // this should return an error
         let key = self.keystore.create_key(vault_id).expect("Could not create key");
         self.db.write(

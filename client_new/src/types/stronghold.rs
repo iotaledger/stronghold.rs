@@ -15,7 +15,7 @@ use std::{
 
 use crate::{
     procedures::Runner,
-    sync::{SyncSnapshots, SyncSnapshotsConfig},
+    sync::{SnapshotHierarchy, SyncSnapshots, SyncSnapshotsConfig},
     Client, ClientError, ClientState, KeyProvider, LoadFromPath, Location, RemoteMergeError, RemoteVaultError,
     Snapshot, SnapshotPath, Store, UseKey,
 };
@@ -499,8 +499,12 @@ impl Stronghold {
                 let snapshot = self.snapshot.try_read()?;
                 let hierarchy = snapshot.get_hierarchy(Some(snapshot.clients()));
 
+                let is_ok = hierarchy.is_ok();
+                assert!(is_ok);
+
                 // FIXME: the error mapping is wrong
                 tx.send(StrongholdNetworkResult::Hierarchy(
+                    // Ok(SnapshotHierarchy::default()),
                     hierarchy.map_err(|e| RemoteVaultError::Record(e.to_string())),
                 ))
                 .expect("Could not send request");
@@ -538,11 +542,13 @@ impl Stronghold {
                             network_old::StrongholdRequest::ClientRequest { client_path, request } => {
                                 if let Err(e) = self.handle_client_request(client_path, inner.response_tx, request) {
                                     // handle error. log it?
+                                    println!("Encountered error handling client request {:?}", e);
                                 }
                             }
                             network_old::StrongholdRequest::SnapshotRequest { request } => {
                                 if let Err(e) = self.handle_snapshot_request(inner.response_tx, request) {
                                     // handle error. log it?
+                                    println!("Encountered error handling snapshot request {:?}", e);
                                 }
                             }
                         };
@@ -762,7 +768,7 @@ impl Stronghold {
             }
         };
 
-        network.send_request(peer_id, client_path, request.into()).await
+        network.send_request(peer_id, /* client_path, */ request.into()).await
     }
 
     // TODO: experimental api

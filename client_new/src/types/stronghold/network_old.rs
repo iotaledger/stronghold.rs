@@ -168,25 +168,23 @@ impl Network {
     /// Send a request
     ///
     /// # Example
-    pub async fn send_request<P>(
+    pub async fn send_request(
         &self,
         peer: PeerId,
-        client_path: P,
         request: StrongholdRequest,
-    ) -> Result<StrongholdNetworkResult, ClientError>
-    where
-        P: AsRef<[u8]>,
-    {
+    ) -> Result<StrongholdNetworkResult, ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
             Some(network) => network,
             None => return Err(ClientError::Inner("".to_string())),
         };
 
-        network
+        let result = network
             .send_request(peer, request)
             .await
-            .map_err(|e| ClientError::Inner(e.to_string()))
+            .map_err(|e| ClientError::Inner(e.to_string()));
+
+        result
     }
 
     pub async fn export_config(&self) -> Result<NetworkConfig, ClientError> {
@@ -824,7 +822,7 @@ impl Permissions {
         let restriction = move |rq: &AccessRequest| self.is_permitted(rq);
         Rule::Restricted {
             restriction: Arc::new(restriction),
-            _maker: PhantomData,
+            // _maker: PhantomData,
         }
     }
 
@@ -1098,7 +1096,11 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                             }
                         })
                         .collect(),
-                    ClientRequest::WriteToVault { location, payload } => todo!(),
+                    ClientRequest::WriteToVault { location, payload } => {
+                        vec![Access::Write {
+                            vault_path: location.vault_path().to_vec(),
+                        }]
+                    }
                 };
                 AccessRequest {
                     client_path,
@@ -1106,8 +1108,20 @@ impl FwRequest<StrongholdRequest> for AccessRequest {
                 }
             }
             StrongholdRequest::SnapshotRequest { request } => match request {
-                SnapshotRequest::GetRemoteHierarchy {} => todo!(),
-                SnapshotRequest::ExportRemoteDiff { diff, dh_pub_key } => todo!(),
+                SnapshotRequest::GetRemoteHierarchy {} => {
+                    // FIXME: this isn't right
+                    AccessRequest {
+                        client_path: vec![],
+                        required_access: vec![Access::Use { vault_path: vec![] }],
+                    }
+                }
+                SnapshotRequest::ExportRemoteDiff { diff, dh_pub_key } => {
+                    // FIXME: this isn't right
+                    AccessRequest {
+                        client_path: vec![],
+                        required_access: vec![Access::Use { vault_path: vec![] }],
+                    }
+                }
             },
         }
     }
@@ -1185,7 +1199,7 @@ pub enum SnapshotRequest {
 //     ExportRemoteDiff(ExportRemoteDiff),
 // }
 
-pub struct ExportRemoteDiff {}
+// pub struct ExportRemoteDiff {}
 
 // Wrapper for Requests to a remote Secure Client
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1268,6 +1282,10 @@ sh_result_mapping!(StrongholdNetworkResult::Bool => bool);
 sh_result_mapping!(StrongholdNetworkResult::Data => Option<Vec<u8>>);
 sh_result_mapping!(StrongholdNetworkResult::ListIds => Vec<(RecordId, RecordHint)>);
 sh_result_mapping!(StrongholdNetworkResult::Proc => Result<Vec<ProcedureOutput>, ProcedureError>);
+
+// added support for snapshot
+sh_result_mapping!(StrongholdNetworkResult::Hierarchy => Result<SnapshotHierarchy<(RecordId, BlobId)>, RemoteVaultError>);
+sh_result_mapping!(StrongholdNetworkResult::Exported => Result<(Vec<u8>, [u8; x25519::PUBLIC_KEY_LENGTH]), RemoteMergeError>);
 
 impl From<Result<(), RecordError>> for StrongholdNetworkResult {
     fn from(inner: Result<(), RecordError>) -> Self {
