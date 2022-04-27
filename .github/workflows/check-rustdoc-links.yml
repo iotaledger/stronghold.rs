@@ -9,9 +9,9 @@ on:
       - main
       - dev
     paths:
-      - '.github/workflows/check-rustdoc-links.yml'
-      - '**.rs'
-      - '**.toml'
+      - ".github/workflows/check-rustdoc-links.yml"
+      - "**.rs"
+      - "**.toml"
 
 jobs:
   docs:
@@ -19,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, engine/runtime, client, products/commandline, derive, utils, p2p]
-    env: 
+        project: [engine, engine/runtime, client, derive, utils, p2p]
+    env:
       RUSTDOCFLAGS: -D warnings
 
     steps:

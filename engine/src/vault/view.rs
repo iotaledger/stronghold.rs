@@ -9,7 +9,7 @@ use crate::vault::{
     },
 };
 
-use new_runtime::memories::buffer::Buffer;
+use runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 use thiserror::Error as DeriveError;
