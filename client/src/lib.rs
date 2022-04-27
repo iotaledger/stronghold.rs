@@ -5,6 +5,7 @@
 //!
 //! The client interface exposes all functionality to work with a Stronghold instance
 
+// FIXME: remove this later, when feature-complete
 #![allow(unused_variables, unused_imports, dead_code)]
 
 #[cfg(feature = "std")]

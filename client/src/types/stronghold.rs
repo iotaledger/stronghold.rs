@@ -62,7 +62,7 @@ use std::ops::Deref;
 
 /// The Stronghold is a secure storage for sensitive data. Secrets that are stored inside
 /// a Stronghold can never be read, but only be accessed via cryptographic procedures. Data inside
-/// a Stronghold is heavily protected by the [`Runtime`] by either being encrypted at rest, having
+/// a Stronghold is heavily protected by the `Runtime` by either being encrypted at rest, having
 /// kernel supplied memory guards, that prevent memory dumps, or a combination of both. The Stronghold
 /// also persists data written into a Stronghold by creating Snapshots of the current state. The
 /// Snapshot itself is encrypted and can be accessed by a key.
@@ -88,8 +88,6 @@ impl Stronghold {
     /// Drop all references
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub fn reset(self) -> Self {
         Self::default()
     }
@@ -100,8 +98,6 @@ impl Stronghold {
     /// Load a [`Client`] at `client_path` from the snapshot.
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub fn load_client_from_snapshot<P>(
         &self,
         client_path: P,
@@ -137,8 +133,6 @@ impl Stronghold {
     /// Loads a client from [`Snapshot`] data
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn load_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
         P: AsRef<[u8]>,
@@ -170,8 +164,6 @@ impl Stronghold {
     /// Returns an in session client, not being persisted in a [`Snapshot`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn get_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
         P: AsRef<[u8]>,
@@ -188,8 +180,6 @@ impl Stronghold {
     /// snapshot. This operation is destructive.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn purge_client(&self, client: Client) -> Result<(), ClientError> {
         let mut clients = self.clients.try_write()?;
         clients.remove(client.id());
@@ -204,8 +194,6 @@ impl Stronghold {
     /// is secured in memory.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.try_write()?;
 
@@ -226,8 +214,6 @@ impl Stronghold {
     /// Returns a reference to the local [`Snapshot`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn get_snapshot(&self) -> Result<RwLockWriteGuard<Snapshot>, ClientError> {
         let snapshot = self.snapshot.try_write()?;
 
@@ -237,8 +223,6 @@ impl Stronghold {
     /// Creates a new, empty [`Client`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn create_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
         P: AsRef<[u8]>,
@@ -259,8 +243,6 @@ impl Stronghold {
     /// Writes all client states into the [`Snapshot`] file
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
         let clients = self.clients.try_read()?;
 
@@ -290,8 +272,6 @@ impl Stronghold {
     /// Writes the state of a single client into [`Snapshot`] data
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn write_client<P>(&self, client_path: P) -> Result<(), ClientError>
     where
         P: AsRef<[u8]>,
@@ -303,8 +283,6 @@ impl Stronghold {
     /// Writes a single [`Client`] into snapshot
     ///
     /// # Example
-    /// ```
-    /// ```
     fn write(&self, client_id: ClientId) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.try_write()?;
         let clients = self.clients.try_read()?;
@@ -370,8 +348,6 @@ impl Stronghold {
     /// Processes [`ClientRequest`]s
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn handle_client_request<P>(
         &self,
         client_path: P,
@@ -467,8 +443,6 @@ impl Stronghold {
     /// Processes [`SnapshotRequest`]s
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn handle_snapshot_request(
         &self,
         // client_path: P,
@@ -517,8 +491,6 @@ impl Stronghold {
     /// Accepts a receiver to terminate the listener.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn serve(&self, mut shutdown: UnboundedReceiver<()>) -> Result<(), ClientError> {
         use future::FutureExt;
 
@@ -570,8 +542,6 @@ impl Stronghold {
     /// Creates a [`Peer`] from a [`PublicKey`] and returns it.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn create_remote_client<P>(&self, public_key: PublicKey, client_path: P) -> Result<Peer, ClientError>
     where
         P: AsRef<[u8]>,
@@ -591,8 +561,6 @@ impl Stronghold {
     /// Creates a new empty [`Client`] with an identity [`Keypair`] stored at [`Location`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn create_client_with_keys<P>(
         &self,
         client_path: P,
@@ -621,8 +589,6 @@ impl Stronghold {
     /// Start listening on the swarm to the given address. If no address is provided, it will be assigned by the OS.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn start_listening(&self, address: Option<Multiaddr>) -> Result<Multiaddr, ListenErr> {
         let mut network = self.network.lock().await;
 
@@ -637,8 +603,6 @@ impl Stronghold {
     /// Stop listening on the swarm.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn stop_listening(&self) -> Result<(), ClientError> {
         let mut network = self.network.lock().await;
 
@@ -656,15 +620,13 @@ impl Stronghold {
 
     /// Spawn the p2p-network actor and swarm.
     /// The `keypair`parameter can be provided as location in which a keypair is stored,
-    /// (either via [`Client::generate_p2p_keypair`] or [`Client::write_p2p_keypair`]).
-    /// A new noise [`AuthenticKeypair`] and the [`PeerId`] will be derived from this keypair and used
+    /// (either via `Client::generate_p2p_keypair` or `Client::write_p2p_keypair`).
+    /// A new noise `AuthenticKeypair` and the [`PeerId`] will be derived from this keypair and used
     /// for authentication and encryption on the transport layer.
     ///
     /// **Note**: The noise keypair differs for each derivation, the [`PeerId`] is consistent.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn spawn_p2p<P>(
         &self,
         client_path: P,
@@ -709,11 +671,9 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Adds a [`Multiadress`] for a peer, represented by the [`PeerId`]
+    /// Adds a [`Multiaddr`] for a peer, represented by the [`PeerId`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn add_peer_addr(&self, peer: PeerId, address: Multiaddr) -> Result<Multiaddr, DialErr> {
         let network = self.network.lock().await;
         let network = match &*network {
@@ -725,11 +685,9 @@ impl Stronghold {
     }
 
     /// Tries to connect to a remote Peer, if the peer is already known by [`Multiaddr`] or
-    /// mDNS. If the peer is not know, try to add it first via [`Self::add_peer`].
+    /// mDNS. If the peer is not know, try to add it first via [`Self::add_peer_addr`].
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn connect(&self, peer: PeerId) -> Result<(), DialErr> {
         let network = self.network.lock().await;
         let network = match &*network {
@@ -744,8 +702,6 @@ impl Stronghold {
     /// TBD: THIS NEEDS MORE EXPLANATION
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn send<P, R>(
         &self,
         peer_id: PeerId,

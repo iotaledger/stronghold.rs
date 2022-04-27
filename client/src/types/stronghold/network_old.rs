@@ -163,8 +163,6 @@ impl Network {
     /// Sets default firewall rules with [`Permissions`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn set_firewall_default(&self, permissions: Permissions) -> Result<(), ClientError> {
         let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
@@ -188,8 +186,6 @@ impl Network {
     /// Sets a firewall rule for [`PeerId`] with [`Permissions`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn set_firewall_rule(&self, peer: PeerId, permissions: Permissions) -> Result<(), ClientError> {
         let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
@@ -212,8 +208,6 @@ impl Network {
     /// Removes a firewall rule for [`PeerId`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remove_firewall_rule(&self, peer: PeerId) -> Result<(), ClientError> {
         let mut config = self.config.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let config = match &mut *config {
@@ -236,8 +230,6 @@ impl Network {
     /// Returns the [`SwarmInfo`]
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub async fn get_swarm_info(&self) -> Result<SwarmInfo, ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -258,8 +250,6 @@ impl Network {
     /// Starts listening on given multiadress or `0.0.0.0` listen on all interfaces
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub async fn start_listenening(&self, multiaddr: Option<Multiaddr>) -> Result<Multiaddr, ListenErr> {
         let mut network = self.inner.try_lock().ok_or(ListenErr::Shutdown)?; // wrong error
         let network = match &mut *network {
@@ -273,8 +263,6 @@ impl Network {
     /// Start listening as relay
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn start_listening_relay(
         &self,
         relay: PeerId,
@@ -291,8 +279,6 @@ impl Network {
     /// Stop listening
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn stop_listening(&self) -> Result<(), ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -303,11 +289,9 @@ impl Network {
         Ok(())
     }
 
-    /// Stop listening on [`MultiAddr`]
+    /// Stop listening on [`Multiaddr`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn stop_listening_addr(&self, addr: Multiaddr) -> Result<(), ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -321,8 +305,6 @@ impl Network {
     /// Stop listening has relay
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn stop_listening_relay(&self, peer: PeerId) -> Result<(), ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -338,8 +320,6 @@ impl Network {
     /// Try to connect to a peer
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn connect_peer(&self, peer: PeerId) -> Result<Multiaddr, DialErr> {
         let mut network = self.inner.try_lock().ok_or(DialErr::Shutdown)?; // wrong error
         let network = match &mut *network {
@@ -349,11 +329,9 @@ impl Network {
         network.connect_peer(peer).await
     }
 
-    /// Try to get [`Multiaddr`] from [`Peer`]
+    /// Try to get [`Multiaddr`] from [`PeerId`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn get_peer_address(&self, peer: PeerId) -> Result<Vec<Multiaddr>, ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -364,11 +342,9 @@ impl Network {
         Ok(network.get_addrs(peer).await)
     }
 
-    /// Adds a [`Peer`] [`Multiaddr`]
+    /// Adds a [`PeerId`] [`Multiaddr`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn add_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), DialErr> {
         let mut network = self.inner.lock().await;
         let network = match &mut *network {
@@ -380,11 +356,9 @@ impl Network {
         Ok(())
     }
 
-    /// Removes a [`Peer`] [`Multiaddr`]
+    /// Removes a [`PeerId`]s [`Multiaddr`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remove_peer_address(&self, peer: PeerId, address: Multiaddr) -> Result<(), ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -399,8 +373,6 @@ impl Network {
     /// Adds a dialing relay
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn add_dialing_relay(
         &self,
         relay: PeerId,
@@ -418,8 +390,6 @@ impl Network {
     /// Removes the dialing relay
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remove_dialing_relay(&self, peer: PeerId) -> Result<bool, ClientError> {
         let mut network = self.inner.try_lock().ok_or(ClientError::LockAcquireFailed)?;
         let network = match &mut *network {
@@ -494,9 +464,9 @@ impl NetworkConfig {
     /// - Request-timeout and Connection-timeout are 10s.
     /// - For incoming connections: max 5 pending, max 10 established.
     /// - Max 5 connections to the same peer (per protocol only 1 is needed).
-    /// - [`Mdns`][`libp2p::mdns`] protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id
-    ///   to the local network.
-    /// - [`Relay`][`libp2p::relay`] functionality is disabled.
+    /// - `libp2p::mdns` protocol is disabled. **Note**: Enabling mdns will broadcast our own address and id to the
+    ///   local network.
+    /// - `libp2p::relay` functionality is disabled.
     ///
     /// Note: If async firewall rules are enabled through `NetworkConfig::with_async_firewall`, the
     /// `default_permissions` will be ignored. In this case, they only serve as fallback once the channel
@@ -529,14 +499,14 @@ impl NetworkConfig {
         self
     }
 
-    /// Enable / Disable [`Mdns`][`libp2p::mdns`] protocol.
+    /// Enable / Disable `libp2p::mdns` protocol.
     /// **Note**: Enabling mdns will broadcast our own address and id to the local network.
     pub fn with_mdns_enabled(mut self, is_enabled: bool) -> Self {
         self.enable_mdns = is_enabled;
         self
     }
 
-    /// Enable / Disable [`Relay`][`libp2p::relay`] functionality.
+    /// Enable / Disable `libp2p::relay` functionality.
     /// This also means that other peers can use us as relay/
     pub fn with_relay_enabled(mut self, is_enabled: bool) -> Self {
         self.enable_relay = is_enabled;
@@ -666,14 +636,14 @@ impl FirewallChannel {
 
     /// Close the channel.
     ///
-    /// See [`mpsc::Receiver::close`] for more info.
+    /// See [`futures::channel::mpsc::Receiver::close`] for more info.
     pub fn close(&mut self) {
         self.inner_rx.close()
     }
 
     /// Tries to receive the next message.
     ///
-    /// See [`mpsc::Receiver::try_next`] for more info.
+    /// See [`futures::channel::mpsc::Receiver::try_next`] for more info.
     pub fn try_next(&mut self) -> Result<Option<PermissionsRequest>, TryRecvError> {
         let request = match self.inner_rx.try_next()? {
             Some(r) => r,

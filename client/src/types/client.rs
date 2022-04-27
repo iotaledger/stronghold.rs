@@ -67,17 +67,13 @@ impl Client {
     /// Returns an atomic reference to the [`Store`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn store(&self) -> Store {
         self.store.clone()
     }
 
-    /// Returns a [`Vault`] according to path
+    /// Returns a [`ClientVault`] according to path
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn vault<P>(&self, vault_path: P) -> ClientVault
     where
         P: AsRef<[u8]>,
@@ -91,8 +87,6 @@ impl Client {
     /// Returns `true`, if a vault exists
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn vault_exists<P>(&self, vault_path: P) -> Result<bool, ClientError>
     where
         P: AsRef<[u8]>,
@@ -107,8 +101,6 @@ impl Client {
     /// returned, if inner database could not be unlocked.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn record_exists(&self, location: &Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
         let db = self.db.try_read()?;
@@ -121,8 +113,6 @@ impl Client {
     /// is performed. If a record already exists at the target, the [`MergePolicy`] applies.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn sync_vaults(
         &self,
         source_path: Vec<u8>,
@@ -161,8 +151,6 @@ impl Client {
     /// Synchronize the client with another one so that records are copied from `other` to `self`.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
         let hierarchy = other.get_hierarchy(config.select_vaults.clone())?;
         let diff = self.get_diff(hierarchy, &config)?;
@@ -197,8 +185,6 @@ impl Client {
     /// Returns the [`ClientId`] of the client
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn id(&self) -> &ClientId {
         &self.id
     }
@@ -206,8 +192,6 @@ impl Client {
     /// Loads the state of [`Self`] from a [`ClientState`]. Replaces all previous data.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn restore(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
         let (keys, db, st) = state;
 
@@ -238,8 +222,6 @@ impl Client {
     /// A cryptographic [`Procedure`] is the main operation on secrets.
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub fn execute_procedure<P>(&self, procedure: P) -> Result<P::Output, ProcedureError>
     where
         P: Procedure + Into<StrongholdProcedure>,
@@ -249,11 +231,9 @@ impl Client {
         Ok(mapped)
     }
 
-    /// Executes a list of cryptographic [`Procedures`] sequentially and returns a collected output
+    /// Executes a list of cryptographic [`crate::procedures::Procedure`]s sequentially and returns a collected output
     ///
     /// # Example
-    /// ```no_run
-    /// ```
     pub fn execure_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
@@ -300,8 +280,6 @@ impl Client {
     /// keypair will be used for Stronghold's networking capability
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn generate_p2p_keypair(&self, location: Location) -> Result<(), ClientError> {
         self.write_p2p_keypair(Keypair::generate_ed25519(), location)
     }
@@ -309,8 +287,6 @@ impl Client {
     /// Writes an existing [`Keypair`] into [`Location`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn write_p2p_keypair(&self, keypair: Keypair, location: Location) -> Result<(), ClientError> {
         let bytes = keypair
             .to_protobuf_encoding()
@@ -330,8 +306,6 @@ impl Client {
     /// The keypair differs for each new derivation, the `PeerId` is consistent.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn derive_noise_keypair(&self, location: Location) -> Result<(PeerId, AuthenticKeypair), ClientError> {
         let mut id_keys = None;
         let f = |guard: Buffer<u8>| {
@@ -371,8 +345,6 @@ impl Peer {
     /// Creates a new [`Peer`] from a [`PeerId`] and a reference to [`Stronghold`] for p2p functionality
     ///
     /// # Example
-    /// ```
-    /// ```
     pub(crate) fn new<P>(peer_id: PeerId, remote_client_path: P, stronghold: Stronghold) -> Self
     where
         P: AsRef<[u8]>,
@@ -387,8 +359,6 @@ impl Peer {
     /// Connects to a remote [`Stronghold`] instance
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn connect(&self) -> Result<(), DialErr> {
         self.stronghold.connect(*self.peer_id).await
     }
@@ -396,8 +366,6 @@ impl Peer {
     /// Executes a procedure on the remote
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_procedure_exec(
         &self,
         procedure: StrongholdProcedure,
@@ -408,8 +376,6 @@ impl Peer {
     /// Executes sequential procedures on the remote.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_procedure_exec_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
@@ -436,8 +402,6 @@ impl Peer {
     /// - Ok(false), if the vault does not exist
     ///  
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_vault_exists<P>(&self, vault_path: P) -> Result<bool, ClientError>
     where
         P: AsRef<[u8]>,
@@ -478,8 +442,6 @@ impl Peer {
     /// - Ok(false), if the record does not exist
     ///  
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_record_exists<P>(&self, vault_path: P, record_path: P) -> Result<bool, ClientError>
     where
         P: AsRef<Vec<u8>>,
@@ -517,8 +479,6 @@ impl Peer {
     /// need to be sychronized. This involves an diffie-helmann key exchange.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_sync(&self, config: SyncSnapshotsConfig) -> Result<(), ClientError> {
         let mut ephemeral = [0u8; x25519::SECRET_KEY_LENGTH];
         crypto::utils::rand::fill(&mut ephemeral).expect("Could not fill ephemeral key");
@@ -607,8 +567,6 @@ impl Peer {
     /// Write to remote store
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_write_store(
         &self,
         key: Vec<u8>,
@@ -632,8 +590,6 @@ impl Peer {
     /// Read from remote store and return an optional result.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_read_store<P>(&self, key: P) -> Result<StrongholdNetworkResult, ClientError>
     where
         P: AsRef<[u8]>,
@@ -657,8 +613,6 @@ impl Peer {
     /// Removes an entry from the remote ['Store`].
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_delete_store<P>(&self, key: P) -> Result<StrongholdNetworkResult, ClientError>
     where
         P: AsRef<[u8]>,
@@ -682,8 +636,6 @@ impl Peer {
     /// Writes secret data in the remote vault
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_write_secret<P>(
         &self,
         vault_path: P,
@@ -712,8 +664,6 @@ impl Peer {
     /// Removes a secret from a remote [`Stronghold`]
     ///
     /// # Example
-    /// ```
-    /// ```
     pub async fn remote_remove_secret<P>(&self, vault_path: P, record_path: P) -> Result<(), ClientError>
     where
         P: AsRef<Vec<u8>>,
