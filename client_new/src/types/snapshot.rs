@@ -16,10 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     convert::Infallible,
+    fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
 };
 use stronghold_utils::random;
+use zeroize::Zeroize;
 
 use crate::{
     procedures::{DeriveSecret, X25519DiffieHellman},
@@ -62,16 +64,6 @@ pub struct Snapshot {
 #[derive(Deserialize, Serialize, Default)]
 pub struct SnapshotState(pub(crate) HashMap<ClientId, ClientState>);
 
-// impl Default for Snapshot {
-//     fn default() -> Self {
-//         Snapshot {
-//             keystore: KeyStore::default(),
-//             db: DbView::default(),
-//             states: HashMap::default(),
-//         }
-//     }
-// }
-
 /// A handle for snapshot file locations.
 ///
 /// # Examples
@@ -99,7 +91,6 @@ impl SnapshotPath {
         P: AsRef<Path>,
     {
         assert!(name.as_ref().is_relative());
-        // assert!(name.as_ref().is_file());
         assert!(engine::snapshot::files::home_dir().is_ok());
 
         let path = engine::snapshot::files::home_dir().unwrap();
@@ -117,7 +108,6 @@ impl SnapshotPath {
         P: AsRef<Path>,
     {
         assert!(path.as_ref().is_absolute());
-
         Self {
             path: path.as_ref().to_path_buf(),
         }
@@ -126,6 +116,12 @@ impl SnapshotPath {
     /// Returns [`Self`] as Path
     pub fn as_path(&self) -> &Path {
         &self.path
+    }
+}
+
+impl Display for SnapshotPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SnapshotPath: {:}", self.path.display())
     }
 }
 
@@ -159,14 +155,6 @@ impl Snapshot {
         for client_id in ids {
             let client_state = self.get_state(client_id)?;
             state.0.insert(client_id, client_state);
-            // match self.get_state(client_id) {
-            //     Ok(client_state) => {
-
-            //     }
-            //     Err(_) => {
-            //         // File not present, could not retrieve previous state
-            //     }
-            // };
         }
         Ok(state)
     }
@@ -190,6 +178,18 @@ impl Snapshot {
         Ok((keys, db, store.clone()))
     }
 
+    /// Purges a [`Client`] from the [`SnapshotState`]. The next write to the Snapshot file
+    /// will delete the existing [`Client`].
+    pub fn purge_client(&mut self, id: ClientId) -> Result<(), SnapshotError> {
+        if let Some((a, b)) = self.states.get_mut(&id) {
+            a.zeroize();
+        }
+
+        self.states.remove(&id);
+
+        Ok(())
+    }
+
     /// Checks to see if the [`ClientId`] exists in the snapshot hashmap.
     pub fn has_data(&self, cid: ClientId) -> bool {
         self.states.contains_key(&cid)
@@ -202,11 +202,6 @@ impl Snapshot {
         key: Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        // let data = match path {
-        //     Some(p) => read_from_file(p, &key, &[])?,
-        //     None => read_from_file(&snapshot::files::get_path(name)?, &key, &[])?,
-        // };
-
         let data = read_from_file(snapshot_path.as_path(), &key, &[])?;
 
         let state = bincode::deserialize(&data)?;
@@ -215,16 +210,7 @@ impl Snapshot {
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    /// TODO: This should be split into two functions :
-    ///   - named_mut()
-    ///   - path_
-    pub fn write_to_snapshot(
-        &self,
-        // name: Option<&str>,
-        // path: Option<&Path>,
-        snapshot_path: &SnapshotPath,
-        use_key: UseKey,
-    ) -> Result<(), SnapshotError> {
+    pub fn write_to_snapshot(&self, snapshot_path: &SnapshotPath, use_key: UseKey) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
         let data = bincode::serialize(&state)?;
 
@@ -242,17 +228,6 @@ impl Snapshot {
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
-
-        // // TODO: This is a hack and probably should be removed when we add proper error handling.
-        // let f = move || match path {
-        //     Some(p) => write_to_file(&data, p, &key, &[]),
-        //     None => write_to_file(&data, &snapshot::files::get_path(name)?, &key, &[]),
-        // };
-
-        // match f() {
-        //     Ok(()) => Ok(()),
-        //     Err(_) => f().map_err(|e| e.into()),
-        // }
 
         write_to_file(&data, snapshot_path.as_path(), &key, &[]).map_err(|e| e.into())
     }
@@ -294,6 +269,33 @@ impl Snapshot {
             &snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
+        Ok(())
+    }
+
+    /// Stores a secert [`crypto::keys::x25519::SecretKey`] as bytes at given location.
+    /// The stored secret will later be used to decrypt a snapshot
+    pub fn store_secret_key<K>(
+        &mut self,
+        mut encryption_key: K, // [u8; 32] + Zeroize
+        location: Location,
+    ) -> Result<(), SnapshotError>
+    where
+        K: AsRef<[u8]> + AsMut<[u8]> + Zeroize,
+    {
+        let (vault_id, record_id) = location.resolve();
+
+        // this should return an error
+        let key = self.keystore.create_key(vault_id).expect("Could not create key");
+        self.db.write(
+            &key,
+            vault_id,
+            record_id,
+            encryption_key.as_ref(),
+            RecordHint::new("").expect("0 <= 24"),
+        )?;
+
+        encryption_key.as_mut().zeroize();
+
         Ok(())
     }
 

@@ -18,6 +18,8 @@ use crate::{
     },
     Client, ClientError, ClientVault, KeyStore, Location, Provider, RecordError, Store, VaultError,
 };
+use stronghold_utils::random as rand;
+pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
 // ported [`Runner`] impl for [`Client`]
 impl Runner for Client {
@@ -57,7 +59,6 @@ impl Runner for Client {
         &self,
         location0: &Location,
         location1: &Location,
-        hint: RecordHint,
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
@@ -78,11 +79,12 @@ impl Runner for Client {
         };
 
         let res;
+        let random_hint = RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
         if vid0 == vid1 {
             // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
             let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
 
-            res = db.exec_proc(&key0, vid0, rid0, &key0, vid1, rid1, hint, execute_procedure);
+            res = db.exec_proc(&key0, vid0, rid0, &key0, vid1, rid1, random_hint, execute_procedure);
         } else {
             // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
             let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
@@ -95,7 +97,7 @@ impl Runner for Client {
             }
 
             let key1 = keystore.take_key(vid1).unwrap();
-            res = db.exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, hint, execute_procedure);
+            res = db.exec_proc(&key0, vid0, rid0, &key1, vid1, rid1, random_hint, execute_procedure);
 
             // this should return an error
             keystore
@@ -114,7 +116,7 @@ impl Runner for Client {
         }
     }
 
-    fn write_to_vault(&self, location: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError> {
+    fn write_to_vault(&self, location: &Location, value: Vec<u8>) -> Result<(), RecordError> {
         let (vault_id, record_id) = location.resolve();
 
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
@@ -128,8 +130,9 @@ impl Runner for Client {
             let key = keystore.create_key(vault_id).map_err(|_| RecordError::InvalidKey)?;
             db.init_vault(&key, vault_id);
         }
+        let random_hint = RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
         let key = keystore.take_key(vault_id).unwrap();
-        let res = db.write(&key, vault_id, record_id, &value, hint);
+        let res = db.write(&key, vault_id, record_id, &value, random_hint);
 
         // this should return an error
         keystore

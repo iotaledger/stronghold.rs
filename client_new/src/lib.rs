@@ -11,6 +11,9 @@
 pub use crate::{internal::Provider, security::*, types::*, utils::*};
 
 #[cfg(feature = "std")]
+pub(crate) use crate::sync::SnapshotHierarchy;
+
+#[cfg(feature = "std")]
 pub mod types;
 
 #[cfg(feature = "std")]
@@ -32,3 +35,40 @@ pub mod utils;
 #[cfg(feature = "std")]
 #[cfg(test)]
 mod tests;
+
+// macros
+
+// #[macro_export]
+// macro_rules! enum_from_inner {
+//     ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ $MEnum:ident$(::<$H:ident>)?::$MT:ident from $CEnum:ty) => {
+//         impl$(<H>)? From<$CEnum> for $MEnum$(<H>)? {
+//             fn from(t: $CEnum) -> Self {
+//                 $MEnum::$MT(t.into())
+//             }
+//         }
+//         $(
+//             impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
+//                 fn from(t: $CEnum) -> Self {
+//                     let m: $MEnum$(<H>)? = t.into()
+//                     $Enum::$T(m.into())
+//                 }
+//             }
+//         )*
+//     };
+//     ($($Enum:ident$(::<$G:ident>)?::$T:ident),+ from $CEnum:ty) => {
+//         $(
+//             impl$(<$G>)? From<$CEnum> for $Enum$(<$G>)? {
+//                 fn from(t: $CEnum) -> Self {
+//                     $Enum::$T(t.into())
+//                 }
+//             }
+//         )*
+//     };
+//     ($Enum:ident$(<$G:ident>)? from $TInner:ident$(<$H:ident>)?) => {
+//         impl$(<$G>)? From<$TInner$(<$H>)?> for $Enum$(<$G>)? {
+//             fn from(t: $TInner$(<$H>)?) -> Self {
+//                 $Enum::$TInner(t)
+//             }
+//         }
+//     };
+// }

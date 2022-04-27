@@ -31,23 +31,21 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let snapshot = Snapshot::default();
 
     // create a new empty client
-    let client = stronghold.create_client(client_path.clone()).await?;
+    let client = stronghold.create_client(client_path.clone())?;
 
     let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
 
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
         output: output_location.clone(),
-        hint: RecordHint::new(b"").unwrap(),
+        // hint: RecordHint::new(b"").unwrap(),
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
 
     assert!(procedure_result.is_ok());
 
-    let vault_exists = client.vault_exists(b"vault_path").await;
+    let vault_exists = client.vault_exists(b"vault_path");
     assert!(vault_exists.is_ok());
     assert!(vault_exists.unwrap());
 
@@ -57,9 +55,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
         private_key: output_location,
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()));
 
     assert!(procedure_result.is_ok());
 
@@ -67,23 +63,21 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let output: Vec<u8> = procedure_result.into();
 
     // some store data
-    let store = client.store().await;
+    let store = client.store();
 
-    let vault = client.vault(Location::const_generic(vault_path.to_vec(), b"".to_vec()));
+    let vault_location = Location::const_generic(vault_path.to_vec(), b"".to_vec());
+    let vault = client.vault(b"vault_path");
 
     // create a new secret inside the vault
     assert!(vault
-        .write_secret(
-            Location::const_generic(vault_path.clone(), b"record-path".to_vec()),
-            vec![],
-        )
+        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec()), vec![],)
         .is_ok());
 
     // write client into snapshot
-    stronghold.write_client(client_path.clone()).await?;
+    stronghold.write_client(client_path.clone())?;
 
     // commit all to snapshot file
-    stronghold.commit(&snapshot_path, &keyprovider).await?;
+    stronghold.commit(&snapshot_path, &keyprovider)?;
 
     //// -- reset stronghold, re-load snapshot from disk
 
@@ -91,19 +85,18 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let stronghold = stronghold.reset();
 
     println!("load client from snapshot file");
-    let client = stronghold
-        .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await?;
+    let client = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)?;
 
     // Write the state of the client back into the snapshot
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
 
     assert!(procedure_result.is_ok());
 
     Ok(())
 }
+
+#[tokio::test]
+async fn purge_client() {}
 
 #[tokio::test]
 async fn write_client_to_snapshot() {}
@@ -115,4 +108,4 @@ async fn test_load_client_from_snapshot() {}
 async fn test_load_multiple_clients_from_snapshot() {}
 
 #[tokio::test]
-async fn test_multiple_clients_modifikation_from_and_to_snapshot() {}
+async fn test_multiple_clients_modification_from_and_to_snapshot() {}

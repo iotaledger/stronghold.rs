@@ -18,7 +18,7 @@ use p2p::{
     StrongholdP2p, StrongholdP2pBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt, future, marker::PhantomData, sync::Arc, task::Poll, time::Duration};
+use std::{fmt, future, sync::Arc, task::Poll, time::Duration};
 use stronghold_utils::random::random;
 use tokio::time::sleep;
 
@@ -105,7 +105,7 @@ impl TestPermission {
                 let permission = permission.clone();
                 Rule::Restricted {
                     restriction: Arc::new(move |rq: &RequestPermission| Self::restrict_by_type(rq, permission.clone())),
-                    _maker: PhantomData,
+                    // _maker: PhantomData,
                 }
             }
         }

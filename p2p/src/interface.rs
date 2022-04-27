@@ -9,9 +9,7 @@ use event_loop::{EventLoop, SwarmCommand};
 use smallvec::SmallVec;
 
 use crate::{
-    behaviour::{
-        BehaviourEvent, ConfigConfig, InboundFailure, NetworkBehaviour, OutboundFailure, RequestId, RqRsMessage,
-    },
+    behaviour::{BehaviourEvent, ConfigConfig, InboundFailure, NetworkBehaviour, OutboundFailure, Request, RequestId},
     firewall::{FirewallRequest, FirewallRules, FwRequest, Rule},
     AddressInfo, RelayNotSupported,
 };
@@ -125,9 +123,9 @@ use thiserror::Error;
 pub struct StrongholdP2p<Rq, Rs, TRq = Rq>
 where
     // Request message type
-    Rq: RqRsMessage,
+    Rq: Request,
     // Response message type
-    Rs: RqRsMessage,
+    Rs: Request,
     // Optional, tailored request-type that is used in the firewall to get approval.
     // This has the purpose of trimming the actual request down to the firewall-relevant information and e.g. avoid
     // exposing the request's actual content.
@@ -143,8 +141,8 @@ where
 
 impl<Rq, Rs, TRq> StrongholdP2p<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     /// Create a new [`StrongholdP2p`] instance with the default configuration.
@@ -483,8 +481,8 @@ pub enum InitKeypair {
 /// Optionally all events regarding connections and listeners are forwarded as [`NetworkEvent`].
 pub struct StrongholdP2pBuilder<Rq, Rs, TRq = Rq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     firewall_channel: mpsc::Sender<FirewallRequest<TRq>>,
@@ -516,8 +514,8 @@ where
 
 impl<Rq, Rs, TRq> StrongholdP2pBuilder<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     /// Parameters:
@@ -834,7 +832,7 @@ pub enum NetworkEvent {
 
 type SwarmEv<Rq, Rs, THandleErr> = SwarmEvent<BehaviourEvent<Rq, Rs>, THandleErr>;
 
-impl<Rq: RqRsMessage, Rs: RqRsMessage, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
+impl<Rq: Request, Rs: Request, THandleErr> TryFrom<SwarmEv<Rq, Rs, THandleErr>> for NetworkEvent {
     type Error = ();
     fn try_from(value: SwarmEv<Rq, Rs, THandleErr>) -> Result<Self, Self::Error> {
         match value {

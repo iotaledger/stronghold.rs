@@ -202,11 +202,6 @@ pub enum Command {
     },
 }
 
-/// Returns a fixed sized vector of random bytes
-fn fixed_random_bytes(length: usize) -> Vec<u8> {
-    std::iter::repeat_with(rand::random::<u8>).take(length).collect()
-}
-
 /// Calculates the Blake2b from a String
 fn hash_blake2b(input: String) -> Vec<u8> {
     let mut hasher = Blake2b256::new();
@@ -216,7 +211,7 @@ fn hash_blake2b(input: String) -> Vec<u8> {
 
 async fn command_write_and_read_from_store(key: String, value: String) -> Result<(), ClientError> {
     let client = Client::default();
-    let store = client.store().await;
+    let store = client.store();
 
     info!(r#"Insert value into store "{}" with key "{}""#, value, key);
     store.insert(key.as_bytes().to_vec(), value.as_bytes().to_vec(), None)?;
@@ -224,13 +219,13 @@ async fn command_write_and_read_from_store(key: String, value: String) -> Result
     info!(
         r#"Store contains key "{}" ? {}"#,
         key,
-        store.contains_key(key.as_bytes().to_vec())?
+        store.contains_key(key.as_bytes())?
     );
 
     info!(
         r#"Value for key "{}" ? {:?}"#,
         key,
-        String::from_utf8(store.get(key.as_bytes().to_vec()).unwrap().deref().unwrap().to_vec()).unwrap()
+        String::from_utf8(store.get(key.as_bytes()).unwrap().unwrap().to_vec()).unwrap()
     );
 
     Ok(())
@@ -262,12 +257,9 @@ async fn command_generate_key(key_type: String, location: VaultLocation) {
     let generate_key_procedure = GenerateKey {
         ty: keytype.clone(),
         output: output_location.clone(),
-        hint: RecordHint::new(b"").unwrap(),
     };
 
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
 
     info!("Key generation successful? {}", procedure_result.is_ok());
 
@@ -278,9 +270,7 @@ async fn command_generate_key(key_type: String, location: VaultLocation) {
     };
 
     info!("Creating public key");
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
 
     assert!(procedure_result.is_ok());
 
@@ -300,10 +290,9 @@ async fn command_generate_bip39(passphrase: Option<String>, language: MnemonicLa
         passphrase,
         language,
         output: output_location,
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
-    let result = client.execute_procedure(bip39_procedure).await.unwrap();
+    let result = client.execute_procedure(bip39_procedure).unwrap();
 
     info!("BIP39 Mnemonic: {}", result);
 }
@@ -319,12 +308,11 @@ async fn command_slip10_generate(size: Option<NonZeroUsize>, location: VaultLoca
     let slip10_generate = Slip10Generate {
         size_bytes: size.map(|nzu| nzu.get()),
         output: output_location,
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!(
         "SLIP10 seed successfully created? {}",
-        client.execute_procedure(slip10_generate).await.is_ok()
+        client.execute_procedure(slip10_generate).is_ok()
     );
 }
 
@@ -336,22 +324,20 @@ async fn command_slip10_derive(chain: ChainInput, input: VaultLocation, output: 
     let slip10_generate = Slip10Generate {
         size_bytes: None, // take default vaule
         output: output_location.clone(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
-    client.execute_procedure(slip10_generate).await.unwrap();
+    client.execute_procedure(slip10_generate).unwrap();
 
     info!("Deriving SLIP10 Child Secret");
     let slip10_derive = Slip10Derive {
         chain: chain.chain,
         input: Slip10DeriveInput::Seed(output_location),
         output: output.to_location(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!(
         "Derivation Sucessful? {}",
-        client.execute_procedure(slip10_derive).await.is_ok()
+        client.execute_procedure(slip10_derive).is_ok()
     );
 }
 
@@ -362,25 +348,21 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
 
     let client = stronghold
         .create_client(client_path.clone())
-        .await
         .expect("Cannot creat client");
 
     let output_location = output.to_location();
 
     let generate_key_procedure = GenerateKey {
         ty: KeyType::Ed25519,
-        output: output_location.clone(),
-        hint: RecordHint::new(b"").unwrap(),
+        output: output_location,
     };
 
     client
         .execute_procedure(generate_key_procedure)
-        .await
         .expect("Running procedure failed");
 
     stronghold
         .write_client(client_path)
-        .await
         .expect("Store client state into snapshot state failed");
 
     // calculate hash from key
@@ -389,7 +371,6 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
         "Snapshot created successully? {}",
         stronghold
             .commit(&SnapshotPath::from_path(path), &KeyProvider::try_from(key).unwrap())
-            .await
             .is_ok()
     );
 }
@@ -407,7 +388,6 @@ async fn command_read_snapshot(path: String, client_path: String, key: String, p
 
     let client = stronghold
         .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await
         .expect("Could not load client from Snapshot");
 
     // get the public key
@@ -417,9 +397,7 @@ async fn command_read_snapshot(path: String, client_path: String, key: String, p
     };
 
     info!("Creating public key");
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
 
     let procedure_result = procedure_result.unwrap();
     let output: Vec<u8> = procedure_result.into();
@@ -447,7 +425,6 @@ async fn command_bip39_recover(
 
     let client = stronghold
         .load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)
-        .await
         .expect("Could not load client from Snapshot");
 
     // get the public key
@@ -455,13 +432,10 @@ async fn command_bip39_recover(
         passphrase,
         mnemonic,
         output: output.to_location(),
-        hint: RecordHint::new(fixed_random_bytes(24)).unwrap(),
     };
 
     info!("Recovering BIP39");
-    let procedure_result = client
-        .execute_procedure(StrongholdProcedure::BIP39Recover(procedure_bip39_recover))
-        .await;
+    let procedure_result = client.execute_procedure(StrongholdProcedure::BIP39Recover(procedure_bip39_recover));
 
     info!(r#"BIP39 Recovery successful? {}"#, procedure_result.is_ok());
 }

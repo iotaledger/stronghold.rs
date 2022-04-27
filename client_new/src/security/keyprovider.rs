@@ -11,6 +11,7 @@ use engine::{
     },
     vault::NCKey,
 };
+use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
 
 use crate::internal::Provider;
@@ -18,6 +19,7 @@ use crate::internal::Provider;
 /// The [`KeyProvider`] keeps secrets in [`NonContinguousMemory`] at rest,
 /// such that no key can be directly read out from memory. The memory fragments
 /// of the key provider will be rotated continuously while not in use.
+#[derive(GuardDebug)]
 pub struct KeyProvider {
     inner: engine::vault::NCKey<Provider>,
 }

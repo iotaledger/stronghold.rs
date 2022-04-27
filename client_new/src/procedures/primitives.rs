@@ -169,10 +169,7 @@ procedures! {
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct WriteVault {
     pub data: Vec<u8>,
-
     pub location: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for WriteVault {
@@ -185,8 +182,8 @@ impl GenerateSecret for WriteVault {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.location, self.hint)
+    fn target(&self) -> &Location {
+        &self.location
     }
 }
 
@@ -233,10 +230,7 @@ impl Procedure for GarbageCollect {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CopyRecord {
     pub source: Location,
-
     pub target: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for CopyRecord {
@@ -254,8 +248,8 @@ impl DeriveSecret for CopyRecord {
         &self.source
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.target, self.hint)
+    fn target(&self) -> &Location {
+        &self.target
     }
 }
 
@@ -301,12 +295,8 @@ impl FromStr for MnemonicLanguage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
     pub passphrase: Option<String>,
-
     pub language: MnemonicLanguage,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for BIP39Generate {
@@ -333,8 +323,8 @@ impl GenerateSecret for BIP39Generate {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -343,12 +333,8 @@ impl GenerateSecret for BIP39Generate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BIP39Recover {
     pub passphrase: Option<String>,
-
     pub mnemonic: String,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for BIP39Recover {
@@ -364,8 +350,8 @@ impl GenerateSecret for BIP39Recover {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -379,8 +365,6 @@ pub struct Slip10Generate {
     pub size_bytes: Option<usize>,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for Slip10Generate {
@@ -396,8 +380,8 @@ impl GenerateSecret for Slip10Generate {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -417,8 +401,6 @@ pub struct Slip10Derive {
     pub input: Slip10DeriveInput,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for Slip10Derive {
@@ -446,8 +428,8 @@ impl DeriveSecret for Slip10Derive {
         }
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -486,10 +468,7 @@ fn ed25519_secret_key(guard: Buffer<u8>) -> Result<ed25519::SecretKey, crypto::E
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateKey {
     pub ty: KeyType,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for GenerateKey {
@@ -503,8 +482,8 @@ impl GenerateSecret for GenerateKey {
         Ok(Products { secret, output: () })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -570,8 +549,6 @@ pub struct X25519DiffieHellman {
     pub private_key: Location,
 
     pub shared_key: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for X25519DiffieHellman {
@@ -592,8 +569,8 @@ impl DeriveSecret for X25519DiffieHellman {
         &self.private_key
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.shared_key, self.hint)
+    fn target(&self) -> &Location {
+        &self.shared_key
     }
 }
 
@@ -637,16 +614,10 @@ impl UseSecret for Hmac {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hkdf {
     pub hash_type: Sha2Hash,
-
     pub salt: Vec<u8>,
-
     pub label: Vec<u8>,
-
     pub ikm: Location,
-
     pub okm: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for Hkdf {
@@ -683,8 +654,8 @@ impl DeriveSecret for Hkdf {
         &self.ikm
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.okm, self.hint)
+    fn target(&self) -> &Location {
+        &self.okm
     }
 }
 
@@ -699,8 +670,6 @@ pub struct Pbkdf2Hmac {
     pub count: u32,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for Pbkdf2Hmac {
@@ -727,8 +696,8 @@ impl GenerateSecret for Pbkdf2Hmac {
         Ok(Products { secret, output: () })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 

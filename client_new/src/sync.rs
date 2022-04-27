@@ -434,20 +434,20 @@ mod test {
 
         let location_1 = test_location();
         let (vid1, rid1) = location_1.resolve();
-        client.write_to_vault(&location_1, test_hint(), test_value())?;
+        client.write_to_vault(&location_1, test_value())?;
 
         let v_path_2 = random::bytestring(4096);
         let r_path_2 = random::bytestring(4096);
         let location_2 = Location::generic(v_path_2.clone(), r_path_2);
         let (vid2, rid2) = location_2.resolve();
-        client.write_to_vault(&location_2, test_hint(), test_value())?;
+        client.write_to_vault(&location_2, test_value())?;
 
         // Same vault as value nr 2.
         let r_path_3 = random::bytestring(4096);
         let location_3 = Location::generic(v_path_2, r_path_3);
         let (vid23, rid3) = location_3.resolve();
         assert_eq!(vid2, vid23);
-        client.write_to_vault(&location_3, test_hint(), test_value())?;
+        client.write_to_vault(&location_3, test_value())?;
 
         let hierarchy = client.get_hierarchy(None)?;
 
@@ -501,7 +501,7 @@ mod test {
 
         for i in 0..3usize {
             let location = Location::counter(v_path_1.clone(), 10 + i);
-            source.write_to_vault(&location, test_hint(), test_value())?;
+            source.write_to_vault(&location, test_value())?;
         }
 
         let v_path_3 = random::bytestring(1024);
@@ -513,7 +513,7 @@ mod test {
 
         for i in 0..3usize {
             let location = Location::counter(v_path_3.clone(), 30 + i);
-            source.write_to_vault(&location, test_hint(), test_value())?;
+            source.write_to_vault(&location, test_value())?;
             // Only include record-0 and record-1 in the sync.
             if i == 0 || i == 1 {
                 select_records_v3.push(location.resolve().1);
@@ -532,7 +532,7 @@ mod test {
 
         for i in 0..3usize {
             let location = Location::counter(v_path_4.clone(), 40 + i);
-            source.write_to_vault(&location, test_hint(), test_value())?;
+            source.write_to_vault(&location, test_value())?;
         }
 
         let target = Client::default();
@@ -595,7 +595,7 @@ mod test {
             for j in 1..3usize {
                 let vault_path = format!("vault_{}", i);
                 let location = Location::counter(vault_path, i * 10 + j);
-                source.write_to_vault(&location, test_hint(), test_value())?;
+                source.write_to_vault(&location, test_value())?;
             }
         }
 
@@ -616,7 +616,7 @@ mod test {
                 for j in 2..4usize {
                     let vault_path = format!("vault_{}", i);
                     let location = Location::counter(vault_path, i * 10 + j);
-                    target.write_to_vault(&location, test_hint(), test_value())?;
+                    target.write_to_vault(&location, test_value())?;
                 }
             }
             Ok(target)

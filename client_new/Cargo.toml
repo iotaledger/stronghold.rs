@@ -13,6 +13,7 @@ repository              = "https://github.com/iotaledger/stronghold.rs"
 
 [features]
 default                 = ["std"]
+p2p                     = ["std", "futures", "pin-project", "stronghold-p2p"]
 std                     = [] 
 
 [dependencies]
@@ -22,11 +23,16 @@ serde                   = { version = "1.0",   features = [ "derive" ] }
 iota-crypto             = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519" ] }
 hkdf                    = { version = "0.11" }
 bincode                 = { version = "1.3" }
+pin-project             = { version = "1.0.10", optional = true }
+futures                 = { version = "0.3.21", optional = true }
+
 
 # internal crates
+stronghold-p2p          = { package = "stronghold-p2p",     path = "../p2p", optional = true }
 rlu                     = { package = "stronghold-rlu",     path = "../rlu/"}
 engine                  = { package = "stronghold_engine",  path = "../engine" }
 stronghold_utils        = { package = "stronghold-utils",   path = "../utils/" }
+stronghold_derive       = { package = "stronghold-derive",   path = "../derive" }
 
 [dev-dependencies]
 tokio                   = { version = "1.15.0", features = ["full"] }
@@ -39,10 +45,12 @@ log                     = { version = "0.4.14" }
 base64                  = { version = "0.13.0" }
 regex                   = { version = "1.5.5" }
 
-
 [[bench]]
 name                    = "config"
 harness                 = false
 
 [[example]]
 name                    = "cli"
+
+[[example]]
+name                    = "p2p"

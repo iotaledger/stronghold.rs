@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    derive_record_id, derive_vault_id,
     procedures::{Procedure, ProcedureError, ProcedureOutput, Runner, StrongholdProcedure},
-    Client, ClientError, Location, Provider, RecordError,
+    Client, ClientError, LoadFromPath, Location, Provider, RecordError,
 };
-use engine::vault::{RecordHint, VaultId};
+use engine::vault::{RecordHint, RecordId, VaultId};
 use std::sync::{Arc, RwLock};
 use stronghold_utils::random as rand;
 
@@ -15,8 +16,8 @@ pub struct ClientVault {
     /// An atomic but inner mutable back reference to the [`Client`]
     pub(crate) client: Client,
 
-    /// The current [`VaultId`]
-    pub(crate) id: VaultId,
+    /// The current vault_path
+    pub(crate) vault_path: Vec<u8>,
 }
 
 /// [`ClientVault`] is a thin abstraction over a vault for a specific [`VaultId`]. An
@@ -30,11 +31,7 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
-        self.client.write_to_vault(
-            &location,
-            RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap(),
-            payload,
-        )?;
+        self.client.write_to_vault(&location, payload)?;
         Ok(())
     }
 
@@ -43,8 +40,11 @@ impl ClientVault {
     /// # Example
     /// ```
     /// ```
-    pub fn delete_secret(&self, location: Location) -> Result<bool, ClientError> {
-        self.revoke_secret(location)?;
+    pub fn delete_secret<P>(&self, record_path: P) -> Result<bool, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        self.revoke_secret(record_path)?;
         self.cleanup()
     }
 
@@ -53,7 +53,18 @@ impl ClientVault {
     /// # Example
     /// ```
     /// ```
-    pub fn revoke_secret(&self, location: Location) -> Result<(), ClientError> {
+    ///
+    /// # FIXME:
+    ///
+    /// Since the vault path is already present, only a record path should be provided here
+    pub fn revoke_secret<P>(&self, record_path: P) -> Result<(), ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let location = Location::Generic {
+            record_path: record_path.as_ref().to_vec(),
+            vault_path: self.vault_path.clone(),
+        };
         self.client.revoke_data(&location)?;
         Ok(())
     }
@@ -64,19 +75,13 @@ impl ClientVault {
     /// ```
     /// ```
     pub fn cleanup(&self) -> Result<bool, ClientError> {
-        Ok(self.client.garbage_collect(self.vault_id()))
+        let result = self.client.garbage_collect(self.id());
+
+        Ok(result)
     }
 
-    /// BUG: this will create confusion, as the vault id, needs to be stored somewhere.
-    /// It should be possible to multiple vaults from a client.
-    ///
-    /// Returns the currently used [`VaultId`]
-    ///
-    /// # Example
-    /// ```
-    /// ```
-    pub fn vault_id(&self) -> VaultId {
-        self.id
+    pub fn id(&self) -> VaultId {
+        derive_vault_id(self.vault_path.clone())
     }
 
     /// SECURITY WARNING! THIS IS FOR TESTING PURPOSES ONLY!
@@ -89,3 +94,6 @@ impl ClientVault {
         todo!()
     }
 }
+
+// #[cfg(feature = "p2p")]
+// impl ClientVault {}

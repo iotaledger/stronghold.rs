@@ -12,6 +12,9 @@ mod store;
 mod stronghold;
 mod vault;
 
+// #[cfg(feature = "p2p")]
+// mod network_types;
+
 // re-export imports
 pub use client::*;
 pub use error::*;
@@ -20,3 +23,6 @@ pub use snapshot::*;
 pub use store::*;
 pub use stronghold::*;
 pub use vault::*;
+
+// #[cfg(feature = "p2p")]
+// pub use network_types::*;
