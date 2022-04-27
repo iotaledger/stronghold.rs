@@ -1,25 +1,20 @@
 [package]
-name = "stronghold-runtime"
-version = "0.3.0"
-authors = [
-  "IOTA Stiftung",
-  "tensor-programming <tensordeveloper@gmail.com>"
-]
-edition = "2021"
-license = "Apache-2.0"
-description = "Runtime and allocation primitives for stronghold"
-readme = "README.md"
-keywords = [ "iota", "stronghold", "security" ]
-categories = [ "security" ]
-homepage = "https://stronghold.docs.iota.org"
-repository = "https://github.com/iotaledger/stronghold.rs"
+name                    = "stronghold-runtime"
+version                 = "0.1.0"
+edition                 = "2021"
+readme                  = "README.md"
 
 [lib]
-name = "runtime"
-
+name                    = "runtime"
+ 
 [dependencies]
-libsodium-sys = "0.2"
-serde = "1.0"
+zeroize                 = { version = "1.4.3" }
+libsodium-sys           = { version = "0.2" }
+serde                   = { version = "1.0", features = [ "derive" ] }
+random                  = { version = "0.8.4", package = "rand" }
+dirs                    = { version = "4.0.0" }
+thiserror               = { version = "1.0" }
+iota-crypto             = { version = "0.8.0", features = ["sha"] }
 
 [dev-dependencies]
-quickcheck = "1.0"
+serde_json              = { version = "1.0" }

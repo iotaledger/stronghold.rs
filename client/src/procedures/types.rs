@@ -1,13 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    actors::{RecordError, VaultError},
-    FatalEngineError, Location,
-};
+use crate::{FatalEngineError, Location, Provider, RecordError, VaultError};
 use engine::{
-    new_runtime::memories::buffer::Buffer,
-    vault::{RecordHint, VaultId},
+    runtime::memories::buffer::Buffer,
+    vault::{BoxProvider, VaultId},
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, string::FromUtf8Error};
@@ -15,27 +12,27 @@ use thiserror::Error as DeriveError;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
-    fn get_guard<F, T>(&mut self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    fn get_guard<F, T>(&self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
 
     // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
     // written into `location1` and the output is returned.
     fn exec_proc<F, T>(
-        &mut self,
+        &self,
         location0: &Location,
         location1: &Location,
-        hint: RecordHint,
+        // hint: RecordHint,
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
 
-    fn write_to_vault(&mut self, location1: &Location, hint: RecordHint, value: Vec<u8>) -> Result<(), RecordError>;
+    fn write_to_vault(&self, location1: &Location, value: Vec<u8>) -> Result<(), RecordError>;
 
-    fn revoke_data(&mut self, location: &Location) -> Result<(), RecordError>;
+    fn revoke_data(&self, location: &Location) -> Result<(), RecordError>;
 
-    fn garbage_collect(&mut self, vault_id: VaultId) -> bool;
+    fn garbage_collect(&self, vault_id: VaultId) -> bool;
 }
 
 /// Products of a procedure.
@@ -53,7 +50,8 @@ pub trait Procedure: Sized {
     // Non-secret output type.
     type Output: TryFrom<ProcedureOutput>;
 
-    fn execute<R: Runner>(self, _runner: &mut R) -> Result<Self::Output, ProcedureError>;
+    // made immutable
+    fn execute<R: Runner>(self, _runner: &R) -> Result<Self::Output, ProcedureError>;
 }
 
 /// Trait for procedures that generate a new secret.
@@ -62,13 +60,13 @@ pub trait GenerateSecret: Sized {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError>;
 
-    fn target(&self) -> (&Location, RecordHint);
+    fn target(&self) -> &Location;
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
-        let (target, hint) = self.target();
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
+        let target = self.target();
         let target = target.clone();
         let Products { output, secret } = self.generate()?;
-        runner.write_to_vault(&target, hint, secret)?;
+        runner.write_to_vault(&target, secret)?;
         Ok(output)
     }
 }
@@ -81,14 +79,14 @@ pub trait DeriveSecret: Sized {
 
     fn source(&self) -> &Location;
 
-    fn target(&self) -> (&Location, RecordHint);
+    fn target(&self) -> &Location;
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
-        let (target, hint) = self.target();
+        let target = self.target();
         let target = target.clone();
         let f = |guard| self.derive(guard);
-        let output = runner.exec_proc(&source, &target, hint, f)?;
+        let output = runner.exec_proc(&source, &target, f)?;
         Ok(output)
     }
 }
@@ -101,7 +99,7 @@ pub trait UseSecret: Sized {
 
     fn source(&self) -> &Location;
 
-    fn exec<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let source = self.source().clone();
         let f = |guard| self.use_secret(guard);
         let output = runner.get_guard(&source, f)?;
