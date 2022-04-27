@@ -133,7 +133,7 @@ impl FileMemory {
         let mut perms = fs::metadata(&self.fname)?.permissions();
         // Currently rust fs library can only be create
         // readonly file permissions
-        perms.set_readonly(true);
+        perms.set_readonly(false);
         fs::set_permissions(&self.fname, perms)
     }
 
