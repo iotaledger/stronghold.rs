@@ -14,33 +14,18 @@ use crate::{
 use crypto::keys::x25519;
 use engine::vault::{BlobId, ClientId, RecordHint, RecordId, VaultId};
 use futures::{channel::mpsc::TryRecvError, future, stream::FusedStream, Stream};
-// use crate::{
-//     actors::{
-//         secure_messages::{
-//             CheckRecord, CheckVault, DeleteFromStore, ListIds, Procedures, ReadFromStore, RevokeData, WriteToStore,
-//             WriteToVault,
-//         },
-//         RecordError, Registry,
-//     },
-//     enum_from_inner,
-//     procedures::{self, ProcedureError, ProcedureOutput, StrongholdProcedure},
-//     Location,
-// };
-// use actix::prelude::*;
-use std::task::{Context, Poll};
-// use tokio::sync::oneshot::{channel, error::TryRecvError};
-
-// use futures::{
-//     channel::{
-//         mpsc::{self, TryRecvError},
-//         oneshot,
-//     },
-//     stream::FusedStream,
-//     task::{Context, Poll},
-// };
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, fmt, io, marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    fmt, io,
+    marker::PhantomData,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Duration,
+};
 use stronghold_p2p::{
     firewall::{FirewallRequest, FirewallRules, FwRequest, Rule},
     AddressInfo, ChannelSinkConfig, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
@@ -48,9 +33,6 @@ use stronghold_p2p::{
 };
 
 use crate::procedures::{self, ProcedureError, ProcedureOutput, StrongholdProcedure};
-
-// #[cfg(test)]
-// use crate::actors::secure_testing::ReadFromVault;
 
 macro_rules! sh_result_mapping {
     ($enum:ident::$variant:ident => $inner:ty) => {
@@ -136,34 +118,6 @@ impl Network {
             config: Arc::new(futures::lock::Mutex::new(Some(network_config))),
         })
     }
-
-    // moved from old src::actors::p2p
-
-    // obsolete. this will be handled by [`Stronghold`]
-    // Handle a request. This should be part of an event loop
-    //
-    // # Example
-    // pub async fn receive_request(&self, request: ReceiveRequest<StrongholdRequest, StrongholdNetworkResult>) {
-    //     let ReceiveRequest {
-    //         response_tx, request, ..
-    //     } = request;
-
-    //     match request {
-    //         StrongholdRequest::ClientRequest { client_path, request } => {
-    //             let client = Client::default(); // self.stronghold.load_client(client_path).await.unwrap();
-
-    //             match request {
-    //                 ClientRequest::CheckVault { vault_path } => {
-    //                     let result = client.vault_exists(vault_path).unwrap();
-    //                     response_tx.send(StrongholdNetworkResult::Bool(result));
-    //                 }
-    //                 _ => todo!(),
-    //             };
-    //             todo!()
-    //         }
-    //         StrongholdRequest::SnapshotRequest { request } => todo!(),
-    //     }
-    // }
 
     /// Send a request
     ///
@@ -600,7 +554,7 @@ impl NetworkConfig {
     /// permissions have been set for this peers, a [`PermissionsRequest`] is sent through this channel to
     /// query for the firewall rules that should be applied.
     ///
-    /// ```
+    /// ```skip
     /// # use iota_stronghold::{p2p::{FirewallChannel, NetworkConfig, Permissions}, Stronghold};
     /// # use futures::StreamExt;
     /// #
@@ -767,7 +721,7 @@ impl FusedStream for FirewallChannel {
 /// - Per default only allows remote peers to use secrets, but not copy any or write to the vault.
 /// - Allows to specific client `open_client` full access.
 ///
-/// ```
+/// ```skip
 /// # use iota_stronghold::p2p::{Permissions, ClientAccess};
 /// # let open_client = Vec::new();
 /// // Only allow to use secrets, but not to clone them or write to the vault.
@@ -1024,13 +978,6 @@ pub enum Access {
     WriteStore,
 }
 
-// impl FwRequest<SnapshotRequest> for AccessRequest {
-//     fn from_request(request: &SnapshotRequest) -> Self {
-//         //
-//         todo!()
-//     }
-// }
-
 impl FwRequest<StrongholdRequest> for AccessRequest {
     fn from_request(request: &StrongholdRequest) -> Self {
         match request {
@@ -1177,12 +1124,6 @@ pub enum StrongholdRequest {
         request: SnapshotRequest,
     },
 }
-// pub client_path: Vec<u8>,
-// pub client_request: ClientRequest,
-// pub snapshot_request: SnapshotRequest
-
-// pub type SnapshotStateHierarchy = HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>;
-// pub type SnapshotStateHierarchy = HashMap<ClientId, HashMap<VaultId, Vec<(RecordId, BlobId)>>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SnapshotRequest {
@@ -1192,14 +1133,6 @@ pub enum SnapshotRequest {
         dh_pub_key: [u8; x25519::PUBLIC_KEY_LENGTH],
     },
 }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub enum SnapshotRequest {
-//     GetRemoteHierarchy(GetRemoteHierarchy),
-//     ExportRemoteDiff(ExportRemoteDiff),
-// }
-
-// pub struct ExportRemoteDiff {}
 
 // Wrapper for Requests to a remote Secure Client
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1251,17 +1184,6 @@ pub enum ClientRequest {
     //     location: Location,
     // },
 }
-
-// enum_from_inner!(Request from CheckVault);
-// enum_from_inner!(Request from ListIds);
-// enum_from_inner!(Request from WriteToRemoteVault);
-// enum_from_inner!(Request from RevokeData);
-// enum_from_inner!(Request from ReadFromStore);
-// enum_from_inner!(Request from WriteToStore);
-// enum_from_inner!(Request from DeleteFromStore);
-// enum_from_inner!(Request from Procedures);
-// #[cfg(test)]
-// enum_from_inner!(Request from ReadFromVault);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StrongholdNetworkResult {

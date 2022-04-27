@@ -155,6 +155,3 @@ impl<'a> Deserialize<'a> for Store {
         })
     }
 }
-
-#[cfg(feature = "p2p")]
-impl Store {}
