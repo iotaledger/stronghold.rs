@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use new_runtime::{memories::buffer::Buffer, DEBUG_MSG};
+use runtime::{memories::buffer::Buffer, DEBUG_MSG};
 
 #[test]
 fn buffer() {

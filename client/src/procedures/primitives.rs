@@ -1,8 +1,10 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::str::FromStr;
+
 use super::types::*;
-use crate::{utils::derive_vault_id, Location};
+use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
@@ -21,7 +23,10 @@ use crypto::{
     utils::rand::fill,
 };
 
-use engine::{new_runtime::memories::buffer::Buffer, vault::RecordHint};
+use engine::{
+    runtime::memories::buffer::Buffer,
+    vault::{RecordHint, VaultId},
+};
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
 
@@ -53,7 +58,7 @@ pub enum StrongholdProcedure {
 impl Procedure for StrongholdProcedure {
     type Output = ProcedureOutput;
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         use StrongholdProcedure::*;
         match self {
             WriteVault(proc) => proc.execute(runner).map(|o| o.into()),
@@ -135,7 +140,7 @@ macro_rules! procedures {
             impl Procedure for $Proc {
                 type Output = <$Proc as $Trait>::Output;
 
-                fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+                fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
                     self.exec(runner)
                 }
             }
@@ -164,10 +169,7 @@ procedures! {
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct WriteVault {
     pub data: Vec<u8>,
-
     pub location: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for WriteVault {
@@ -180,8 +182,8 @@ impl GenerateSecret for WriteVault {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.location, self.hint)
+    fn target(&self) -> &Location {
+        &self.location
     }
 }
 
@@ -196,7 +198,7 @@ pub struct RevokeData {
 
 impl Procedure for RevokeData {
     type Output = ();
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         runner.revoke_data(&self.location)?;
         if self.should_gc {
             runner.garbage_collect(self.location.resolve().0);
@@ -214,7 +216,7 @@ pub struct GarbageCollect {
 impl Procedure for GarbageCollect {
     type Output = ();
 
-    fn execute<R: Runner>(self, runner: &mut R) -> Result<Self::Output, ProcedureError> {
+    fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let vault_id = derive_vault_id(self.vault_path);
         runner.garbage_collect(vault_id);
         Ok(())
@@ -228,10 +230,7 @@ impl Procedure for GarbageCollect {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CopyRecord {
     pub source: Location,
-
     pub target: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for CopyRecord {
@@ -249,8 +248,8 @@ impl DeriveSecret for CopyRecord {
         &self.source
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.target, self.hint)
+    fn target(&self) -> &Location {
+        &self.target
     }
 }
 
@@ -279,17 +278,25 @@ pub enum Sha2Hash {
     Sha512,
 }
 
+impl FromStr for MnemonicLanguage {
+    type Err = ClientError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let converted = s.to_lowercase();
+        match converted.as_str() {
+            "english" => Ok(Self::English),
+            "japanese" => Ok(Self::Japanese),
+            _ => Err(ClientError::Inner("Illegal string provided".to_string())),
+        }
+    }
+}
+
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
 /// passphrase). Store the seed and return the mnemonic sentence as data output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
     pub passphrase: Option<String>,
-
     pub language: MnemonicLanguage,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for BIP39Generate {
@@ -316,8 +323,8 @@ impl GenerateSecret for BIP39Generate {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -326,12 +333,8 @@ impl GenerateSecret for BIP39Generate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BIP39Recover {
     pub passphrase: Option<String>,
-
     pub mnemonic: String,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for BIP39Recover {
@@ -347,8 +350,8 @@ impl GenerateSecret for BIP39Recover {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -362,8 +365,6 @@ pub struct Slip10Generate {
     pub size_bytes: Option<usize>,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for Slip10Generate {
@@ -379,8 +380,8 @@ impl GenerateSecret for Slip10Generate {
         })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -400,8 +401,6 @@ pub struct Slip10Derive {
     pub input: Slip10DeriveInput,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for Slip10Derive {
@@ -429,8 +428,8 @@ impl DeriveSecret for Slip10Derive {
         }
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -469,10 +468,7 @@ fn ed25519_secret_key(guard: Buffer<u8>) -> Result<ed25519::SecretKey, crypto::E
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateKey {
     pub ty: KeyType,
-
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for GenerateKey {
@@ -486,8 +482,8 @@ impl GenerateSecret for GenerateKey {
         Ok(Products { secret, output: () })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 
@@ -553,8 +549,6 @@ pub struct X25519DiffieHellman {
     pub private_key: Location,
 
     pub shared_key: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for X25519DiffieHellman {
@@ -575,8 +569,8 @@ impl DeriveSecret for X25519DiffieHellman {
         &self.private_key
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.shared_key, self.hint)
+    fn target(&self) -> &Location {
+        &self.shared_key
     }
 }
 
@@ -620,16 +614,10 @@ impl UseSecret for Hmac {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hkdf {
     pub hash_type: Sha2Hash,
-
     pub salt: Vec<u8>,
-
     pub label: Vec<u8>,
-
     pub ikm: Location,
-
     pub okm: Location,
-
-    pub hint: RecordHint,
 }
 
 impl DeriveSecret for Hkdf {
@@ -666,8 +654,8 @@ impl DeriveSecret for Hkdf {
         &self.ikm
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.okm, self.hint)
+    fn target(&self) -> &Location {
+        &self.okm
     }
 }
 
@@ -682,8 +670,6 @@ pub struct Pbkdf2Hmac {
     pub count: u32,
 
     pub output: Location,
-
-    pub hint: RecordHint,
 }
 
 impl GenerateSecret for Pbkdf2Hmac {
@@ -710,8 +696,8 @@ impl GenerateSecret for Pbkdf2Hmac {
         Ok(Products { secret, output: () })
     }
 
-    fn target(&self) -> (&Location, RecordHint) {
-        (&self.output, self.hint)
+    fn target(&self) -> &Location {
+        &self.output
     }
 }
 

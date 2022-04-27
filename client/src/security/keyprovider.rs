@@ -4,7 +4,7 @@
 use std::ops::Deref;
 
 use engine::{
-    new_runtime::{
+    runtime::{
         locked_memory::LockedMemory,
         memories::buffer::{Buffer, Ref},
         Bytes, MemoryError,

@@ -7,7 +7,7 @@ use std::{
 };
 
 use engine::{
-    new_runtime::memories::buffer::Buffer,
+    runtime::memories::buffer::Buffer,
     vault::{BoxProvider, ClientId, DbView, RecordHint, VaultId},
 };
 

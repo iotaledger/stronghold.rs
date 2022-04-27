@@ -14,7 +14,7 @@ use crate::{
 };
 use crypto::keys::x25519;
 use engine::{
-    new_runtime::memories::buffer::Buffer,
+    runtime::memories::buffer::Buffer,
     vault::{view::Record, BoxProvider, ClientId, DbView, Id, Key, RecordHint, RecordId, VaultId},
 };
 use std::{

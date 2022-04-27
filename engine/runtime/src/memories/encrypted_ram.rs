@@ -25,7 +25,7 @@ pub struct EncryptedRam<P: BoxProvider> {
     // Visibility within crate is for testing purpose
     // We currently only implement for u8 because our encryption functions only returns Vec[u8], therefore our cipher
     // is Buffer<u8>
-    cypher: Buffer<u8>,
+    cipher: Buffer<u8>,
     // Configuration, we should only allow EncryptedRamConfig for this struct
     // We do not store the key in the struct config, just random data for security
     config: LockedConfiguration<P>,
