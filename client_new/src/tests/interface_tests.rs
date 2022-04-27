@@ -4,7 +4,8 @@
 use std::{borrow::BorrowMut, error::Error, path::Path};
 
 use crate::{
-    procedures::{GenerateKey, KeyType, StrongholdProcedure},
+    procedures::{GenerateKey, GenerateSecret, KeyType, PublicKey, StrongholdProcedure},
+    tests::fresh,
     Client, ClientVault, KeyProvider, Location, Snapshot, SnapshotPath, Store, Stronghold,
 };
 use engine::vault::RecordHint;
