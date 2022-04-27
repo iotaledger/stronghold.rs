@@ -43,7 +43,7 @@ impl KeyProvider {
     ///
     /// # Example
     /// ```no_run
-    /// use iota_stronghold_new::KeyProvider;
+    /// use iota_stronghold::KeyProvider;
     /// use std::ops::Deref;
     ///
     /// // crate some key data

@@ -68,7 +68,7 @@ pub struct SnapshotState(pub(crate) HashMap<ClientId, ClientState>);
 ///
 /// # Examples
 /// ```no_run
-/// use iota_stronghold_new::SnapshotPath;
+/// use iota_stronghold::SnapshotPath;
 ///
 /// // set path to a known location for a snapshot file
 /// let named = SnapshotPath::named("snapshot-file");

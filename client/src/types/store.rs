@@ -44,7 +44,7 @@ impl Store {
     ///
     /// # Example
     /// ```ignore
-    /// use iota_stronghold_new::Store;
+    /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
@@ -62,7 +62,7 @@ impl Store {
     ///
     /// # Example
     /// ```ignore
-    /// use iota_stronghold_new::Store;
+    /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
@@ -84,7 +84,7 @@ impl Store {
     ///
     /// # Example
     /// ```ignore
-    /// use iota_stronghold_new::Store;
+    /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
@@ -102,7 +102,7 @@ impl Store {
     /// Checks the [`Store`], if the provided key exists
     /// # Example
     /// ```ignore
-    /// use iota_stronghold_new::Store;
+    /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
@@ -120,7 +120,7 @@ impl Store {
     /// # Examples
     /// ```
     /// use engine::store::Cache;
-    /// use iota_stronghold_new::Store;
+    /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let cache = Cache::new();
