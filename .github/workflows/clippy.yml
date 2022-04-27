@@ -25,7 +25,6 @@ jobs:
             engine,
             engine/runtime,
             client,
-            client_new,
             products/commandline,
             derive,
             utils,

@@ -10,9 +10,9 @@ on:
       - dev
       - dev-refactor
     paths:
-      - '.github/workflows/test.yml'
-      - '**.rs'
-      - '**.toml'
+      - ".github/workflows/test.yml"
+      - "**.rs"
+      - "**.toml"
 
 jobs:
   build-and-test:
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [engine, client, client_new, products/commandline, derive, utils, p2p]
+        project: [engine, client, products/commandline, derive, utils, p2p]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
