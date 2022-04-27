@@ -12,7 +12,10 @@ use crypto::{
         chacha::XChaCha20Poly1305,
         traits::{Aead, Tag},
     },
-    hashes::{sha::{Sha256, Sha384, Sha512, SHA256_LEN, SHA384_LEN, SHA512_LEN}, Digest},
+    hashes::{
+        sha::{Sha256, Sha384, Sha512, SHA256_LEN, SHA384_LEN, SHA512_LEN},
+        Digest,
+    },
     keys::{
         bip39,
         pbkdf::{PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512},
@@ -795,7 +798,6 @@ impl UseSecret for AeadDecrypt {
         &self.key
     }
 }
-
 
 /// Executes the concat KDF as defined in Section 5.8.1 of NIST.800-56A.
 #[derive(Debug, Clone, Serialize, Deserialize)]
