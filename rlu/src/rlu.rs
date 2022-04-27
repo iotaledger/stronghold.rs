@@ -86,8 +86,8 @@ where
 }
 
 /// Additional configuration for [`RLU`]. The internal execution
-/// can be either [`crate::RLUConfig::Abort`], if operation failed, [`crate::RLUConfig::Retry`] again
-/// an unlimited number of times, or [`crate::RLUConfig::RetryWithBreaker`] with a busy breaker.
+/// can be either [`crate::RLUStrategy::Abort`], if operation failed, [`crate::RLUStrategy::Retry`] again
+/// an unlimited number of times, or [`crate::RLUStrategy::RetryWithBreaker`] with a busy breaker.
 #[derive(Clone)]
 pub enum RLUStrategy {
     /// Abort execution on failure

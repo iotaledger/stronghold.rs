@@ -27,8 +27,8 @@
 //!
 //! ## Features
 //! ---
-//! [X] - multiple readers / writers
-//! [X] - lock free ( only internal locks )
+//! - [x] multiple readers / writers
+//! - [x] lock free ( only internal locks )
 //!
 //! # Sources
 //! - [notes](https://chaomai.github.io/2015/2015-09-26-notes-of-rlu/)

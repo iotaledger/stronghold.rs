@@ -1,14 +1,8 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    derive_record_id, derive_vault_id,
-    procedures::{Procedure, ProcedureError, ProcedureOutput, Runner, StrongholdProcedure},
-    Client, ClientError, LoadFromPath, Location, Provider, RecordError,
-};
-use engine::vault::{RecordHint, RecordId, VaultId};
-use std::sync::{Arc, RwLock};
-use stronghold_utils::random as rand;
+use crate::{derive_vault_id, procedures::Runner, Client, ClientError, Location};
+use engine::vault::VaultId;
 
 pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
@@ -22,14 +16,12 @@ pub struct ClientVault {
 
 /// [`ClientVault`] is a thin abstraction over a vault for a specific [`VaultId`]. An
 /// implementation of this type can only be obtained by a [`Client`]. Use the [`ClientVault`]
-/// to store secrets and execute [`Procedure`]s on them. Data stored inside a [`Vault`] can
+/// to store secrets and execute [`crate::procedures::Procedure`]s on them. Data stored inside a [`ClientVault`] can
 /// never be directly access, nor will its contents ever be exposed.
 impl ClientVault {
     /// Writes a secret into the vault
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
         self.client.write_to_vault(&location, payload)?;
         Ok(())
@@ -38,8 +30,7 @@ impl ClientVault {
     /// Deletes a secret from the vault
     ///
     /// # Example
-    /// ```
-    /// ```
+
     pub fn delete_secret<P>(&self, record_path: P) -> Result<bool, ClientError>
     where
         P: AsRef<[u8]>,
@@ -51,8 +42,6 @@ impl ClientVault {
     /// Revokes a secrets and marks it as ready for deletion
     ///
     /// # Example
-    /// ```
-    /// ```
     ///
     /// # FIXME:
     ///
@@ -72,8 +61,6 @@ impl ClientVault {
     /// Collects revoked records and deletes them
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn cleanup(&self) -> Result<bool, ClientError> {
         let result = self.client.garbage_collect(self.id());
 

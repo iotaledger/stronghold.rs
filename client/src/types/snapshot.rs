@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains the  Stronghold snapshot interface.
-//! A snapshot is a current view of the memory state inside all [`Client`]s
+//! A snapshot is a current view of the memory state inside all [`crate::Client`]s
 
 #![allow(clippy::type_complexity)]
 
@@ -101,8 +101,6 @@ impl SnapshotPath {
     /// Creates a [`SnapshotPath`] by an absolute path for [`Snapshot`] files.
     ///
     /// # Example
-    /// ```
-    /// ```
     pub fn from_path<P>(path: P) -> Self
     where
         P: AsRef<Path>,
@@ -178,8 +176,8 @@ impl Snapshot {
         Ok((keys, db, store.clone()))
     }
 
-    /// Purges a [`Client`] from the [`SnapshotState`]. The next write to the Snapshot file
-    /// will delete the existing [`Client`].
+    /// Purges a [`crate::Client`] from the [`SnapshotState`]. The next write to the Snapshot file
+    /// will delete the existing [`crate::Client`].
     pub fn purge_client(&mut self, id: ClientId) -> Result<(), SnapshotError> {
         if let Some((a, b)) = self.states.get_mut(&id) {
             a.zeroize();
