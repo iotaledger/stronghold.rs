@@ -36,6 +36,9 @@ pub enum MemoryError {
 
     #[error("Illegal zero-sized value provided")]
     ZeroSizedNotAllowed,
+
+    #[error("Failed to allocate memory ({0})")]
+    Allocation(String),
 }
 
 /// A simple trait to force the types to call `zeroize()` when dropping

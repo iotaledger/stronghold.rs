@@ -16,5 +16,8 @@ dirs                    = { version = "4.0.0" }
 thiserror               = { version = "1.0" }
 iota-crypto             = { version = "0.8.0", features = ["sha"] }
 
+# experimental dependencies for fragmenting allocator
+libc                    = { version = "0.2" }
+
 [dev-dependencies]
 serde_json              = { version = "1.0" }
