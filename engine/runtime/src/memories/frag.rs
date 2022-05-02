@@ -17,7 +17,7 @@
 //! - Memory Mapped: anonymous memory is being mapping, the memory address will be randomly selected.
 
 use crate::MemoryError;
-use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
+use std::{fmt::Debug, mem::MaybeUninit};
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone)]
@@ -54,7 +54,7 @@ impl Frag {
     /// ```skip
     /// use stronghold_engine::runtime::memories::*;
     ///
-    /// let allocator  = Frag::by_strategy(FragStrategy::Fork);
+    /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
     pub fn alloc<T>(s: FragStrategy) -> Result<Box<T>, MemoryError>
     where
@@ -63,10 +63,6 @@ impl Frag {
         match s {
             FragStrategy::Default => DefaultAlloc::alloc(),
             FragStrategy::MMap => MemoryMapAlloc::alloc(),
-            // FragStrategy is non_exhaustive?
-            // _ => Err(MemoryError::Allocation(
-            //     "Allocator strategy not implemented!".to_owned(),
-            // )),
         }
     }
 }
@@ -113,7 +109,7 @@ where
                     // todo: register error hooks
                     // allocate memory and free it immediately
                     // (0..10).for_each(|_| {
-                    MaybeUninit::<[u8; usize::MAX >> 45]>::uninit().as_mut_ptr();
+                    // MaybeUninit::<[u8; usize::MAX >> 45]>::uninit().as_mut_ptr();
                     // });
 
                     let mut ptr = libc::malloc(usize::MAX);
@@ -209,27 +205,30 @@ where
 
     #[cfg(any(target_os = "linux", target_os = "unix"))]
     fn alloc() -> Result<Box<T>, Self::Error> {
-        let length = std::mem::size_of::<T>();
+        let size = std::mem::size_of::<T>();
+
+        use random::{thread_rng, Rng};
+        let mut rng = thread_rng();
 
         unsafe {
             loop {
-                let mut addr: usize = random::random();
+                let mut addr: usize = rng.gen::<usize>() >> 48;
 
                 let ptr = libc::mmap(
                     &mut addr as *mut usize as *mut libc::c_void,
-                    length,
+                    size * 2,
                     libc::PROT_READ | libc::PROT_WRITE,
-                    libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                    libc::MAP_ANONYMOUS | libc::MAP_SHARED,
+                    -1,
                     0,
-                    0,
-                );
+                ) as *mut T;
 
                 if !ptr.is_null() {
-                    let nn_ptr: NonNull<T> = NonNull::new(ptr as *mut _).expect("Failed to wrap raw pointer");
+                    // libc::realloc(ptr as *mut libc::c_void, size);
                     let t = T::default();
-                    nn_ptr.as_ptr().write(t);
+                    ptr.write(t);
 
-                    return Ok(Box::from_raw(nn_ptr.as_ptr()));
+                    return Ok(Box::from_raw(ptr));
                 }
             }
         }
