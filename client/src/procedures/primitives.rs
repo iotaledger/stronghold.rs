@@ -833,9 +833,9 @@ impl DeriveSecret for ConcatKdf {
 
     fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
         let derived_key_material: Vec<u8> = match self.hash {
-            Sha2Hash::Sha256 => self.concat_kdf(Sha256::new(), guard.borrow().as_ref()),
-            Sha2Hash::Sha384 => self.concat_kdf(Sha384::new(), guard.borrow().as_ref()),
-            Sha2Hash::Sha512 => self.concat_kdf(Sha512::new(), guard.borrow().as_ref()),
+            Sha2Hash::Sha256 => self.concat_kdf::<Sha256>(guard.borrow().as_ref()),
+            Sha2Hash::Sha384 => self.concat_kdf::<Sha384>(guard.borrow().as_ref()),
+            Sha2Hash::Sha512 => self.concat_kdf::<Sha512>(guard.borrow().as_ref()),
         }?;
 
         Ok(Products {
@@ -855,7 +855,8 @@ impl DeriveSecret for ConcatKdf {
 
 impl ConcatKdf {
     /// The Concat KDF as defined in Section 5.8.1 of NIST.800-56A.
-    fn concat_kdf<D: Digest>(&self, mut digest: D, z: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+    fn concat_kdf<D: Digest>(&self, z: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        let mut digest: D = D::new();
         let alg: &str = self.algorithm_id.as_ref();
         let len: usize = self.key_len;
         let apu: &[u8] = self.apu.as_ref();
