@@ -4,7 +4,7 @@
 use crate::{
     procedures::{
         ConcatKdf, DeriveSecret, GenerateKey, GenerateSecret, KeyType, PublicKey, Sha2Hash, StrongholdProcedure,
-        X25519DiffieHellman,
+        WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -65,6 +65,8 @@ async fn usecase_diffie_hellman_concat_kdf() {
         apu: vec![],
         apv: vec![],
         output: key_1_2.clone(),
+        pub_info: vec![],
+        priv_info: vec![],
     };
 
     let key_2_1: Location = fresh::location();
@@ -81,6 +83,8 @@ async fn usecase_diffie_hellman_concat_kdf() {
         apu: vec![],
         apv: vec![],
         output: key_2_1.clone(),
+        pub_info: vec![],
+        priv_info: vec![],
     };
 
     let procedures: Vec<StrongholdProcedure> =
@@ -98,4 +102,50 @@ async fn usecase_diffie_hellman_concat_kdf() {
         .unwrap();
 
     assert_eq!(derived_shared_secret_1_2, derived_shared_secret_2_1);
+}
+
+// Test vector from https://www.rfc-editor.org/rfc/rfc7518.html#appendix-C
+// This uses the concat KDF in the context of JWA.
+#[tokio::test]
+async fn concat_kdf_with_jwa() {
+    let stronghold: Stronghold = Stronghold::default();
+    let client: Client = stronghold.create_client(b"client_path").unwrap();
+
+    let secret_location: Location = fresh::location();
+    let concat_output: Location = fresh::location();
+    let write = WriteVault {
+        data: vec![
+            158, 86, 217, 29, 129, 113, 53, 211, 114, 131, 66, 131, 191, 132, 38, 156, 251, 49, 110, 163, 218, 128,
+            106, 72, 246, 218, 167, 121, 140, 254, 144, 196,
+        ],
+        location: secret_location,
+    };
+
+    let key_len: usize = 16;
+
+    let kdf: ConcatKdf = ConcatKdf {
+        hash: Sha2Hash::Sha256,
+        algorithm_id: "A128GCM".to_owned(),
+        shared_secret: write.target().clone(),
+        key_len,
+        apu: b"Alice".to_vec(),
+        apv: b"Bob".to_vec(),
+        output: concat_output.clone(),
+        pub_info: ((key_len * 8) as u32).to_be_bytes().to_vec(),
+        priv_info: vec![],
+    };
+
+    client
+        .execure_procedure_chained(vec![write.into(), kdf.into()])
+        .unwrap();
+
+    let derived_key_material = client
+        .vault(concat_output.vault_path())
+        .read_secret(concat_output.record_path())
+        .unwrap();
+
+    assert_eq!(
+        derived_key_material,
+        vec![86, 170, 141, 234, 248, 35, 109, 32, 92, 34, 40, 205, 113, 167, 16, 26]
+    );
 }
