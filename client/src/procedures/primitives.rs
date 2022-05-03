@@ -800,6 +800,12 @@ impl UseSecret for AeadDecrypt {
 }
 
 /// Executes the concat KDF as defined in Section 5.8.1 of NIST.800-56A.
+///
+/// This derives key material from an existing shared secret (e.g. generated through ECDH)
+/// and additional fixed inputs, such as identifiers of the involved parties (e.g. "Alice")
+/// and algorithms (e.g. "A128GCM").
+/// The provided hash function is applied to those inputs in a loop,
+/// until enough key material was produced.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConcatKdf {
     /// The hash function to use in the kdf.
@@ -810,10 +816,14 @@ pub struct ConcatKdf {
     pub shared_secret: Location,
     /// The number of bytes of key material that should be derived.
     pub key_len: usize,
-    /// Agreement PartyUInfo
+    /// Agreement PartyUInfo.
     pub apu: Vec<u8>,
-    /// Agreement PartyVInfo
+    /// Agreement PartyVInfo.
     pub apv: Vec<u8>,
+    /// SuppPubInfo.
+    pub pub_info: Vec<u8>,
+    /// SuppPrivInfo.
+    pub priv_info: Vec<u8>,
     /// The location to write the derived key material into.
     pub output: Location,
 }
@@ -823,30 +833,9 @@ impl DeriveSecret for ConcatKdf {
 
     fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
         let derived_key_material: Vec<u8> = match self.hash {
-            Sha2Hash::Sha256 => Self::concat_kdf(
-                Sha256::new(),
-                self.algorithm_id.as_ref(),
-                self.key_len,
-                guard.borrow().as_ref(),
-                self.apu.as_ref(),
-                self.apv.as_ref(),
-            ),
-            Sha2Hash::Sha384 => Self::concat_kdf(
-                Sha384::new(),
-                self.algorithm_id.as_ref(),
-                self.key_len,
-                guard.borrow().as_ref(),
-                self.apu.as_ref(),
-                self.apv.as_ref(),
-            ),
-            Sha2Hash::Sha512 => Self::concat_kdf(
-                Sha512::new(),
-                self.algorithm_id.as_ref(),
-                self.key_len,
-                guard.borrow().as_ref(),
-                self.apu.as_ref(),
-                self.apv.as_ref(),
-            ),
+            Sha2Hash::Sha256 => self.concat_kdf(Sha256::new(), guard.borrow().as_ref()),
+            Sha2Hash::Sha384 => self.concat_kdf(Sha384::new(), guard.borrow().as_ref()),
+            Sha2Hash::Sha512 => self.concat_kdf(Sha512::new(), guard.borrow().as_ref()),
         }?;
 
         Ok(Products {
@@ -866,14 +855,14 @@ impl DeriveSecret for ConcatKdf {
 
 impl ConcatKdf {
     /// The Concat KDF as defined in Section 5.8.1 of NIST.800-56A.
-    pub fn concat_kdf<D: Digest>(
-        mut digest: D,
-        alg: &str,
-        len: usize,
-        z: &[u8],
-        apu: &[u8],
-        apv: &[u8],
-    ) -> Result<Vec<u8>, FatalProcedureError> {
+    fn concat_kdf<D: Digest>(&self, mut digest: D, z: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        let alg: &str = self.algorithm_id.as_ref();
+        let len: usize = self.key_len;
+        let apu: &[u8] = self.apu.as_ref();
+        let apv: &[u8] = self.apv.as_ref();
+        let pub_info: &[u8] = self.pub_info.as_ref();
+        let prv_info: &[u8] = self.priv_info.as_ref();
+
         let mut output: Vec<u8> = Vec::new();
 
         let target: usize = (len + (D::output_size() - 1)) / D::output_size();
@@ -899,8 +888,11 @@ impl ConcatKdf {
             digest.update(&(apv.len() as u32).to_be_bytes());
             digest.update(apv);
 
-            // Shared Key Length
-            digest.update(&((len * 8) as u32).to_be_bytes());
+            // SuppPubInfo
+            digest.update(pub_info);
+
+            // SuppPrivInfo
+            digest.update(prv_info);
 
             output.extend_from_slice(&digest.finalize_reset());
         }
