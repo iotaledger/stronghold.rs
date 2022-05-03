@@ -16,6 +16,11 @@
 //! - Default: The algorithm tries to allocate a huge amount of memory space while keeping a certain address distance
 //! - Memory Mapped: anonymous memory is being mapping, the memory address will be randomly selected.
 
+#[cfg(windows)]
+extern crate kernel32;
+#[cfg(windows)]
+extern crate winapi;
+
 use crate::MemoryError;
 use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
 
@@ -258,7 +263,8 @@ where
                 }
 
                 // on linux this isn't required to commit memory
-                // libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
+                #[cfg(any(target_os = "macos"))]
+                libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
 
                 let ptr = ptr as *mut T;
 
@@ -287,10 +293,10 @@ where
 ///
 /// # Example
 /// ```
-/// use stronghold_engine::runtime::memories::frag::{Frag, FragStrategy};
+/// use runtime::memories::frag::{Frag, FragStrategy};
 ///
 /// // allocates the object at a random address
-/// let object = Frag::<usize>alloc().unwrap();
+/// let object = Frag::alloc::<usize>(FragStrategy::Direct).unwrap();
 /// ```
 #[derive(Default, Clone)]
 struct DirectAlloc;
@@ -324,6 +330,13 @@ where
 
     #[cfg(target_os = "windows")]
     fn alloc() -> Result<T, Self::Error> {
-        todo!()
+        use random::{thread_rng, Rng};
+
+        let mut rng = thread_rng();
+        loop {
+            unsafe {
+                winapi::VirtualAlloc();
+            };
+        }
     }
 }
