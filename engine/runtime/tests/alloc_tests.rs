@@ -6,7 +6,7 @@ use runtime::{
     MemoryError,
 };
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 struct TestStruct {
     id: usize,
     name: String,
@@ -22,27 +22,45 @@ impl Default for TestStruct {
 }
 
 #[test]
-fn test_allocate_default() -> Result<(), MemoryError> {
-    test_allocate(FragStrategy::Default)
+fn test_allocate_direct() {
+    assert!(test_allocate(FragStrategy::Direct).is_ok());
+    assert!(test_allocate2(FragStrategy::Direct).is_ok());
 }
 
 #[test]
-fn test_allocate_map() -> Result<(), MemoryError> {
-    test_allocate(FragStrategy::MMap)
+fn test_allocate_map() {
+    assert!(test_allocate(FragStrategy::MMap).is_ok());
+    assert!(test_allocate2(FragStrategy::MMap).is_ok());
+}
+
+fn test_allocate2(strategy: FragStrategy) -> Result<(), MemoryError> {
+    loop {
+        unsafe {
+            match Frag::alloc2::<TestStruct>(strategy, 0xFFFF) {
+                Some((a, b)) => {
+                    assert!(distance(a.as_ref(), b.as_ref()) > 0xFFFF);
+                    break;
+                }
+                None => continue,
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn test_allocate(strategy: FragStrategy) -> Result<(), MemoryError> {
     let runs = 100;
-
     for _ in 0..runs {
-        let result = Frag::alloc::<TestStruct>(strategy.clone());
-        assert!(result.is_ok());
-        // assert_eq!(&*result.unwrap(), &TestStruct::default());
-
-        let a = Frag::alloc::<TestStruct>(strategy.clone())?;
-        let b = Frag::alloc::<TestStruct>(strategy.clone())?;
-        let distance = distance(&*a, &*b);
-        assert!(distance > 0xFFFF, "Illegal distance {}", distance);
+        unsafe {
+            match Frag::alloc::<TestStruct>(strategy) {
+                Some((a, b)) => {
+                    assert!(distance(a.as_ref(), b.as_ref()) > 0xFFFF);
+                    break;
+                }
+                None => continue,
+            }
+        }
     }
 
     Ok(())

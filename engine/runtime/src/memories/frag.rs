@@ -17,17 +17,17 @@
 //! - Memory Mapped: anonymous memory is being mapping, the memory address will be randomly selected.
 
 use crate::MemoryError;
-use std::{fmt::Debug, mem::MaybeUninit};
+use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
 
 /// Fragmenting strategy to allocate memory at random addresses.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum FragStrategy {
     /// Anonymously maps a region of memory
     MMap,
 
     /// System's allocator will be called a few times
-    Default,
+    Direct,
 }
 
 // -----------------------------------------------------------------------------
@@ -37,7 +37,7 @@ pub trait Alloc<T> {
     type Error;
 
     /// Allocates `T`, returns an error if something wrong happened
-    fn alloc() -> Result<Box<T>, Self::Error>;
+    fn alloc() -> Result<NonNull<T>, Self::Error>;
 }
 
 // -----------------------------------------------------------------------------
@@ -56,14 +56,44 @@ impl Frag {
     ///
     /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
-    pub fn alloc<T>(s: FragStrategy) -> Result<Box<T>, MemoryError>
+    fn alloc_single<T>(s: FragStrategy) -> Result<NonNull<T>, MemoryError>
     where
         T: Default,
     {
         match s {
-            FragStrategy::Default => DefaultAlloc::alloc(),
+            FragStrategy::Direct => DirectAlloc::alloc(),
             FragStrategy::MMap => MemoryMapAlloc::alloc(),
         }
+    }
+
+    /// Tries to allocate two objects of the same type with a minimum distance in memory space.
+    pub fn alloc2<T>(strategy: FragStrategy, distance: usize) -> Option<(NonNull<T>, NonNull<T>)>
+    where
+        T: Default,
+    {
+        let d = |a: &T, b: &T| {
+            let a = a as *const T as usize;
+            let b = b as *const T as usize;
+
+            a.abs_diff(b)
+        };
+
+        let a = Self::alloc_single::<T>(strategy).ok()?;
+        let b = Self::alloc_single::<T>(strategy).ok()?;
+        unsafe {
+            if d(a.as_ref(), b.as_ref()) < distance {
+                return None;
+            }
+        }
+
+        Some((a, b))
+    }
+    /// Tries to allocate two objects of the same type with a default minimum distance in memory space of `0xFFFF`.
+    pub fn alloc<T>(strategy: FragStrategy) -> Option<(NonNull<T>, NonNull<T>)>
+    where
+        T: Default,
+    {
+        Self::alloc2(strategy, 0xFFFF)
     }
 }
 
@@ -83,8 +113,8 @@ where
         todo!()
     }
 
-    #[cfg(any(target_os = "linux", target_os = "unix"))]
-    fn alloc() -> Result<Box<T>, Self::Error> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
         let mut pipe = [-1_i32; 2];
         let piped_result = unsafe { libc::pipe(&mut pipe as *mut i32) };
 
@@ -182,7 +212,7 @@ where
                         size -= read as usize;
                     }
 
-                    Ok(Box::from_raw(p))
+                    Ok(NonNull::new_unchecked(p))
                 }
                 _ => Err(MemoryError::Allocation(
                     "Unknown state while waiting for child process".to_string(),
@@ -203,8 +233,8 @@ where
 {
     type Error = MemoryError;
 
-    #[cfg(any(target_os = "linux", target_os = "unix"))]
-    fn alloc() -> Result<Box<T>, Self::Error> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
         let size = std::mem::size_of::<T>();
 
         use random::{thread_rng, Rng};
@@ -212,23 +242,31 @@ where
 
         unsafe {
             loop {
-                let mut addr: usize = rng.gen::<usize>() >> 48;
+                let mut addr: usize = rng.gen::<usize>();
 
                 let ptr = libc::mmap(
                     &mut addr as *mut usize as *mut libc::c_void,
-                    size * 2,
+                    size,
                     libc::PROT_READ | libc::PROT_WRITE,
-                    libc::MAP_ANONYMOUS | libc::MAP_SHARED,
+                    libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
                     -1,
                     0,
-                ) as *mut T;
+                );
+
+                if ptr == libc::MAP_FAILED {
+                    continue;
+                }
+
+                // on linux this isn't required to commit memory
+                // libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
+
+                let ptr = ptr as *mut T;
 
                 if !ptr.is_null() {
-                    // libc::realloc(ptr as *mut libc::c_void, size);
                     let t = T::default();
                     ptr.write(t);
 
-                    return Ok(Box::from_raw(ptr));
+                    return Ok(NonNull::new_unchecked(ptr));
                 }
             }
         }
@@ -242,7 +280,7 @@ where
 
 // -----------------------------------------------------------------------------
 
-/// [`DefaultAlloc`] tries to allocate a "huge" block of memory randomly,
+/// [`DirectAlloc`] tries to allocate a "huge" block of memory randomly,
 /// resizing the chunk to the desired size of the to be allocated object.
 ///
 /// The actual implementation is system dependent and might vary.
@@ -255,16 +293,16 @@ where
 /// let object = Frag::<usize>alloc().unwrap();
 /// ```
 #[derive(Default, Clone)]
-struct DefaultAlloc;
+struct DirectAlloc;
 
-impl<T> Alloc<T> for DefaultAlloc
+impl<T> Alloc<T> for DirectAlloc
 where
     T: Default,
 {
     type Error = MemoryError;
 
-    #[cfg(any(target_os = "linux", target_os = "unix"))]
-    fn alloc() -> Result<Box<T>, Self::Error> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
         use random::{thread_rng, Rng};
 
         let mut rng = thread_rng();
@@ -279,7 +317,7 @@ where
                 let actual_mem = libc::realloc(mem_ptr, actual_size) as *mut T;
                 actual_mem.write(T::default());
 
-                return Ok(Box::from_raw(actual_mem));
+                return Ok(NonNull::new_unchecked(actual_mem));
             }
         }
     }
