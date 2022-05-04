@@ -4,6 +4,7 @@ use crypto::hashes::{blake2b::Blake2b256, Digest};
 use crypto::signatures::ed25519;
 use iota_stronghold_new as stronghold;
 use std::ffi::CStr;
+use std::slice;
 use stronghold::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
     KeyProvider, Location, SnapshotPath, Store, Stronghold,
@@ -18,34 +19,6 @@ fn hash_blake2b(input: String) -> Vec<u8> {
     hasher.update(input.as_bytes());
     hasher.finalize().to_vec()
 }
-/*
-pub extern "C" fn store_secret() {
-    let client_path = "wasp";
-    let vault_path = "wasp";
-    let record_path = "seed";
-
-    let stronghold = Stronghold::default();
-
-    let snapshot_path = &SnapshotPath::from_path("/mnt/Dev/Coding/iota/stronghold.rs/bindings/native/go/test.db");
-    let key = hash_blake2b("qawsedrf".to_string());
-    let keyprovider = &KeyProvider::try_from(key).unwrap();
-
-    let client = stronghold
-        .load_client_from_snapshot(client_path, keyprovider, snapshot_path)
-        .unwrap();
-
-    let output_location = Location::Generic {
-        record_path: record_path.as_bytes().to_vec(),
-        vault_path: vault_path.as_bytes().to_vec(),
-    };
-
-    let sign_message = stronghold::procedures::Ed25519Sign {
-        private_key: output_location,
-        msg: vec![0, 1, 2, 3, 4],
-    };
-
-    let procedure_result = client.execute_procedure(StrongholdProcedure::Ed25519Sign(sign_message));
-}*/
 
 #[no_mangle]
 pub extern "C" fn create(snapshot_path_c: *const libc::c_char, key_c: *const libc::c_char) -> *mut StrongholdWrapper {
@@ -128,7 +101,7 @@ pub extern "C" fn load(snapshot_path_c: *const libc::c_char, key_c: *const libc:
 }
 
 #[no_mangle]
-pub extern "C" fn destroy(stronghold_ptr: *mut StrongholdWrapper) {
+pub extern "C" fn destroy_stronghold(stronghold_ptr: *mut StrongholdWrapper) {
     println!("[Rust] Destroy started");
 
     if stronghold_ptr.is_null() {
@@ -140,6 +113,24 @@ pub extern "C" fn destroy(stronghold_ptr: *mut StrongholdWrapper) {
     unsafe {
         Box::from_raw(stronghold_ptr);
     }
+
+    println!("[Rust] Destroyed instance");
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_signature(stronghold_ptr: *mut u8) {
+    println!("[Rust] Destroy started");
+
+    if stronghold_ptr.is_null() {
+        println!("[Rust] Stronghold Pointer was null!");
+
+        return;
+    }
+
+    unsafe {
+        Box::from_raw(stronghold_ptr);
+    }
+
     println!("[Rust] Destroyed instance");
 }
 
@@ -202,4 +193,46 @@ pub extern "C" fn generate_seed(stronghold_ptr: *mut StrongholdWrapper, key: *co
         .expect("Failed to commit to snapshot");
 
     println!("[Rust] Snapshot committed!");
+}
+
+#[no_mangle]
+pub extern "C" fn sign(
+    stronghold_ptr: *mut StrongholdWrapper,
+    data_c: *const libc::c_uchar,
+    data_length: libc::size_t,
+) -> *mut u8 {
+    let client_path = "wasp";
+    let vault_path = "wasp";
+    let record_path = "seed";
+
+    println!("[Rust] Getting Stronghold instance from Box");
+
+    let stronghold_wrapper = unsafe {
+        assert!(!stronghold_ptr.is_null());
+        &mut *stronghold_ptr
+    };
+
+    println!("[Rust] Got Stronghold instance from Box");
+
+    let client = stronghold_wrapper.stronghold.get_client(client_path).unwrap();
+
+    let output_location = Location::Generic {
+        record_path: record_path.as_bytes().to_vec(),
+        vault_path: vault_path.as_bytes().to_vec(),
+    };
+
+    let data = unsafe { slice::from_raw_parts(data_c, data_length as usize) };
+
+    let sign_message = stronghold::procedures::Ed25519Sign {
+        private_key: output_location,
+        msg: data.to_vec(),
+    };
+
+    let procedure_result = client.execute_procedure(StrongholdProcedure::Ed25519Sign(sign_message));
+
+    assert!(procedure_result.is_ok());
+
+    let signature: Vec<u8> = procedure_result.unwrap().into();
+
+    return Box::into_raw(Box::new(signature)) as *mut _;
 }
