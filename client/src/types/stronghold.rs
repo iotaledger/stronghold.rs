@@ -107,7 +107,7 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
-        let client = Client::default();
+        let mut client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
         // load the snapshot from disk
@@ -137,8 +137,8 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
-        let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+        let mut client = Client::default();
 
         let snapshot = self.snapshot.try_read()?;
 
