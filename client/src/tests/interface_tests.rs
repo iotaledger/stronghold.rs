@@ -5,9 +5,9 @@ use std::{borrow::BorrowMut, error::Error, path::Path};
 
 use crate::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
-    Client, ClientVault, KeyProvider, Location, Snapshot, SnapshotPath, Store, Stronghold,
+    Client, ClientError, ClientVault, KeyProvider, LoadFromPath, Location, Snapshot, SnapshotPath, Store, Stronghold,
 };
-use engine::vault::RecordHint;
+use engine::vault::{ClientId, RecordHint};
 use stronghold_utils::random as rand;
 use zeroize::Zeroize;
 
@@ -93,6 +93,50 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     assert!(procedure_result.is_ok());
 
     Ok(())
+}
+
+// Tests that a freshly created client and a loaded client are correctly purged.
+#[test]
+fn test_stronghold_purge_client() {
+    let vault_path = b"vault_path".to_vec();
+    let client_path = b"client_path".to_vec();
+    let client_path2 = b"client_path2".to_vec();
+
+    let stronghold = Stronghold::default();
+
+    let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
+
+    let client = stronghold.create_client(&client_path).unwrap();
+    let client2 = stronghold.create_client(&client_path2).unwrap();
+
+    let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
+
+    let generate_key_procedure = GenerateKey {
+        ty: KeyType::Ed25519,
+        output: output_location.clone(),
+    };
+
+    client.execute_procedure(generate_key_procedure.clone()).unwrap();
+    client2.execute_procedure(generate_key_procedure).unwrap();
+
+    // Write client2 into snapshot
+    stronghold.write_client(&client_path).unwrap();
+    stronghold.write_client(&client_path2).unwrap();
+
+    assert!(client.record_exists(&output_location).unwrap());
+    assert!(client2.record_exists(&output_location).unwrap());
+
+    std::mem::drop(client2);
+    let client2 = stronghold.load_client(&client_path2).unwrap();
+
+    stronghold.purge_client(client).unwrap();
+    stronghold.purge_client(client2).unwrap();
+
+    let err = stronghold.load_client(&client_path).unwrap_err();
+    let err2 = stronghold.load_client(&client_path2).unwrap_err();
+
+    assert!(matches!(err, ClientError::ClientDataNotPresent));
+    assert!(matches!(err2, ClientError::ClientDataNotPresent));
 }
 
 #[tokio::test]
