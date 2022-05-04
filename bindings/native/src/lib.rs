@@ -101,34 +101,34 @@ pub extern "C" fn load(snapshot_path_c: *const libc::c_char, key_c: *const libc:
 }
 
 #[no_mangle]
-pub extern "C" fn destroy_stronghold(stronghold_ptr: *mut StrongholdWrapper) {
+pub extern "C" fn destroy_stronghold(ptr: *mut StrongholdWrapper) {
     println!("[Rust] Destroy started");
 
-    if stronghold_ptr.is_null() {
+    if ptr.is_null() {
         println!("[Rust] Stronghold Pointer was null!");
 
         return;
     }
 
     unsafe {
-        Box::from_raw(stronghold_ptr);
+        Box::from_raw(ptr);
     }
 
     println!("[Rust] Destroyed instance");
 }
 
 #[no_mangle]
-pub extern "C" fn destroy_signature(stronghold_ptr: *mut u8) {
+pub extern "C" fn destroy_signature(ptr: *mut u8) {
     println!("[Rust] Destroy started");
 
-    if stronghold_ptr.is_null() {
+    if ptr.is_null() {
         println!("[Rust] Stronghold Pointer was null!");
 
         return;
     }
 
     unsafe {
-        Box::from_raw(stronghold_ptr);
+        Box::from_raw(ptr);
     }
 
     println!("[Rust] Destroyed instance");
@@ -179,7 +179,7 @@ pub extern "C" fn generate_seed(stronghold_ptr: *mut StrongholdWrapper, key: *co
 
     stronghold
         .write_client(client_path)
-        .expect("Store client state into snapshot state failed");
+        .expect("[Rust] Store client state into snapshot state failed");
 
     println!("[Rust] client stored");
 
@@ -190,7 +190,7 @@ pub extern "C" fn generate_seed(stronghold_ptr: *mut StrongholdWrapper, key: *co
             &SnapshotPath::from_path(stronghold_wrapper.snapshot_path.as_str()),
             &KeyProvider::try_from(key_hash).unwrap(),
         )
-        .expect("Failed to commit to snapshot");
+        .expect("[Rust] Failed to commit to snapshot");
 
     println!("[Rust] Snapshot committed!");
 }

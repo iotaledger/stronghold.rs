@@ -80,5 +80,5 @@ func main() {
 
 	stronghold := CreateSnapshot(path+"/test.db", "qawsedrf")
 	GenerateKey(stronghold, "qawsedrf")
-	Sign(stronghold, make([]byte, 32)) // Just an empty data input with the length of 32
+	Sign(stronghold, make([]byte, 32)) // Just a zeroed data input with the length of 32
 }
