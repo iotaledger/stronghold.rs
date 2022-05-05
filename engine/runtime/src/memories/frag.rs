@@ -16,20 +16,15 @@
 //! - Default: The algorithm tries to allocate a huge amount of memory space while keeping a certain address distance
 //! - Memory Mapped: anonymous memory is being mapping, the memory address will be randomly selected.
 
-#[cfg(windows)]
-extern crate kernel32;
-#[cfg(windows)]
-extern crate winapi;
-
 use crate::MemoryError;
-use std::{fmt::Debug, mem::MaybeUninit, ptr::NonNull};
+use std::{fmt::Debug, ptr::NonNull};
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum FragStrategy {
     /// Anonymously maps a region of memory
-    MMap,
+    Map,
 
     /// System's allocator will be called a few times
     Direct,
@@ -61,13 +56,13 @@ impl Frag {
     ///
     /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
-    fn alloc_single<T>(s: FragStrategy) -> Result<NonNull<T>, MemoryError>
+    pub fn alloc_single<T>(s: FragStrategy) -> Result<NonNull<T>, MemoryError>
     where
         T: Default,
     {
         match s {
             FragStrategy::Direct => DirectAlloc::alloc(),
-            FragStrategy::MMap => MemoryMapAlloc::alloc(),
+            FragStrategy::Map => MemoryMapAlloc::alloc(),
         }
     }
 
@@ -114,12 +109,14 @@ where
     type Error = MemoryError;
 
     #[cfg(target_os = "windows")]
-    fn alloc() -> Result<T, Self::Error> {
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
         todo!()
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn alloc() -> Result<NonNull<T>, Self::Error> {
+        use std::mem::MaybeUninit;
+
         let mut pipe = [-1_i32; 2];
         let piped_result = unsafe { libc::pipe(&mut pipe as *mut i32) };
 
@@ -279,8 +276,78 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc() -> Result<T, Self::Error> {
-        todo!()
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
+        use random::{thread_rng, Rng};
+        let mut rng = thread_rng();
+
+        let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
+
+        unsafe {
+            // allocation prelude
+            {
+                let r_addr = rng.gen::<u32>() >> 4;
+
+                let random_mapping = windows::Win32::System::Memory::CreateFileMappingW(
+                    handle,
+                    std::ptr::null_mut(),
+                    windows::Win32::System::Memory::PAGE_READWRITE,
+                    0,
+                    r_addr,
+                    windows::core::PCWSTR(std::ptr::null_mut()),
+                )
+                .map_err(|e| MemoryError::Allocation(e.to_string()))?;
+
+                if let Err(e) = last_error() {
+                    return Err(e);
+                }
+
+                let _ = windows::Win32::System::Memory::MapViewOfFile(
+                    random_mapping,
+                    windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
+                    0,
+                    0,
+                    r_addr as usize,
+                );
+
+                if let Err(e) = last_error() {
+                    return Err(e);
+                }
+            }
+
+            // actual memory mapping
+            {
+                let actual_size = std::mem::size_of::<T>() as u32;
+                let actual_mapping = windows::Win32::System::Memory::CreateFileMappingW(
+                    handle,
+                    std::ptr::null_mut(),
+                    windows::Win32::System::Memory::PAGE_READWRITE,
+                    0,
+                    actual_size,
+                    windows::core::PCWSTR(std::ptr::null_mut()),
+                )
+                .map_err(|e| MemoryError::Allocation(e.to_string()))?;
+
+                if let Err(e) = last_error() {
+                    return Err(e);
+                }
+
+                let actual_mem = windows::Win32::System::Memory::MapViewOfFile(
+                    actual_mapping,
+                    windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
+                    0,
+                    0,
+                    actual_size as usize,
+                ) as *mut T;
+
+                if let Err(e) = last_error() {
+                    return Err(e);
+                }
+
+                actual_mem.write(T::default());
+
+                return Ok(NonNull::new_unchecked(actual_mem as *mut T));
+            }
+        }
     }
 }
 
@@ -329,14 +396,79 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc() -> Result<T, Self::Error> {
-        use random::{thread_rng, Rng};
-
-        let mut rng = thread_rng();
+    fn alloc() -> Result<NonNull<T>, Self::Error> {
         loop {
             unsafe {
-                winapi::VirtualAlloc();
+                let actual_size = std::mem::size_of::<T>();
+
+                let actual_mem = windows::Win32::System::Memory::VirtualAlloc(
+                    std::ptr::null_mut(),
+                    actual_size,
+                    windows::Win32::System::Memory::MEM_COMMIT | windows::Win32::System::Memory::MEM_RESERVE,
+                    windows::Win32::System::Memory::PAGE_READWRITE,
+                );
+
+                if actual_mem.is_null() {
+                    if let Err(_) = last_error() {
+                        continue;
+                    }
+                }
+
+                let actual_mem = actual_mem as *mut T;
+                actual_mem.write(T::default());
+                return Ok(NonNull::new_unchecked(actual_mem));
             };
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+/// Rounds `value` up to a multiple of `base`
+///
+/// # Example
+/// ```
+/// let n = 13;
+/// let b = 14;
+/// let c = runtime::memories::frag::round_up(n, b);
+/// assert_eq!(c, 14);
+/// ```
+pub fn round_up(value: usize, base: usize) -> usize {
+    if base == 0 {
+        return value;
+    }
+
+    match value % base {
+        0 => value,
+        remainder => value + base - remainder,
+    }
+}
+
+/// Checks for error codes under Windows.
+///
+/// Detected errors will be returned as [`MemoryError`]. If no error has been
+/// detected eg. the function result is `0`, `Ok` will be returned.
+#[cfg(target_os = "windows")]
+fn last_error() -> Result<(), MemoryError> {
+    unsafe {
+        match windows::Win32::Foundation::GetLastError() {
+            windows::Win32::Foundation::WIN32_ERROR(0) => Ok(()),
+            windows::Win32::Foundation::ERROR_ALREADY_EXISTS => {
+                Err(MemoryError::Allocation("Mapping already exists".to_owned()))
+            }
+            windows::Win32::Foundation::ERROR_INVALID_HANDLE => {
+                Err(MemoryError::Allocation("Invalid handle for mapped memory".to_owned()))
+            }
+            windows::Win32::Foundation::ERROR_COMMITMENT_LIMIT => Err(MemoryError::Allocation(
+                "The paging file is too small for this operation to complete".to_owned(),
+            )),
+            windows::Win32::Foundation::ERROR_INVALID_PARAMETER => {
+                Err(MemoryError::Allocation("The parameter is incorrect.".to_owned()))
+            }
+            windows::Win32::Foundation::ERROR_INVALID_ADDRESS => {
+                Err(MemoryError::Allocation("Attempt to access invalid address.".to_owned()))
+            }
+            err => Err(MemoryError::Allocation(format!("Unknown error code 0x{:08x}", err.0))),
         }
     }
 }

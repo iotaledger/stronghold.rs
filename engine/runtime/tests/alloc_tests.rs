@@ -1,6 +1,8 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use std::ptr::NonNull;
+
 use runtime::{
     memories::frag::{Frag, FragStrategy},
     MemoryError,
@@ -21,46 +23,31 @@ impl Default for TestStruct {
     }
 }
 
+/// this fails under windows
 #[test]
 fn test_allocate_direct() {
-    assert!(test_allocate(FragStrategy::Direct).is_ok());
-    assert!(test_allocate2(FragStrategy::Direct).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Direct)).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Direct, 0xFFFF)).is_ok());
 }
 
 #[test]
 fn test_allocate_map() {
-    assert!(test_allocate(FragStrategy::MMap).is_ok());
-    assert!(test_allocate2(FragStrategy::MMap).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Map)).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Map, 0xFFFF)).is_ok());
 }
 
-fn test_allocate2(strategy: FragStrategy) -> Result<(), MemoryError> {
-    loop {
-        unsafe {
-            match Frag::alloc2::<TestStruct>(strategy, 0xFFFF) {
-                Some((a, b)) => {
-                    assert!(distance(a.as_ref(), b.as_ref()) > 0xFFFF);
-                    break;
-                }
-                None => continue,
-            }
-        }
-    }
+fn test_allocate<T, F>(allocator: F) -> Result<(), MemoryError>
+where
+    T: Default,
+    F: Fn() -> Option<(NonNull<T>, NonNull<T>)>,
+{
+    let min_distance = 0xFFFF;
+    let result = allocator();
+    assert!(result.is_some());
+    let (a, b) = result.unwrap();
 
-    Ok(())
-}
-
-fn test_allocate(strategy: FragStrategy) -> Result<(), MemoryError> {
-    let runs = 100;
-    for _ in 0..runs {
-        unsafe {
-            match Frag::alloc::<TestStruct>(strategy) {
-                Some((a, b)) => {
-                    assert!(distance(a.as_ref(), b.as_ref()) > 0xFFFF);
-                    break;
-                }
-                None => continue,
-            }
-        }
+    unsafe {
+        assert!(distance(a.as_ref(), b.as_ref()) > min_distance);
     }
 
     Ok(())

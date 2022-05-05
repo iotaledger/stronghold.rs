@@ -11,6 +11,7 @@ use engine::{
     store::Cache,
     vault::{DbView, Key, RecordHint, RecordId, VaultId},
 };
+use runtime::memories::frag::{Frag, FragStrategy};
 
 use crate::provider::Provider;
 
@@ -107,6 +108,52 @@ fn bench_store_decompress(c: &mut Criterion) {
     });
 }
 
+fn bench_allocate_direct(c: &mut Criterion) {
+    #[allow(dead_code)]
+    struct TestStruct {
+        id: usize,
+        name: String,
+    }
+
+    impl Default for TestStruct {
+        fn default() -> Self {
+            Self {
+                id: 0xFFFF_FFFF_FFFF_FFFF,
+                name: "Some TestingStruct".to_owned(),
+            }
+        }
+    }
+
+    c.bench_function("Allocate memory direct", |b| {
+        b.iter(|| {
+            Frag::alloc::<TestStruct>(FragStrategy::Direct);
+        });
+    });
+}
+
+fn bench_allocate_mapped(c: &mut Criterion) {
+    #[allow(dead_code)]
+    struct TestStruct {
+        id: usize,
+        name: String,
+    }
+
+    impl Default for TestStruct {
+        fn default() -> Self {
+            Self {
+                id: 0xFFFF_FFFF_FFFF_FFFF,
+                name: "Some TestingStruct".to_owned(),
+            }
+        }
+    }
+
+    c.bench_function("Allocate memory mapped", |b| {
+        b.iter(|| {
+            Frag::alloc::<TestStruct>(FragStrategy::Map);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_snapshot_compression,
@@ -115,6 +162,8 @@ criterion_group!(
     bench_store_compress,
     bench_store_compression,
     bench_store_decompress,
-    bench_vault_write
+    bench_vault_write,
+    bench_allocate_direct,
+    bench_allocate_mapped
 );
 criterion_main!(benches);
