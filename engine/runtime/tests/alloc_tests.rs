@@ -1,7 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::ptr::NonNull;
+use std::{fmt::Debug, ptr::NonNull};
 
 use runtime::{
     memories::frag::{Frag, FragStrategy},
@@ -38,16 +38,22 @@ fn test_allocate_map() {
 
 fn test_allocate<T, F>(allocator: F) -> Result<(), MemoryError>
 where
-    T: Default,
+    T: Default + Debug + PartialEq,
     F: Fn() -> Option<(NonNull<T>, NonNull<T>)>,
 {
     let min_distance = 0xFFFF;
     let result = allocator();
     assert!(result.is_some());
+
     let (a, b) = result.unwrap();
 
     unsafe {
-        assert!(distance(a.as_ref(), b.as_ref()) > min_distance);
+        let aa = a.as_ref();
+        let bb = b.as_ref();
+
+        assert!(distance(aa, bb) > min_distance);
+        assert_eq!(aa, &T::default());
+        assert_eq!(bb, &T::default());
     }
 
     Ok(())
