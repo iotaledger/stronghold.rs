@@ -9,12 +9,23 @@ struct StrongholdWrapper *create(const char *snapshot_path_c, const char *key_c)
 
 struct StrongholdWrapper *load(const char *snapshot_path_c, const char *key_c);
 
-void destroy_stronghold(struct StrongholdWrapper *ptr);
+void destroy_stronghold(struct StrongholdWrapper *stronghold_ptr);
 
-void destroy_signature(uint8_t *ptr);
+void destroy_data_pointer(uint8_t *ptr);
 
-void generate_seed(struct StrongholdWrapper *stronghold_ptr, const char *key);
+void generate_ed25519_keypair(struct StrongholdWrapper *stronghold_ptr,
+                              const char *key_c,
+                              const char *record_path_c);
+
+void generate_seed(struct StrongholdWrapper *stronghold_ptr, const char *key_c);
+
+void derive_seed(struct StrongholdWrapper *stronghold_ptr,
+                 const char *key_c,
+                 uint32_t address_index);
+
+uint8_t *get_public_key(struct StrongholdWrapper *stronghold_ptr, const char *record_path_c);
 
 uint8_t *sign(struct StrongholdWrapper *stronghold_ptr,
+              const char *record_path_c,
               const unsigned char *data_c,
               size_t data_length);

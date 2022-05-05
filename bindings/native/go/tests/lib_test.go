@@ -89,14 +89,10 @@ func TestKeyGeneration(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
 	stronghold.Create(dbPath, testPassword)
 
-	success, err := stronghold.GenerateKey(testPassword)
+	err := stronghold.GenerateED25519KeyPair(testPassword, "test")
 
 	if err != nil {
 		t.Error(err)
-	}
-
-	if !success {
-		t.Error("Failed to generate key")
 	}
 }
 
@@ -104,9 +100,9 @@ func TestSign(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
 	stronghold.Create(dbPath, testPassword)
 
-	stronghold.GenerateKey(testPassword)
+	stronghold.GenerateED25519KeyPair(testPassword, "test")
 
-	signature, err := stronghold.Sign(make([]byte, 32)) // Just a zeroed byte array with the length of 32
+	signature, err := stronghold.Sign("test", make([]byte, 32)) // Just a zeroed byte array with the length of 32
 
 	if err != nil {
 		t.Error(err)
