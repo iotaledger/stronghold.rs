@@ -2,11 +2,10 @@ package stronghold_go
 
 import (
 	"errors"
-	"unsafe"
 )
 
 type StrongholdNative struct {
-	ptr unsafe.Pointer
+	ptr StrongholdPointer
 }
 
 func NewStronghold() *StrongholdNative {

@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"strongohold"
+	"stronghold_go"
 	"testing"
 )
 
@@ -30,8 +30,8 @@ func getNewDBPath() string {
 	return path.Join(cwd, fmt.Sprintf("%v.db", randomFileName()))
 }
 
-func initializeStrongholdTest(t *testing.T, withNewPath bool) (*strongohold.StrongholdNative, string) {
-	stronghold := strongohold.NewStronghold()
+func initializeStrongholdTest(t *testing.T, withNewPath bool) (*stronghold_go.StrongholdNative, string) {
+	stronghold := stronghold_go.NewStronghold()
 
 	if withNewPath {
 		dbPath := getNewDBPath()
@@ -114,18 +114,5 @@ func TestSign(t *testing.T) {
 
 	if len(signature) != 64 {
 		t.Error("Signature size is invalid")
-	}
-}
-
-func TestLoadingSnapshotFails(t *testing.T) {
-	stronghold, _ := initializeStrongholdTest(t, false)
-	success, err := stronghold.Open("thisfilepathdoesnotexist", testPassword)
-
-	if err != nil {
-		t.Error(err)
-	}
-
-	if success {
-		t.Error("")
 	}
 }

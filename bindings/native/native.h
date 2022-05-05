@@ -1,24 +1,20 @@
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-#define STRONGHOLD_PTR void *
+typedef struct StrongholdWrapper StrongholdWrapper;
 
-/*
- * Snapshot paths need to be absolute.
- */
+struct StrongholdWrapper *create(const char *snapshot_path_c, const char *key_c);
 
-// Creates a new Stronghold instance with an empty snapshot
-STRONGHOLD_PTR create(char *snapshot_path, char *key);
+struct StrongholdWrapper *load(const char *snapshot_path_c, const char *key_c);
 
-// Initializes a new Stronghold instance
-STRONGHOLD_PTR load(char *snapshot_path, char *key);
+void destroy_stronghold(struct StrongholdWrapper *ptr);
 
-// Frees and deletes instance from pointer
-// *This is required for Stronghold and Signature pointers!*
-void destroy_stronghold(STRONGHOLD_PTR stronghold_ptr);
-void destroy_signature(STRONGHOLD_PTR signature_ptr);
+void destroy_signature(uint8_t *ptr);
 
-// Generates a new ED25519 private key (seed)
-void generate_seed(STRONGHOLD_PTR stronghold_ptr, char *key);
+void generate_seed(struct StrongholdWrapper *stronghold_ptr, const char *key);
 
-// Signs an array of bytes, returns a signature with a length of 64 bytes
-void *sign(STRONGHOLD_PTR stronghold_ptr, char *data, size_t length);
+uint8_t *sign(struct StrongholdWrapper *stronghold_ptr,
+              const unsigned char *data_c,
+              size_t data_length);
