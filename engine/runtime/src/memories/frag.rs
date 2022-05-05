@@ -117,14 +117,16 @@ where
 
         unsafe {
             loop {
-                let mut addr: usize = rng.gen::<usize>();
+                let mut addr: usize = (0x00007fff00000000 | (rng.gen::<usize>() >> 32)) & !0xFFF;
 
                 // the maximum size of the mapping
-                let max_alloc_size = 0xFFFFFF;
+                let max_alloc_size = 0xFFFF;
+                let desired_alloc_size = rng.gen::<usize>().min(size).max(max_alloc_size);
 
+                // this creates an anonymous mapping zeroed out.
                 let ptr = libc::mmap(
-                    &mut addr as *mut usize as *mut libc::c_void,
-                    rng.gen::<usize>().min(size).max(max_alloc_size),
+                    &mut addr as *mut _ as *mut libc::c_void,
+                    desired_alloc_size, // was size
                     libc::PROT_READ | libc::PROT_WRITE,
                     libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
                     -1,
@@ -134,6 +136,11 @@ where
                 if ptr == libc::MAP_FAILED {
                     continue;
                 }
+
+                // write random bytes into allocated pages
+                let bytes = ptr as *mut usize;
+                let end = rng.gen_range(size..(size * 0x1000));
+                (size..end).for_each(|_| bytes.write(rng.gen()));
 
                 // on linux this isn't required to commit memory
                 #[cfg(any(target_os = "macos"))]
@@ -309,6 +316,7 @@ where
 /// let c = runtime::memories::frag::round_up(n, b);
 /// assert_eq!(c, 14);
 /// ```
+#[inline(always)]
 pub fn round_up(value: usize, base: usize) -> usize {
     if base == 0 {
         return value;
