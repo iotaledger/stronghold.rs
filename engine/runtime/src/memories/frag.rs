@@ -68,7 +68,7 @@ impl Frag {
     }
 
     /// Tries to allocate two objects of the same type with a minimum distance in memory space.
-    pub fn alloc2<T>(strategy: FragStrategy, distance: usize) -> Option<(NonNull<T>, NonNull<T>)>
+    pub fn alloc2<T>(strategy: FragStrategy, distance: usize) -> Result<(NonNull<T>, NonNull<T>), MemoryError>
     where
         T: Default,
     {
@@ -79,18 +79,20 @@ impl Frag {
             a.abs_diff(b)
         };
 
-        let a = Self::alloc_single::<T>(strategy).ok()?;
-        let b = Self::alloc_single::<T>(strategy).ok()?;
+        let a = Self::alloc_single::<T>(strategy)?;
+        let b = Self::alloc_single::<T>(strategy)?;
         unsafe {
             if d(a.as_ref(), b.as_ref()) < distance {
-                return None;
+                return Err(MemoryError::Allocation(
+                    "Distance between segments below threshold".to_owned(),
+                ));
             }
         }
 
-        Some((a, b))
+        Ok((a, b))
     }
     /// Tries to allocate two objects of the same type with a default minimum distance in memory space of `0xFFFF`.
-    pub fn alloc<T>(strategy: FragStrategy) -> Option<(NonNull<T>, NonNull<T>)>
+    pub fn alloc<T>(strategy: FragStrategy) -> Result<(NonNull<T>, NonNull<T>), MemoryError>
     where
         T: Default,
     {
@@ -174,7 +176,7 @@ where
 
                     {
                         if error != 0 {
-                            info!("madvise returned an error {}", error);
+                            error!("madvise returned an error {}", error);
                         }
                     }
                 }
@@ -296,11 +298,12 @@ where
     fn alloc() -> Result<NonNull<T>, Self::Error> {
         use random::{thread_rng, Rng};
 
+        let actual_size = std::mem::size_of::<T>();
         let mut rng = thread_rng();
+
         loop {
             unsafe {
-                let alloc_size = rng.gen::<usize>() >> 32;
-                let actual_size = std::mem::size_of::<T>();
+                let alloc_size = rng.gen::<usize>().min(actual_size).max(0xFFFFF);
 
                 info!("desired alloc size 0x{:08X}", actual_size);
 
@@ -318,7 +321,7 @@ where
                     let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
 
                     if error != 0 {
-                        info!("memory advise returned an error {}", error);
+                        error!("memory advise returned an error {}", error);
                     }
                 }
 
@@ -336,15 +339,17 @@ where
 
     #[cfg(target_os = "windows")]
     fn alloc() -> Result<NonNull<T>, Self::Error> {
+        use windows::Win32::System::Memory::{VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
+
         loop {
             unsafe {
                 let actual_size = std::mem::size_of::<T>();
 
-                let actual_mem = windows::Win32::System::Memory::VirtualAlloc(
+                let actual_mem = VirtualAlloc(
                     std::ptr::null_mut(),
                     actual_size,
-                    windows::Win32::System::Memory::MEM_COMMIT | windows::Win32::System::Memory::MEM_RESERVE,
-                    windows::Win32::System::Memory::PAGE_READWRITE,
+                    MEM_COMMIT | MEM_RESERVE,
+                    PAGE_READWRITE,
                 );
 
                 if actual_mem.is_null() {

@@ -126,7 +126,7 @@ fn bench_allocate_direct(c: &mut Criterion) {
 
     c.bench_function("Allocate memory direct", |b| {
         b.iter(|| {
-            Frag::alloc::<TestStruct>(FragStrategy::Direct);
+            let _ = Frag::alloc::<TestStruct>(FragStrategy::Direct);
         });
     });
 }
@@ -149,7 +149,7 @@ fn bench_allocate_mapped(c: &mut Criterion) {
 
     c.bench_function("Allocate memory mapped", |b| {
         b.iter(|| {
-            Frag::alloc::<TestStruct>(FragStrategy::Map);
+            let _ = Frag::alloc::<TestStruct>(FragStrategy::Map);
         });
     });
 }

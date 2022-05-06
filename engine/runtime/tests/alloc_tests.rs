@@ -31,7 +31,10 @@ fn test_allocate_direct() {
         .filter(None, log::LevelFilter::Info)
         .try_init();
 
+    info!("Test Fixed Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Direct)).is_ok());
+
+    info!("Test Arbitrary Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Direct, 0xFFFF)).is_ok());
 }
 
@@ -52,11 +55,11 @@ fn test_allocate_map() {
 fn test_allocate<T, F>(allocator: F) -> Result<(), MemoryError>
 where
     T: Default + Debug + PartialEq,
-    F: Fn() -> Option<(NonNull<T>, NonNull<T>)>,
+    F: Fn() -> Result<(NonNull<T>, NonNull<T>), MemoryError>,
 {
     let min_distance = 0xFFFF;
     let result = allocator();
-    assert!(result.is_some());
+    assert!(result.is_ok(), "Failed to allocate memory: {:?}", result);
 
     let (a, b) = result.unwrap();
 
