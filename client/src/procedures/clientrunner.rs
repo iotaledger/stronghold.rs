@@ -8,7 +8,7 @@ use std::{
 
 use engine::{
     runtime::memories::buffer::Buffer,
-    vault::{BoxProvider, ClientId, DbView, RecordHint, VaultId},
+    vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
 
 use crate::{
@@ -23,31 +23,36 @@ pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
 // ported [`Runner`] impl for [`Client`]
 impl Runner for Client {
-    fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    fn get_guards<F, T, const N: usize>(
+        &self,
+        locations: [Location; N],
+        f: F,
+    ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
+        F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>,
     {
-        let (vault_id, record_id) = location.resolve();
+        let mut ids: Vec<(Key<Provider>, VaultId, RecordId)> = Vec::with_capacity(N);
 
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
+        let keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
 
-        let key = keystore.take_key(vault_id).ok_or(VaultError::VaultNotFound(vault_id))?;
+        for location in locations {
+            let (vault_id, record_id) = location.resolve();
+            let key: Key<Provider> = keystore.get_key(vault_id).ok_or(VaultError::VaultNotFound(vault_id))?;
+            ids.push((key, vault_id, record_id));
+        }
+        let ids: [(Key<Provider>, VaultId, RecordId); N] = ids.try_into().expect("buffers did not have exactly len N");
 
         let mut ret = None;
-        let execute_procedure = |guard: Buffer<u8>| {
+        let execute_procedure = |guard: [Buffer<u8>; N]| {
             ret = Some(f(guard)?);
             Ok(())
         };
+
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
         let db = self.db.try_read().map_err(|e| e.to_string()).expect("");
 
-        let res = db.get_guard(&key, vault_id, record_id, execute_procedure);
-
-        // this should return an error
-        keystore
-            .get_or_insert_key(vault_id, key)
-            .expect("Inserting key into vault failed");
+        let res = db.get_guards(ids, execute_procedure);
 
         match res {
             Ok(()) => Ok(ret.unwrap()),
@@ -178,5 +183,39 @@ impl Runner for Client {
             .get_or_insert_key(vault_id, key)
             .expect("Inserting key into vault failed");
         true
+    }
+}
+
+impl Client {
+    pub fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
+    {
+        let (vault_id, record_id) = location.resolve();
+
+        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
+        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
+
+        let key = keystore.take_key(vault_id).ok_or(VaultError::VaultNotFound(vault_id))?;
+
+        let mut ret = None;
+        let execute_procedure = |guard: Buffer<u8>| {
+            ret = Some(f(guard)?);
+            Ok(())
+        };
+        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
+        let db = self.db.try_read().map_err(|e| e.to_string()).expect("");
+
+        let res = db.get_guard(&key, vault_id, record_id, execute_procedure);
+
+        // this should return an error
+        keystore
+            .get_or_insert_key(vault_id, key)
+            .expect("Inserting key into vault failed");
+
+        match res {
+            Ok(()) => Ok(ret.unwrap()),
+            Err(e) => Err(e),
+        }
     }
 }

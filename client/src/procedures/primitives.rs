@@ -26,10 +26,7 @@ use crypto::{
     utils::rand::fill,
 };
 
-use engine::{
-    runtime::memories::buffer::Buffer,
-    vault::{RecordHint, VaultId},
-};
+use engine::runtime::memories::buffer::{Buffer, Ref};
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
 
@@ -144,7 +141,7 @@ macro_rules! procedures {
             }
         )+
     };
-    { $Trait:ident => { $($Proc:ident),+ }} => {
+    { $Trait:ident $($n:literal)? => { $($Proc:ident),+ }} => {
         $(
             impl Procedure for $Proc {
                 type Output = <$Proc as $Trait>::Output;
@@ -163,13 +160,32 @@ macro_rules! procedures {
     };
 }
 
+#[macro_export]
+macro_rules! procedures2 {
+    { $Trait:ident<$n:literal> => { $($Proc:ident),+ }} => {
+        $(
+            impl Procedure for $Proc {
+                type Output = <$Proc as $Trait<$n>>::Output;
+
+                fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
+                    self.exec(runner)
+                }
+            }
+        )+
+        procedures!(_ => { $($Proc),+ });
+    };
+}
+
+procedures2! {
+    // Stronghold procedures that implement the `UseSecret` trait.
+    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt }
+}
+
 procedures! {
     // Stronghold procedures that implement the `GenerateSecret` trait.
     GenerateSecret => { WriteVault, BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey, Pbkdf2Hmac },
     // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf },
-    // Stronghold procedures that implement the `UseSecret` trait.
-    UseSecret => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     // Stronghold procedures that directly implement the `Procedure` trait.
     _ => { RevokeData, GarbageCollect }
 }
@@ -442,8 +458,7 @@ impl DeriveSecret for Slip10Derive {
     }
 }
 
-fn x25519_secret_key(guard: Buffer<u8>) -> Result<x25519::SecretKey, crypto::Error> {
-    let raw = guard.borrow();
+fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
     let raw = (*raw).to_vec();
     if raw.len() != x25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
@@ -456,8 +471,7 @@ fn x25519_secret_key(guard: Buffer<u8>) -> Result<x25519::SecretKey, crypto::Err
     x25519::SecretKey::try_from_slice(&raw)
 }
 
-fn ed25519_secret_key(guard: Buffer<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
-    let raw = guard.borrow();
+fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
     let mut raw = (*raw).to_vec();
     if raw.len() < ed25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
@@ -505,24 +519,24 @@ pub struct PublicKey {
     pub private_key: Location,
 }
 
-impl UseSecret for PublicKey {
+impl UseSecret<1> for PublicKey {
     type Output = [u8; 32];
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             KeyType::Ed25519 => {
-                let sk = ed25519_secret_key(guard)?;
+                let sk = ed25519_secret_key(guard[0].borrow())?;
                 Ok(sk.public_key().to_bytes())
             }
             KeyType::X25519 => {
-                let sk = x25519_secret_key(guard)?;
+                let sk = x25519_secret_key(guard[0].borrow())?;
                 Ok(sk.public_key().to_bytes())
             }
         }
     }
 
-    fn source(&self) -> &Location {
-        &self.private_key
+    fn source(&self) -> [Location; 1] {
+        [self.private_key.clone()]
     }
 }
 
@@ -537,17 +551,17 @@ pub struct Ed25519Sign {
     pub private_key: Location,
 }
 
-impl UseSecret for Ed25519Sign {
+impl UseSecret<1> for Ed25519Sign {
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
-        let sk = ed25519_secret_key(guard)?;
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let sk = ed25519_secret_key(guard[0].borrow())?;
         let sig = sk.sign(&self.msg);
         Ok(sig.to_bytes())
     }
 
-    fn source(&self) -> &Location {
-        &self.private_key
+    fn source(&self) -> [Location; 1] {
+        [self.private_key.clone()]
     }
 }
 
@@ -564,7 +578,7 @@ impl DeriveSecret for X25519DiffieHellman {
     type Output = ();
 
     fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
-        let sk = x25519_secret_key(guard)?;
+        let sk = x25519_secret_key(guard.borrow())?;
         let public = x25519::PublicKey::from_bytes(self.public_key);
         let shared_key = sk.diffie_hellman(&public);
 
@@ -592,31 +606,31 @@ pub struct Hmac {
     pub key: Location,
 }
 
-impl UseSecret for Hmac {
+impl UseSecret<1> for Hmac {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut mac = [0; SHA256_LEN];
-                HMAC_SHA256(&self.msg, &*guard.borrow(), &mut mac);
+                HMAC_SHA256(&self.msg, &*guard[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha384 => {
                 let mut mac = [0; SHA384_LEN];
-                HMAC_SHA384(&self.msg, &*guard.borrow(), &mut mac);
+                HMAC_SHA384(&self.msg, &*guard[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha512 => {
                 let mut mac = [0; SHA512_LEN];
-                HMAC_SHA512(&self.msg, &*guard.borrow(), &mut mac);
+                HMAC_SHA512(&self.msg, &*guard[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
         }
     }
 
-    fn source(&self) -> &Location {
-        &self.key
+    fn source(&self) -> [Location; 1] {
+        [self.key.clone()]
     }
 }
 
@@ -725,10 +739,10 @@ pub struct AeadEncrypt {
     pub key: Location,
 }
 
-impl UseSecret for AeadEncrypt {
+impl UseSecret<1> for AeadEncrypt {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let mut ctx = vec![0; self.plaintext.len()];
 
         let f = match self.cipher {
@@ -740,7 +754,7 @@ impl UseSecret for AeadEncrypt {
             AeadCipher::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
         };
         f(
-            &*guard.borrow(),
+            &*guard[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &self.plaintext,
@@ -753,8 +767,8 @@ impl UseSecret for AeadEncrypt {
         Ok(output)
     }
 
-    fn source(&self) -> &Location {
-        &self.key
+    fn source(&self) -> [Location; 1] {
+        [self.key.clone()]
     }
 }
 
@@ -773,10 +787,10 @@ pub struct AeadDecrypt {
     pub key: Location,
 }
 
-impl UseSecret for AeadDecrypt {
+impl UseSecret<1> for AeadDecrypt {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let mut ptx = vec![0; self.ciphertext.len()];
 
         let f = match self.cipher {
@@ -784,7 +798,7 @@ impl UseSecret for AeadDecrypt {
             AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
         };
         f(
-            &*guard.borrow(),
+            &*guard[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &mut ptx,
@@ -794,8 +808,8 @@ impl UseSecret for AeadDecrypt {
         Ok(ptx)
     }
 
-    fn source(&self) -> &Location {
-        &self.key
+    fn source(&self) -> [Location; 1] {
+        [self.key.clone()]
     }
 }
 

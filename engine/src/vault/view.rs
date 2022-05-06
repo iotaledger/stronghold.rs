@@ -148,6 +148,29 @@ impl<P: BoxProvider> DbView<P> {
         f(guard).map_err(VaultError::Procedure)
     }
 
+    pub fn get_guards<E, F, const N: usize>(
+        &self,
+        ids: [(Key<P>, VaultId, RecordId); N],
+        f: F,
+    ) -> Result<(), VaultError<P::Error, E>>
+    where
+        F: FnOnce([Buffer<u8>; N]) -> Result<(), E>,
+        E: Debug,
+    {
+        let mut buffers: Vec<Buffer<u8>> = Vec::with_capacity(N);
+
+        for (key, vid, rid) in ids {
+            let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+            let guard = vault.get_guard(&key, rid.0).map_err(VaultError::Record)?;
+
+            buffers.push(guard);
+        }
+
+        let buffers: [Buffer<u8>; N] = buffers.try_into().expect("buffers did not have exactly len N");
+
+        f(buffers).map_err(VaultError::Procedure)
+    }
+
     /// Access the decrypted [`Buffer`] of the specified [`Record`] and place the return value into the second
     /// specified [`Record`]
     #[allow(clippy::too_many_arguments)]

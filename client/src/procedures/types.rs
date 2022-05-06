@@ -12,9 +12,13 @@ use thiserror::Error as DeriveError;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
-    fn get_guard<F, T>(&self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    fn get_guards<F, T, const N: usize>(
+        &self,
+        locations: [Location; N],
+        f: F,
+    ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
+        F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>;
 
     // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
     // written into `location1` and the output is returned.
@@ -92,17 +96,17 @@ pub trait DeriveSecret: Sized {
 }
 
 /// Trait for procedures that use an existing secret.
-pub trait UseSecret: Sized {
+pub trait UseSecret<const N: usize>: Sized {
     type Output;
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError>;
+    fn use_secret(self, guard: [Buffer<u8>; N]) -> Result<Self::Output, FatalProcedureError>;
 
-    fn source(&self) -> &Location;
+    fn source(&self) -> [Location; N];
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
+        let source: [Location; N] = self.source();
         let f = |guard| self.use_secret(guard);
-        let output = runner.get_guard(&source, f)?;
+        let output = runner.get_guards(source, f)?;
         Ok(output)
     }
 }
