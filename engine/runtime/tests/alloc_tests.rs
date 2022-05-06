@@ -1,12 +1,12 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fmt::Debug, ptr::NonNull};
-
+use log::*;
 use runtime::{
     memories::frag::{Frag, FragStrategy},
     MemoryError,
 };
+use std::{fmt::Debug, ptr::NonNull};
 
 #[derive(PartialEq, Debug, Clone)]
 struct TestStruct {
@@ -26,13 +26,26 @@ impl Default for TestStruct {
 /// this fails under windows
 #[test]
 fn test_allocate_direct() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter(None, log::LevelFilter::Info)
+        .try_init();
+
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Direct)).is_ok());
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Direct, 0xFFFF)).is_ok());
 }
 
 #[test]
 fn test_allocate_map() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter(None, log::LevelFilter::Info)
+        .try_init();
+
+    info!("Test Fixed Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Map)).is_ok());
+
+    info!("Test Arbitrary Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Map, 0xFFFF)).is_ok());
 }
 

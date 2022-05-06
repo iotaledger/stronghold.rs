@@ -17,6 +17,7 @@
 //! - Memory Mapped: anonymous memory is being mapping, the memory address will be randomly selected.
 
 use crate::MemoryError;
+use log::*;
 use std::{fmt::Debug, ptr::NonNull};
 
 /// Fragmenting strategy to allocate memory at random addresses.
@@ -99,6 +100,18 @@ impl Frag {
 
 // -----------------------------------------------------------------------------
 
+/// [`MemoryMapAlloc`] maps an anonymous file with an arbitrary large size. Parts
+/// of this memory will be randomly seeded.
+///
+/// The actual implementation is system dependent and might vary.
+///
+/// # Example
+/// ```
+/// use runtime::memories::frag::{Frag, FragStrategy};
+///
+/// // allocates the object at a random address
+/// let object = Frag::alloc::<usize>(FragStrategy::Map).unwrap();
+/// ```
 #[derive(Default, Clone)]
 struct MemoryMapAlloc;
 
@@ -117,11 +130,21 @@ where
 
         unsafe {
             loop {
-                let mut addr: usize = (0x00007fff00000000 | (rng.gen::<usize>() >> 32)) & !0xFFF;
+                let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+                    .unwrap_or(Some(0x1000i64))
+                    .unwrap() as usize;
+
+                info!("Using page size {}", pagesize);
+
+                let mut addr: usize = (0x00007fff00000000 | (rng.gen::<usize>() >> 32)) & (!0usize ^ (pagesize - 1));
+
+                info!("Using addr  0x{:08X}", addr);
 
                 // the maximum size of the mapping
                 let max_alloc_size = 0xFFFF;
                 let desired_alloc_size = rng.gen::<usize>().min(size).max(max_alloc_size);
+
+                info!("prealloc: desired alloc size 0x{:08X}", desired_alloc_size);
 
                 // this creates an anonymous mapping zeroed out.
                 let ptr = libc::mmap(
@@ -133,6 +156,8 @@ where
                     0,
                 );
 
+                info!("preallocated segment {:p}", ptr);
+
                 if ptr == libc::MAP_FAILED {
                     continue;
                 }
@@ -142,15 +167,25 @@ where
                 let end = rng.gen_range(size..(size * 0x1000));
                 (size..end).for_each(|_| bytes.write(rng.gen()));
 
-                // on linux this isn't required to commit memory
                 #[cfg(any(target_os = "macos"))]
-                libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
+                {
+                    // on linux this isn't required to commit memory
+                    let error = libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
+
+                    {
+                        if error != 0 {
+                            info!("madvise returned an error {}", err);
+                        }
+                    }
+                }
 
                 let ptr = ptr as *mut T;
 
                 if !ptr.is_null() {
                     let t = T::default();
                     ptr.write(t);
+
+                    info!("Object sucesfully written into mem location");
 
                     return Ok(NonNull::new_unchecked(ptr));
                 }
@@ -265,11 +300,21 @@ where
         loop {
             unsafe {
                 let alloc_size = rng.gen::<usize>() >> 32;
+                let actual_size = std::mem::size_of::<T>();
                 let mem_ptr = libc::malloc(alloc_size);
+
                 if mem_ptr.is_null() {
                     continue;
                 }
-                let actual_size = std::mem::size_of::<T>();
+
+                // on linux this isn't required to commit memory
+                #[cfg(any(target_os = "macos"))]
+                libc::madvise(
+                    &mut mem_ptr as *mut usize as *mut libc::c_void,
+                    size,
+                    libc::MADV_WILLNEED,
+                );
+
                 let actual_mem = libc::realloc(mem_ptr, actual_size) as *mut T;
                 actual_mem.write(T::default());
 
