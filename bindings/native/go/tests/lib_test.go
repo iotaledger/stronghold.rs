@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-const snapshotFileName = "test.db"
 const testPassword = "qawsedrf"
 
 func randomFileName() string {
@@ -31,7 +30,7 @@ func getNewDBPath() string {
 }
 
 func initializeStrongholdTest(t *testing.T, withNewPath bool) (*stronghold_go.StrongholdNative, string) {
-	stronghold := stronghold_go.NewStronghold()
+	stronghold := stronghold_go.NewStronghold(testPassword)
 
 	if withNewPath {
 		dbPath := getNewDBPath()
@@ -48,7 +47,7 @@ func initializeStrongholdTest(t *testing.T, withNewPath bool) (*stronghold_go.St
 
 func TestCreationOfSnapshot(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	success, err := stronghold.Create(dbPath, testPassword)
+	success, err := stronghold.Create(dbPath)
 
 	if err != nil {
 		t.Error(err)
@@ -59,17 +58,17 @@ func TestCreationOfSnapshot(t *testing.T) {
 	}
 
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		t.Error("Creation call was successful, but snapsot file is missing")
+		t.Error("Creation call was successful, but snapshot file is missing")
 	}
 }
 
 func TestLoadingOfSnapshot(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath, testPassword)
+	stronghold.Create(dbPath)
 	stronghold.Close()
 
 	stronghold, _ = initializeStrongholdTest(t, false)
-	success, err := stronghold.Open(dbPath, testPassword)
+	success, err := stronghold.Open(dbPath)
 
 	if err != nil {
 		t.Error(err)
@@ -87,9 +86,9 @@ func TestLoadingOfSnapshot(t *testing.T) {
 
 func TestKeyGeneration(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath, testPassword)
+	stronghold.Create(dbPath) //nolint:errcheck
 
-	err := stronghold.GenerateED25519KeyPair(testPassword, "test")
+	err := stronghold.GenerateED25519KeyPair("test")
 
 	if err != nil {
 		t.Error(err)
@@ -98,9 +97,9 @@ func TestKeyGeneration(t *testing.T) {
 
 func TestSign(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath, testPassword)
+	stronghold.Create(dbPath) //nolint:errcheck
 
-	stronghold.GenerateED25519KeyPair(testPassword, "test")
+	stronghold.GenerateED25519KeyPair("test")
 
 	signature, err := stronghold.Sign("test", make([]byte, 32)) // Just a zeroed byte array with the length of 32
 
@@ -111,4 +110,51 @@ func TestSign(t *testing.T) {
 	if len(signature) != 64 {
 		t.Error("Signature size is invalid")
 	}
+}
+
+func TestGenerateSeed(t *testing.T) {
+	stronghold, dbPath := initializeStrongholdTest(t, true)
+	stronghold.Create(dbPath) //nolint:errcheck
+
+	stronghold.GenerateSeed()
+}
+
+func TestGenerateSeedDerive(t *testing.T) {
+	stronghold, dbPath := initializeStrongholdTest(t, true)
+	stronghold.Create(dbPath) //nolint:errcheck
+
+	stronghold.GenerateSeed()
+	stronghold.DeriveSeed(1)
+}
+
+func TestGetPublicKeyFromDerivedSeed(t *testing.T) {
+	stronghold, dbPath := initializeStrongholdTest(t, true)
+	stronghold.Create(dbPath) //nolint:errcheck
+
+	stronghold.GenerateSeed()
+	stronghold.DeriveSeed(1)
+	publicKey := stronghold.GetPublicKeyFromDerived(1)
+
+	if len(publicKey) != stronghold_go.PublicKeySize {
+		t.Error("Public key does not match size")
+	}
+}
+
+func TestGetAddressFromDerivedSeed(t *testing.T) {
+	stronghold, dbPath := initializeStrongholdTest(t, true)
+	stronghold.Create(dbPath) //nolint:errcheck
+
+	stronghold.GenerateSeed()
+	stronghold.DeriveSeed(1)
+	address, err := stronghold.GetAddress(1)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log(address)
+
+	/*if len(address) != stronghold_go.PublicKeySize {
+		t.Error("Public key does not match size")
+	}*/
 }
