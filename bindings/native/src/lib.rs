@@ -4,11 +4,36 @@ mod wrapper;
 mod shared;
 
 //#![allow(unused_imports)]
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
+use std::cell::RefCell;
 use std::{ptr, slice};
+use std::error::Error;
+use std::os::raw::c_char;
 
 use crate::shared::hash_blake2b;
-use crate::wrapper::StrongholdWrapper;
+use crate::wrapper::{StrongholdWrapper, WrapperError};
+
+thread_local!{
+    static LAST_ERROR: RefCell<Option<Box<dyn Error>>> = RefCell::new(None);
+}
+
+fn push_error(err: WrapperError)  {
+    LAST_ERROR.with(|prev| {
+        *prev.borrow_mut() = Some(Box::new(err));
+    });
+}
+
+pub extern "C" fn get_last_error() -> *const c_char {
+    let last_error = LAST_ERROR.with(|prev| prev.borrow_mut().take());
+
+    let last_error = match last_error {
+        Some(err) => err,
+        None => return ptr::null_mut(),
+    };
+
+    let s = CString::new(last_error.to_string()).unwrap();
+    s.as_ptr()
+}
 
 #[no_mangle]
 pub extern "C" fn create(snapshot_path_c: *const libc::c_char, key_c: *const libc::c_char) -> *mut StrongholdWrapper {
@@ -21,7 +46,7 @@ pub extern "C" fn create(snapshot_path_c: *const libc::c_char, key_c: *const lib
 
     let stronghold_wrapper = match StrongholdWrapper::create_new(snapshot_path, key_as_hash) {
         Ok(res) => res,
-        Err(_err) => return ptr::null_mut(),
+        Err(err) => { push_error(err); return ptr::null_mut(); },
     };
 
     Box::into_raw(Box::new(stronghold_wrapper))
@@ -41,7 +66,7 @@ pub extern "C" fn load(snapshot_path_c: *const libc::c_char, key_c: *const libc:
 
     let stronghold_wrapper = match StrongholdWrapper::from_file(snapshot_path, key_as_hash) {
         Ok(res) => res,
-        Err(_err) => return ptr::null_mut(),
+        Err(err) => { push_error(err); return ptr::null_mut(); },
     };
 
     println!("[Rust] Snapshot loaded");
@@ -109,7 +134,7 @@ pub extern "C" fn generate_ed25519_keypair(
 
     let chain_code = match stronghold_wrapper.generate_ed25519_keypair(key_as_hash, record_path) {
         Ok(res) => res,
-        Err(_err) => return ptr::null_mut(),
+        Err(err) => { push_error(err); return ptr::null_mut(); },
     };
 
     return Box::into_raw(Box::new(chain_code)) as *mut _;
@@ -132,7 +157,7 @@ pub extern "C" fn generate_seed(stronghold_ptr: *mut StrongholdWrapper, key_c: *
     println!("[Rust] Got Stronghold instance from Box");
 
     return match stronghold_wrapper.generate_seed(key_as_hash) {
-        Err(_err) => false,
+        Err(err) => { push_error(err); return false; },
         _ => true,
     };
 }
@@ -154,7 +179,7 @@ pub extern "C" fn derive_seed(stronghold_ptr: *mut StrongholdWrapper, key_c: *co
     println!("[Rust] Got Stronghold instance from Box");
 
     return match stronghold_wrapper.derive_seed(key_as_hash, address_index) {
-        Err(_err) => false,
+        Err(err) => { push_error(err); return false; },
         _ => true,
     };
 }
@@ -177,7 +202,7 @@ pub extern "C" fn get_public_key(stronghold_ptr: *mut StrongholdWrapper, record_
 
     let public_key = match stronghold_wrapper.get_public_key(record_path) {
         Ok(res) => res,
-        Err(_err) => return ptr::null_mut(),
+        Err(err) => { push_error(err); return ptr::null_mut(); },
     };
 
     return Box::into_raw(Box::new(public_key)) as *mut _;
@@ -201,7 +226,7 @@ pub extern "C" fn sign(stronghold_ptr: *mut StrongholdWrapper, record_path_c: *c
 
     let signature = match stronghold_wrapper.sign(record_path, data.to_vec()) {
         Ok(res) => res,
-        Err(_err) => return ptr::null_mut(),
+        Err(err) => { push_error(err); return ptr::null_mut(); },
     };
 
     return Box::into_raw(Box::new(signature)) as *mut _;

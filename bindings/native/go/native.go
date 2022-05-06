@@ -52,24 +52,32 @@ func destroyDataPointer(strongholdPtr *C.uchar) {
 	C.destroy_data_pointer(strongholdPtr)
 }
 
-func generateED25519KeyPair(strongholdPtr StrongholdPointer, key string, recordPath string) {
+func generateED25519KeyPair(strongholdPtr StrongholdPointer, key string, recordPath string) [PublicKeySize]byte {
 	keyNative := C.CString(key)
 	defer C.free(unsafe.Pointer(keyNative))
 
 	recordPathNative := C.CString(recordPath)
 	defer C.free(unsafe.Pointer(recordPathNative))
 
-	C.generate_ed25519_keypair(strongholdPtr, keyNative, recordPathNative)
+	chainCodePointer := C.generate_ed25519_keypair(strongholdPtr, keyNative, recordPathNative)
+	chainCodeData := *(*[]byte)(unsafe.Pointer(chainCodePointer))
+
+	var chainCodeDataCopy [PublicKeySize]byte
+	copy(chainCodeDataCopy[:], chainCodeData)
+
+	destroyDataPointer(chainCodePointer)
+
+	return chainCodeDataCopy
 }
 
-func sign(stronghold_ptr StrongholdPointer, recordPath string, data []byte) [SignatureSize]byte {
+func sign(strongholdPtr StrongholdPointer, recordPath string, data []byte) [SignatureSize]byte {
 	dataPtr := (*C.uchar)(unsafe.Pointer(&data[0]))
 	dataLength := C.size_t(len(data))
 
 	recordPathNative := C.CString(recordPath)
 	defer C.free(unsafe.Pointer(recordPathNative))
 
-	signaturePointer := C.sign(stronghold_ptr, recordPathNative, dataPtr, dataLength)
+	signaturePointer := C.sign(strongholdPtr, recordPathNative, dataPtr, dataLength)
 	signatureData := *(*[]byte)(unsafe.Pointer(signaturePointer))
 
 	var signatureDataCopy [SignatureSize]byte
@@ -82,11 +90,11 @@ func sign(stronghold_ptr StrongholdPointer, recordPath string, data []byte) [Sig
 	return signatureDataCopy
 }
 
-func getPublicKey(stronghold_ptr StrongholdPointer, recordPath string) [PublicKeySize]byte {
+func getPublicKey(strongholdPtr StrongholdPointer, recordPath string) [PublicKeySize]byte {
 	recordPathNative := C.CString(recordPath)
 	defer C.free(unsafe.Pointer(recordPathNative))
 
-	publicKeyPointer := C.get_public_key(stronghold_ptr, recordPathNative)
+	publicKeyPointer := C.get_public_key(strongholdPtr, recordPathNative)
 	publicKeyData := *(*[]byte)(unsafe.Pointer(publicKeyPointer))
 
 	var publicKeyDataCopy [PublicKeySize]byte
@@ -99,18 +107,18 @@ func getPublicKey(stronghold_ptr StrongholdPointer, recordPath string) [PublicKe
 	return publicKeyDataCopy
 }
 
-func generateSeed(stronghold_ptr StrongholdPointer, key string) {
+func generateSeed(strongholdPtr StrongholdPointer, key string) bool {
 	keyNative := C.CString(key)
 	defer C.free(unsafe.Pointer(keyNative))
 
-	C.generate_seed(stronghold_ptr, keyNative)
+	return bool(C.generate_seed(strongholdPtr, keyNative))
 }
 
-func deriveSeed(stronghold_ptr StrongholdPointer, key string, index uint32) {
+func deriveSeed(strongholdPtr StrongholdPointer, key string, index uint32) bool {
 	keyNative := C.CString(key)
 	defer C.free(unsafe.Pointer(keyNative))
 
 	indexNative := C.uint(index)
 
-	C.derive_seed(stronghold_ptr, keyNative, indexNative)
+	return bool(C.derive_seed(strongholdPtr, keyNative, indexNative))
 }
