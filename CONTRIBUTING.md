@@ -76,66 +76,6 @@ To suggest a new feature, open a [Feature Request](https://github.com/iotaledger
 
 </details>
 
-<!--
-<details>
-<summary>Build a new feature :hammer:</summary>
-<br>
-
-This section guides you through building a new feature. Following these guidelines helps give your feature the best chance of being approved and merged.
-
-### Before building a new feature
-
-Make sure to discuss the feature in [Discussions](https://github.com/iotaledger/stronghold.rs/discussions)
-
-Otherwise, your feature may not be approved at all.
-
-### Building a new feature
-
-To build a new feature, check out a new branch based on the TODO Choose branch `develop` branch, and be sure to document any public-facing APIs, using code comments.
-</details>
-
-
-<br>
-
-<details>
-<summary>Pull requests :mega:</summary>
-<br>
-
-This section guides you through submitting a pull request (PR). Following these guidelines helps give your PR the best chance of being approved and merged.
-
-### Before submitting a pull request
-
-Before submitting a pull request, please follow these steps to have your contribution considered by the maintainers:
-
-- A pull request should have exactly one concern (for example one feature or one bug). If a PR addresses more than one concern, it should be split into two or more PRs.
-
-- A pull request can be merged only if it references an open issue
-
-    **Note:** You don't need to open an issue for minor changes such as typos, but you can if you want.
-
-
-
-Todo: Add project specific requirements like formatting, linting, tests, comments, license and so on
-
-
-### Submitting a pull request
-
-The following is a typical workflow for submitting a new pull request:
-
-
-_note:_ You may add project specific steps and change the branch
-
-
-1. Fork this repository
-2. Create a new branch based on your fork. For example, `git checkout -b fix/my-fix` or ` git checkout -b feat/my-feature`.
-3. Commit changes and push them to your fork
-4. Target your pull request to be merged with `develop`
-
-If all [status checks](https://help.github.com/articles/about-status-checks/) pass, and the maintainer approves the PR, it will be merged.
-
-**Note:** Reviewers may ask you to complete additional work, tests, or other changes before your pull request can be approved and merged.
-</details>
--->
 
 <br>
 

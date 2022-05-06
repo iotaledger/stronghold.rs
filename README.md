@@ -28,7 +28,7 @@
     <p align="center">
         A Rust library to build a secure software storage for sensitive data.
         <br />
-        <a href="https://wiki.iota.org"><strong>Explore the docs »</strong></a>
+        <a href="https://wiki.iota.org/stronghold.rs/welcome"><strong>Explore the docs »</strong></a>
         <br />
         <br />
         <a href="https://github.com/iotaledger/stronghold.rs/labels/bug">Report Bug</a>
@@ -73,12 +73,8 @@ Edit the ToC to your needs. If your project is part of the wiki, you should link
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidenta leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. Written in stable rust, it has strong guarantees of memory safety and process integrity. 
+<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. It is written in stable rust and has strong guarantees of memory safety and process integrity. 
 
-1. Here's a blank template to get started: To avoid retyping too much info. Do a search and replace with your text editor for the following: `iotaledger`, `template`, `twitter_handle`, `email_client`, `email`, `project_title`, `project_description`, `TODO`.
-2. Edit the README to suit your needs by in it following the instructions here.
-3. Replace the `banner.png` with your own banner or remove it.
-4. Edit the issue and pull request templates if required. Keep in mind that the issue forms in this template add a `bug`/`request` label to the issues. Make sure they exist.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -104,9 +100,9 @@ To build Stronghold, you need a recent version of [Rust](https://www.rust-lang.o
 
 ### Building
 
-The library comes with examples, but has no executables on its own. 
+The library comes with [examples](client/examples) but has no executables on its own.  You can use the following instructions to build the library:
 
-1. Clone the repo
+1. Clone the repo:
    ```sh
    git clone https://github.com/iotaledger/stronghold.rs.git
    ```
@@ -174,16 +170,16 @@ See the [open issues](https://github.com/iotaledger/stronghold.rs/issues) for a 
 <!-- CONTRIBUTING -->
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+If you have a suggestion to improve this, please fork the repo and [create a pull request](https://github.com/iotaledger/stronghold.rs/compare). You can also [open an issue](https://github.com/iotaledger/stronghold.rs/issues/new/choose) with the tag "enhancement".
 Don't forget to give the project a star! Thanks again!
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -S -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork the Project.
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your Changes (`git commit -S -m 'Add some AmazingFeature'`).
+4. Push to the Branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -204,12 +200,6 @@ Project Link: [https://github.com/iotaledger/stronghold.rs](https://github.com/i
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-* []()
-* []()
-* []()
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
