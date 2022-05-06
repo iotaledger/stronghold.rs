@@ -167,6 +167,16 @@ See the [open issues](https://github.com/iotaledger/stronghold.rs/issues) for a 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+
+## Security Audit(s)
+
+Stronghold has been audited for security vulnerabilities. This process is intended to be regular as soon as new security relevant features will be shipped with a new version.
+
+| Date       | Branch         | Commit #    | Document                                                                                                                 | By                                        |
+|:-----------|:---------------|:------------|:-------------------------------------------------------------------------------------------------------------------------|:------------------------------------------|
+| 04-05-2022 | `dev-refactor` | `#eb07c4a4` | [2022-05-04-IOTA-Stronghold-statement-of-work-performed-1](2022-05-04-IOTA-Stronghold-statement-of-work-performed-1.pdf) | [WITH Secure](https://www.withsecure.com) |
+
+
 <!-- CONTRIBUTING -->
 ## Contributing
 
