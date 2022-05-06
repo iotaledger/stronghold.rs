@@ -174,7 +174,7 @@ where
 
                     {
                         if error != 0 {
-                            info!("madvise returned an error {}", err);
+                            info!("madvise returned an error {}", error);
                         }
                     }
                 }
@@ -309,11 +309,7 @@ where
 
                 // on linux this isn't required to commit memory
                 #[cfg(any(target_os = "macos"))]
-                libc::madvise(
-                    &mut mem_ptr as *mut usize as *mut libc::c_void,
-                    size,
-                    libc::MADV_WILLNEED,
-                );
+                libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
 
                 let actual_mem = libc::realloc(mem_ptr, actual_size) as *mut T;
                 actual_mem.write(T::default());
