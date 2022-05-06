@@ -23,4 +23,4 @@
 pub mod snapshot;
 pub mod store;
 pub mod vault;
-pub use new_runtime;
+pub use runtime;

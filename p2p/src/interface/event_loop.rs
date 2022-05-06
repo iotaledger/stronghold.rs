@@ -7,7 +7,7 @@ use crate::{
     firewall::{FirewallRules, FwRequest, Rule},
     interface::NetworkEvent,
     AddressInfo, DialErr, EventChannel, ListenErr, ListenRelayErr, Listener, OutboundFailure, ReceiveRequest,
-    RelayNotSupported, RequestId, RqRsMessage,
+    RelayNotSupported, Request, RequestId,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -146,8 +146,8 @@ pub enum SwarmCommand<Rq, Rs, TRq> {
 /// [`SwarmCommand`]. No operation is blocking, instead the return-channel is cached until an outcome yields.
 pub struct EventLoop<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     // libp2p `Swarm` that uses `NetworkBehaviour` as network behaviour protocol.
@@ -184,8 +184,8 @@ where
 
 impl<Rq, Rs, TRq> EventLoop<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     /// Create new instance of en event-loop

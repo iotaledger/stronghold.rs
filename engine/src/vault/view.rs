@@ -9,7 +9,7 @@ use crate::vault::{
     },
 };
 
-use new_runtime::memories::buffer::Buffer;
+use runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 use thiserror::Error as DeriveError;
@@ -133,7 +133,7 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Get access the decrypted [`Buffer`] of the specified [`Record`].
     pub fn get_guard<E, F>(
-        &mut self,
+        &self,
         key: &Key<P>,
         vid: VaultId,
         rid: RecordId,
@@ -143,7 +143,7 @@ impl<P: BoxProvider> DbView<P> {
         F: FnOnce(Buffer<u8>) -> Result<(), E>,
         E: Debug,
     {
-        let vault = self.vaults.get_mut(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+        let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
         let guard = vault.get_guard(key, rid.0).map_err(VaultError::Record)?;
         f(guard).map_err(VaultError::Procedure)
     }
@@ -250,27 +250,24 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// Import records to the [`Vault`]. In case of duplicated records, the existing record is dropped in favor of the
-    /// new one.
-    ///
-    /// **Note:** This expects that all records are encrypted with the vault's encryption key and the correct
-    /// `RecordId`. In case that the records was previously stored at a different `RecordId` or in a vault with a
-    /// different encryption key, [`Record::update_meta`] has to be called before the import.
+    /// new one. Re-encrypt the records with the new key.
     pub fn import_records(
         &mut self,
-        key: &Key<P>,
+        old_key: &Key<P>,
+        new_key: &Key<P>,
         vid: VaultId,
-        records: Vec<(RecordId, Record)>,
-        is_replacing: bool,
+        mut records: Vec<(RecordId, Record)>,
     ) -> Result<(), RecordError<P::Error>> {
-        if is_replacing {
-            self.vaults.remove(&vid);
-        }
         if !self.vaults.contains_key(&vid) {
-            self.init_vault(key, vid);
+            self.init_vault(new_key, vid);
         }
-
+        for (rid, record) in &mut records {
+            record
+                .update_meta(old_key, (*rid).into(), new_key, (*rid).into())
+                .unwrap();
+        }
         let vault = self.vaults.get_mut(&vid).expect("Vault was initiated.");
-        vault.extend(key, records.into_iter().map(|(rid, r)| (rid.0, r)))
+        vault.extend(new_key, records.into_iter().map(|(rid, r)| (rid.0, r)))
     }
 }
 

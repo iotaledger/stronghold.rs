@@ -1,3 +1,0 @@
-# Stronghold Client Interface 
-
-

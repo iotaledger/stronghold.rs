@@ -31,6 +31,7 @@ default = [ "tcp-transport"]
 tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
 
 [dev-dependencies]
+# remove the dependency on actix
 actix-rt = "2.5"
 iota_stronghold = { path = "../client" , features = ["p2p"] }
 regex = "1.5"

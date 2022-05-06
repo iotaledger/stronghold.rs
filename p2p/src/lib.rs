@@ -29,7 +29,7 @@ mod interface;
 
 pub use behaviour::{
     assemble_relayed_addr, firewall, AddressInfo, InboundFailure, OutboundFailure, PeerAddress, RelayNotSupported,
-    RequestId, RqRsMessage,
+    Request, RequestId,
 };
 pub use interface::{
     ChannelSinkConfig, ConnectionErr, ConnectionLimits, DialErr, EventChannel, InitKeypair, ListenErr, ListenRelayErr,
