@@ -301,7 +301,12 @@ where
             unsafe {
                 let alloc_size = rng.gen::<usize>() >> 32;
                 let actual_size = std::mem::size_of::<T>();
+
+                info!("desired alloc size 0x{:08X}", actual_size);
+
                 let mem_ptr = libc::malloc(alloc_size);
+
+                info!("allocated block {:p}", mem_ptr);
 
                 if mem_ptr.is_null() {
                     continue;
@@ -309,10 +314,20 @@ where
 
                 // on linux this isn't required to commit memory
                 #[cfg(any(target_os = "macos"))]
-                libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
+                {
+                    let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
+
+                    if error != 0 {
+                        info!("memory advise returned an error {}", error);
+                    }
+                }
 
                 let actual_mem = libc::realloc(mem_ptr, actual_size) as *mut T;
+                info!("memory was reallocated {:p}", actual_mem);
+
                 actual_mem.write(T::default());
+
+                info!("writing object was successful ");
 
                 return Ok(NonNull::new_unchecked(actual_mem));
             }
