@@ -9,6 +9,7 @@ pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
         aes::Aes256Gcm,
+        aes_kw::Aes256Kw,
         chacha::XChaCha20Poly1305,
         traits::{Aead, Tag},
     },
@@ -51,6 +52,7 @@ pub enum StrongholdProcedure {
     Hmac(Hmac),
     Hkdf(Hkdf),
     ConcatKdf(ConcatKdf),
+    AesKeyWrapEncrypt(AesKeyWrapEncrypt),
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
@@ -77,6 +79,7 @@ impl Procedure for StrongholdProcedure {
             Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
             ConcatKdf(proc) => proc.execute(runner).map(|o| o.into()),
+            AesKeyWrapEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
@@ -136,7 +139,6 @@ macro_rules! procedures {
             impl From<$Proc> for StrongholdProcedure {
                 fn from(proc: $Proc) -> Self {
                     StrongholdProcedure::$Proc(proc)
-
                 }
             }
         )+
@@ -179,6 +181,10 @@ macro_rules! procedures2 {
 procedures2! {
     // Stronghold procedures that implement the `UseSecret` trait.
     UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt }
+}
+
+procedures2! {
+    UseSecret<2> => { AesKeyWrapEncrypt }
 }
 
 procedures! {
@@ -915,5 +921,44 @@ impl ConcatKdf {
         output.truncate(len);
 
         Ok(output)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum AesKeyWrapCipher {
+    Aes256,
+}
+
+/// Encrypts a key in a vault using another key, and returns the ciphertext.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AesKeyWrapEncrypt {
+    /// The cipher to use for encryption.
+    pub cipher: AesKeyWrapCipher,
+    /// The key to use for encryption of the `wrap_key`.
+    pub encryption_key: Location,
+    /// The key to wrap.
+    pub wrap_key: Location,
+}
+
+impl UseSecret<2> for AesKeyWrapEncrypt {
+    type Output = Vec<u8>;
+
+    fn use_secret(self, guard: [Buffer<u8>; 2]) -> Result<Self::Output, FatalProcedureError> {
+        self.wrap_key(guard[0].borrow().as_ref(), guard[1].borrow().as_ref())
+    }
+
+    fn source(&self) -> [Location; 2] {
+        [self.encryption_key.clone(), self.wrap_key.clone()]
+    }
+}
+
+impl AesKeyWrapEncrypt {
+    fn wrap_key(&self, encryption_key: &[u8], wrap_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        let mut ctx: Vec<u8> = vec![0; encryption_key.len() + Aes256Kw::BLOCK];
+
+        let wrap: Aes256Kw = Aes256Kw::new(encryption_key);
+        wrap.wrap_key(wrap_key, &mut ctx)?;
+
+        Ok(ctx)
     }
 }
