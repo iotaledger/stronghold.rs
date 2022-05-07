@@ -20,17 +20,16 @@ pub trait Runner {
     where
         F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>;
 
-    // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
-    // written into `location1` and the output is returned.
-    fn exec_proc<F, T>(
+    // Execute a function that uses the secret stored at `source_locations`. From the returned `Products` the secret is
+    // written into `target_location` and the output is returned.
+    fn exec_proc<F, T, const N: usize>(
         &self,
-        location0: &Location,
-        location1: &Location,
-        // hint: RecordHint,
+        source_locations: [Location; N],
+        target_location: &Location,
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
+        F: FnOnce([Buffer<u8>; N]) -> Result<Products<T>, FatalProcedureError>;
 
     fn write_to_vault(&self, location1: &Location, value: Vec<u8>) -> Result<(), RecordError>;
 
@@ -76,21 +75,21 @@ pub trait GenerateSecret: Sized {
 }
 
 /// Trait for procedures that use an existing secret to derive a new one.
-pub trait DeriveSecret: Sized {
+pub trait DeriveSecret<const N: usize>: Sized {
     type Output;
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+    fn derive(self, guard: [Buffer<u8>; N]) -> Result<Products<Self::Output>, FatalProcedureError>;
 
-    fn source(&self) -> &Location;
+    fn source(&self) -> [Location; N];
 
     fn target(&self) -> &Location;
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
+        let sources: [Location; N] = self.source();
         let target = self.target();
         let target = target.clone();
         let f = |guard| self.derive(guard);
-        let output = runner.exec_proc(&source, &target, f)?;
+        let output = runner.exec_proc(sources, &target, f)?;
         Ok(output)
     }
 }
