@@ -5,8 +5,8 @@ use crypto::ciphers::aes_kw::AesKeyWrap;
 
 use crate::{
     procedures::{
-        AesKeyWrapCipher, AesKeyWrapEncrypt, ConcatKdf, DeriveSecret, GenerateKey, GenerateSecret, KeyType, PublicKey,
-        Sha2Hash, StrongholdProcedure, WriteVault, X25519DiffieHellman,
+        AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, ConcatKdf, DeriveSecret, GenerateKey, GenerateSecret,
+        KeyType, PublicKey, Sha2Hash, StrongholdProcedure, WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -153,7 +153,7 @@ fn test_concat_kdf_with_jwa() {
 }
 
 #[test]
-fn test_aes_256_kw() {
+fn test_aes_256_keywrap_roundtrip() {
     // Test Vector from https://tools.ietf.org/html/rfc3394#section-4.6.
     let encryption_key: Vec<u8> = vec![
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
@@ -172,6 +172,7 @@ fn test_aes_256_kw() {
 
     let encryption_key_location: Location = fresh::location();
     let wrap_key_location: Location = fresh::location();
+    let plaintext_location: Location = fresh::location();
 
     client
         .execute_procedure(WriteVault {
@@ -182,7 +183,7 @@ fn test_aes_256_kw() {
 
     client
         .execute_procedure(WriteVault {
-            data: plaintext,
+            data: plaintext.clone(),
             location: wrap_key_location.clone(),
         })
         .unwrap();
@@ -190,10 +191,26 @@ fn test_aes_256_kw() {
     let ctx: Vec<u8> = client
         .execute_procedure(AesKeyWrapEncrypt {
             cipher: AesKeyWrapCipher::Aes256,
-            encryption_key: encryption_key_location,
+            encryption_key: encryption_key_location.clone(),
             wrap_key: wrap_key_location,
         })
         .unwrap();
 
     assert_eq!(ctx, ciphertext);
+
+    client
+        .execute_procedure(AesKeyWrapDecrypt {
+            cipher: AesKeyWrapCipher::Aes256,
+            decryption_key: encryption_key_location,
+            wrapped_key: ciphertext,
+            output: plaintext_location.clone(),
+        })
+        .unwrap();
+
+    let ptx: Vec<u8> = client
+        .vault(plaintext_location.vault_path())
+        .read_secret(plaintext_location.record_path())
+        .unwrap();
+
+    assert_eq!(ptx, plaintext);
 }
