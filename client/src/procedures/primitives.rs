@@ -186,12 +186,9 @@ macro_rules! generic_procedures {
 generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
     UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf }
-}
-
-procedures2! {
-    UseSecret<2> => { AesKeyWrapEncrypt }
 }
 
 procedures! {
