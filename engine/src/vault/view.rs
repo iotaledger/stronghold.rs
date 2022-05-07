@@ -148,7 +148,7 @@ impl<P: BoxProvider> DbView<P> {
             buffers.push(guard);
         }
 
-        let buffers: [Buffer<u8>; N] = buffers.try_into().expect("buffers did not have exactly len N");
+        let buffers: [Buffer<u8>; N] = <[_; N]>::try_from(buffers).expect("buffers did not have exactly len N");
 
         Ok(buffers)
     }

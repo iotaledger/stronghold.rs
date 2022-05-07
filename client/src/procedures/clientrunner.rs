@@ -185,7 +185,8 @@ impl Client {
             let key: Key<Provider> = keystore.get_key(vault_id).ok_or(VaultError::VaultNotFound(vault_id))?;
             ids.push((key, vault_id, record_id));
         }
-        let ids: [(Key<Provider>, VaultId, RecordId); N] = ids.try_into().expect("buffers did not have exactly len N");
+        let ids: [(Key<Provider>, VaultId, RecordId); N] =
+            <[_; N]>::try_from(ids).expect("buffers did not have exactly len N");
         Ok(ids)
     }
 
