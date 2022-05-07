@@ -141,7 +141,7 @@ macro_rules! procedures {
             }
         )+
     };
-    { $Trait:ident $($n:literal)? => { $($Proc:ident),+ }} => {
+    { $Trait:ident => { $($Proc:ident),+ }} => {
         $(
             impl Procedure for $Proc {
                 type Output = <$Proc as $Trait>::Output;
@@ -161,7 +161,7 @@ macro_rules! procedures {
 }
 
 #[macro_export]
-macro_rules! procedures2 {
+macro_rules! generic_procedures {
     { $Trait:ident<$n:literal> => { $($Proc:ident),+ }} => {
         $(
             impl Procedure for $Proc {
@@ -174,14 +174,16 @@ macro_rules! procedures2 {
         )+
         procedures!(_ => { $($Proc),+ });
     };
+    { $($Trait:tt<$n:literal> => { $($Proc:ident),+ }),+} => {
+        $(
+            generic_procedures!($Trait<$n> => { $($Proc),+ } );
+        )+
+    };
 }
 
-procedures2! {
+generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
-    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt }
-}
-
-procedures2! {
+    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf }
 }

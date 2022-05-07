@@ -20,6 +20,7 @@ use crate::{
 };
 use stronghold_utils::random as rand;
 pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
+type ResolvedLocation = (Key<Provider>, VaultId, RecordId);
 
 // ported [`Runner`] impl for [`Client`]
 impl Runner for Client {
@@ -172,7 +173,7 @@ impl Client {
     fn resolve_locations<const N: usize>(
         &self,
         locations: [Location; N],
-    ) -> Result<[(Key<Provider>, VaultId, RecordId); N], VaultError<FatalProcedureError>> {
+    ) -> Result<[ResolvedLocation; N], VaultError<FatalProcedureError>> {
         let mut ids: Vec<(Key<Provider>, VaultId, RecordId)> = Vec::with_capacity(N);
 
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
