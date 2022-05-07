@@ -131,6 +131,28 @@ impl<P: BoxProvider> DbView<P> {
         Ok(blob_id)
     }
 
+    /// Get the buffers for the given records, using the provided key for access.
+    fn get_buffers<E, const N: usize>(
+        &self,
+        ids: [(Key<P>, VaultId, RecordId); N],
+    ) -> Result<[Buffer<u8>; N], VaultError<P::Error, E>>
+    where
+        E: Debug,
+    {
+        let mut buffers: Vec<Buffer<u8>> = Vec::with_capacity(N);
+
+        for (key, vid, rid) in ids {
+            let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
+            let guard = vault.get_guard(&key, rid.0).map_err(VaultError::Record)?;
+
+            buffers.push(guard);
+        }
+
+        let buffers: [Buffer<u8>; N] = <[_; N]>::try_from(buffers).expect("buffers did not have exactly len N");
+
+        Ok(buffers)
+    }
+
     /// Get access the decrypted [`Buffer`] of the specified [`Record`].
     pub fn get_guard<E, F>(
         &self,
@@ -157,45 +179,31 @@ impl<P: BoxProvider> DbView<P> {
         F: FnOnce([Buffer<u8>; N]) -> Result<(), E>,
         E: Debug,
     {
-        let mut buffers: Vec<Buffer<u8>> = Vec::with_capacity(N);
-
-        for (key, vid, rid) in ids {
-            let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
-            let guard = vault.get_guard(&key, rid.0).map_err(VaultError::Record)?;
-
-            buffers.push(guard);
-        }
-
-        let buffers: [Buffer<u8>; N] = buffers.try_into().expect("buffers did not have exactly len N");
-
+        let buffers: [Buffer<u8>; N] = self.get_buffers(ids)?;
         f(buffers).map_err(VaultError::Procedure)
     }
 
-    /// Access the decrypted [`Buffer`] of the specified [`Record`] and place the return value into the second
-    /// specified [`Record`]
-    #[allow(clippy::too_many_arguments)]
-    pub fn exec_proc<E, F>(
+    /// Access the decrypted [`Buffer`]s of the specified [`Record`]s and place the return value
+    /// into the target [`Record`].
+    pub fn exec_procedure<E, F, const N: usize>(
         &mut self,
-        key0: &Key<P>,
-        vid0: VaultId,
-        rid0: RecordId,
-        key1: &Key<P>,
-        vid1: VaultId,
-        rid1: RecordId,
+        sources: [(Key<P>, VaultId, RecordId); N],
+        target_key: &Key<P>,
+        target_vid: VaultId,
+        target_rid: RecordId,
         hint: RecordHint,
         f: F,
     ) -> Result<(), VaultError<P::Error, E>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<Vec<u8>, E>,
+        F: FnOnce([Buffer<u8>; N]) -> Result<Vec<u8>, E>,
         E: Debug,
     {
-        let vault = self.vaults.get_mut(&vid0).ok_or(VaultError::VaultNotFound(vid0))?;
+        let buffers: [Buffer<u8>; N] = self.get_buffers(sources)?;
 
-        let guard = vault.get_guard(key0, rid0.0).map_err(VaultError::Record)?;
+        let data: Vec<u8> = f(buffers).map_err(VaultError::Procedure)?;
 
-        let data = f(guard).map_err(VaultError::Procedure)?;
-
-        self.write(key1, vid1, rid1, &data, hint).map_err(VaultError::Record)
+        self.write(target_key, target_vid, target_rid, &data, hint)
+            .map_err(VaultError::Record)
     }
 
     /// Add a revocation transaction to the [`Record`]

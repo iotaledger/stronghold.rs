@@ -143,7 +143,7 @@ macro_rules! procedures {
             }
         )+
     };
-    { $Trait:ident $($n:literal)? => { $($Proc:ident),+ }} => {
+    { $Trait:ident => { $($Proc:ident),+ }} => {
         $(
             impl Procedure for $Proc {
                 type Output = <$Proc as $Trait>::Output;
@@ -163,7 +163,7 @@ macro_rules! procedures {
 }
 
 #[macro_export]
-macro_rules! procedures2 {
+macro_rules! generic_procedures {
     { $Trait:ident<$n:literal> => { $($Proc:ident),+ }} => {
         $(
             impl Procedure for $Proc {
@@ -176,11 +176,18 @@ macro_rules! procedures2 {
         )+
         procedures!(_ => { $($Proc),+ });
     };
+    { $($Trait:tt<$n:literal> => { $($Proc:ident),+ }),+} => {
+        $(
+            generic_procedures!($Trait<$n> => { $($Proc),+ } );
+        )+
+    };
 }
 
-procedures2! {
+generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
-    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt }
+    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    // Stronghold procedures that implement the `DeriveSecret` trait.
+    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf }
 }
 
 procedures2! {
@@ -190,8 +197,6 @@ procedures2! {
 procedures! {
     // Stronghold procedures that implement the `GenerateSecret` trait.
     GenerateSecret => { WriteVault, BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey, Pbkdf2Hmac },
-    // Stronghold procedures that implement the `DeriveSecret` trait.
-    DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf },
     // Stronghold procedures that directly implement the `Procedure` trait.
     _ => { RevokeData, GarbageCollect }
 }
@@ -264,19 +269,19 @@ pub struct CopyRecord {
     pub target: Location,
 }
 
-impl DeriveSecret for CopyRecord {
+impl DeriveSecret<1> for CopyRecord {
     type Output = ();
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
         let products = Products {
-            secret: (*guard.borrow()).to_vec(),
+            secret: (*guards[0].borrow()).to_vec(),
             output: (),
         };
         Ok(products)
     }
 
-    fn source(&self) -> &Location {
-        &self.source
+    fn source(&self) -> [Location; 1] {
+        [self.source.clone()]
     }
 
     fn target(&self) -> &Location {
@@ -434,16 +439,16 @@ pub struct Slip10Derive {
     pub output: Location,
 }
 
-impl DeriveSecret for Slip10Derive {
+impl DeriveSecret<1> for Slip10Derive {
     type Output = ChainCode;
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<ChainCode>, FatalProcedureError> {
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<ChainCode>, FatalProcedureError> {
         let dk = match self.input {
             Slip10DeriveInput::Key(_) => {
-                slip10::Key::try_from(&*guard.borrow()).and_then(|parent| parent.derive(&self.chain))
+                slip10::Key::try_from(&*guards[0].borrow()).and_then(|parent| parent.derive(&self.chain))
             }
             Slip10DeriveInput::Seed(_) => {
-                slip10::Seed::from_bytes(&guard.borrow()).derive(slip10::Curve::Ed25519, &self.chain)
+                slip10::Seed::from_bytes(&guards[0].borrow()).derive(slip10::Curve::Ed25519, &self.chain)
             }
         }?;
         Ok(Products {
@@ -452,10 +457,10 @@ impl DeriveSecret for Slip10Derive {
         })
     }
 
-    fn source(&self) -> &Location {
+    fn source(&self) -> [Location; 1] {
         match &self.input {
-            Slip10DeriveInput::Key(loc) => loc,
-            Slip10DeriveInput::Seed(loc) => loc,
+            Slip10DeriveInput::Key(loc) => [loc.clone()],
+            Slip10DeriveInput::Seed(loc) => [loc.clone()],
         }
     }
 
@@ -528,14 +533,14 @@ pub struct PublicKey {
 impl UseSecret<1> for PublicKey {
     type Output = [u8; 32];
 
-    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             KeyType::Ed25519 => {
-                let sk = ed25519_secret_key(guard[0].borrow())?;
+                let sk = ed25519_secret_key(guards[0].borrow())?;
                 Ok(sk.public_key().to_bytes())
             }
             KeyType::X25519 => {
-                let sk = x25519_secret_key(guard[0].borrow())?;
+                let sk = x25519_secret_key(guards[0].borrow())?;
                 Ok(sk.public_key().to_bytes())
             }
         }
@@ -560,8 +565,8 @@ pub struct Ed25519Sign {
 impl UseSecret<1> for Ed25519Sign {
     type Output = [u8; ed25519::SIGNATURE_LENGTH];
 
-    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
-        let sk = ed25519_secret_key(guard[0].borrow())?;
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let sk = ed25519_secret_key(guards[0].borrow())?;
         let sig = sk.sign(&self.msg);
         Ok(sig.to_bytes())
     }
@@ -580,11 +585,11 @@ pub struct X25519DiffieHellman {
     pub shared_key: Location,
 }
 
-impl DeriveSecret for X25519DiffieHellman {
+impl DeriveSecret<1> for X25519DiffieHellman {
     type Output = ();
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
-        let sk = x25519_secret_key(guard.borrow())?;
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
+        let sk = x25519_secret_key(guards[0].borrow())?;
         let public = x25519::PublicKey::from_bytes(self.public_key);
         let shared_key = sk.diffie_hellman(&public);
 
@@ -594,8 +599,8 @@ impl DeriveSecret for X25519DiffieHellman {
         })
     }
 
-    fn source(&self) -> &Location {
-        &self.private_key
+    fn source(&self) -> [Location; 1] {
+        [self.private_key.clone()]
     }
 
     fn target(&self) -> &Location {
@@ -615,21 +620,21 @@ pub struct Hmac {
 impl UseSecret<1> for Hmac {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut mac = [0; SHA256_LEN];
-                HMAC_SHA256(&self.msg, &*guard[0].borrow(), &mut mac);
+                HMAC_SHA256(&self.msg, &*guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha384 => {
                 let mut mac = [0; SHA384_LEN];
-                HMAC_SHA384(&self.msg, &*guard[0].borrow(), &mut mac);
+                HMAC_SHA384(&self.msg, &*guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha512 => {
                 let mut mac = [0; SHA512_LEN];
-                HMAC_SHA512(&self.msg, &*guard[0].borrow(), &mut mac);
+                HMAC_SHA512(&self.msg, &*guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
         }
@@ -649,28 +654,28 @@ pub struct Hkdf {
     pub okm: Location,
 }
 
-impl DeriveSecret for Hkdf {
+impl DeriveSecret<1> for Hkdf {
     type Output = ();
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
         let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut okm = [0; SHA256_LEN];
-                hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &*guard.borrow())
+                hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &*guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
             }
             Sha2Hash::Sha384 => {
                 let mut okm = [0; SHA384_LEN];
-                hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &*guard.borrow())
+                hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &*guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
             }
             Sha2Hash::Sha512 => {
                 let mut okm = [0; SHA512_LEN];
-                hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &*guard.borrow())
+                hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &*guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
@@ -679,8 +684,8 @@ impl DeriveSecret for Hkdf {
         Ok(Products { secret, output: () })
     }
 
-    fn source(&self) -> &Location {
-        &self.ikm
+    fn source(&self) -> [Location; 1] {
+        [self.ikm.clone()]
     }
 
     fn target(&self) -> &Location {
@@ -748,7 +753,7 @@ pub struct AeadEncrypt {
 impl UseSecret<1> for AeadEncrypt {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let mut ctx = vec![0; self.plaintext.len()];
 
         let f = match self.cipher {
@@ -760,7 +765,7 @@ impl UseSecret<1> for AeadEncrypt {
             AeadCipher::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
         };
         f(
-            &*guard[0].borrow(),
+            &*guards[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &self.plaintext,
@@ -796,7 +801,7 @@ pub struct AeadDecrypt {
 impl UseSecret<1> for AeadDecrypt {
     type Output = Vec<u8>;
 
-    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let mut ptx = vec![0; self.ciphertext.len()];
 
         let f = match self.cipher {
@@ -804,7 +809,7 @@ impl UseSecret<1> for AeadDecrypt {
             AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
         };
         f(
-            &*guard[0].borrow(),
+            &*guards[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &mut ptx,
@@ -848,14 +853,14 @@ pub struct ConcatKdf {
     pub output: Location,
 }
 
-impl DeriveSecret for ConcatKdf {
+impl DeriveSecret<1> for ConcatKdf {
     type Output = ();
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
         let derived_key_material: Vec<u8> = match self.hash {
-            Sha2Hash::Sha256 => self.concat_kdf::<Sha256>(guard.borrow().as_ref()),
-            Sha2Hash::Sha384 => self.concat_kdf::<Sha384>(guard.borrow().as_ref()),
-            Sha2Hash::Sha512 => self.concat_kdf::<Sha512>(guard.borrow().as_ref()),
+            Sha2Hash::Sha256 => self.concat_kdf::<Sha256>(guards[0].borrow().as_ref()),
+            Sha2Hash::Sha384 => self.concat_kdf::<Sha384>(guards[0].borrow().as_ref()),
+            Sha2Hash::Sha512 => self.concat_kdf::<Sha512>(guards[0].borrow().as_ref()),
         }?;
 
         Ok(Products {
@@ -864,8 +869,8 @@ impl DeriveSecret for ConcatKdf {
         })
     }
 
-    fn source(&self) -> &Location {
-        &self.shared_secret
+    fn source(&self) -> [Location; 1] {
+        [self.shared_secret.clone()]
     }
 
     fn target(&self) -> &Location {
