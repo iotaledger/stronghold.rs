@@ -1007,7 +1007,13 @@ impl AesKeyWrapDecrypt {
     fn unwrap_key(&self, decryption_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
         // This uses Aes256Kw unconditionally, since AesKeyWrapCipher has just one variant.
         // The enum was added for future proofing so support for other variants can be added non-breakingly.
-        let mut plaintext: Vec<u8> = vec![0; self.wrapped_key.len() - Aes256Kw::BLOCK];
+        let plaintext_len: usize = self.wrapped_key.len().checked_sub(Aes256Kw::BLOCK).ok_or_else(|| {
+            FatalProcedureError::from(format!(
+                "ciphertext needs to have a length >= than the block size: {}",
+                Aes256Kw::BLOCK
+            ))
+        })?;
+        let mut plaintext: Vec<u8> = vec![0; plaintext_len];
 
         let wrap: Aes256Kw = Aes256Kw::new(decryption_key);
         wrap.unwrap_key(self.wrapped_key.as_ref(), &mut plaintext)?;
