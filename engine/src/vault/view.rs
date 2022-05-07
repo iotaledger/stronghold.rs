@@ -131,6 +131,7 @@ impl<P: BoxProvider> DbView<P> {
         Ok(blob_id)
     }
 
+    /// Get the buffers for the given records, using the provided key for access.
     fn get_buffers<E, const N: usize>(
         &self,
         ids: [(Key<P>, VaultId, RecordId); N],
@@ -184,7 +185,6 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Access the decrypted [`Buffer`]s of the specified [`Record`]s and place the return value
     /// into the target [`Record`].
-    #[allow(clippy::too_many_arguments)]
     pub fn exec_procedure<E, F, const N: usize>(
         &mut self,
         sources: [(Key<P>, VaultId, RecordId); N],

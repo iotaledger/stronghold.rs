@@ -170,6 +170,7 @@ impl Runner for Client {
 }
 
 impl Client {
+    /// Resolve the given locations into their corresponding vault keys and vault and record ids.
     fn resolve_locations<const N: usize>(
         &self,
         locations: [Location; N],
@@ -188,6 +189,7 @@ impl Client {
         Ok(ids)
     }
 
+    /// Applies `f` to the buffer from the given `location`.
     pub fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,

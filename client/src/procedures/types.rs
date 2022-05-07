@@ -12,6 +12,7 @@ use thiserror::Error as DeriveError;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
+    /// Applies `f` to the buffers from the given `locations`.
     fn get_guards<F, T, const N: usize>(
         &self,
         locations: [Location; N],
