@@ -926,6 +926,7 @@ impl ConcatKdf {
     }
 }
 
+/// The available ciphers for AES key wrapping.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AesKeyWrapCipher {
     Aes256,
@@ -956,11 +957,11 @@ impl UseSecret<2> for AesKeyWrapEncrypt {
 
 impl AesKeyWrapEncrypt {
     fn wrap_key(&self, encryption_key: &[u8], wrap_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
-        let mut ctx: Vec<u8> = vec![0; encryption_key.len() + Aes256Kw::BLOCK];
+        let mut ciphertext: Vec<u8> = vec![0; wrap_key.len() + Aes256Kw::BLOCK];
 
         let wrap: Aes256Kw = Aes256Kw::new(encryption_key);
-        wrap.wrap_key(wrap_key, &mut ctx)?;
+        wrap.wrap_key(wrap_key, &mut ciphertext)?;
 
-        Ok(ctx)
+        Ok(ciphertext)
     }
 }
