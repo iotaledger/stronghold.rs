@@ -314,15 +314,10 @@ where
         loop {
             unsafe {
                 let mem_ptr = {
-                    let alloc_size = rng.gen::<usize>().min(min).max(max); // min was actual_size
-
-                    info!("desired alloc size 0x{:08X}", alloc_size);
+                    let alloc_size = rng.gen::<usize>().min(min).max(max);
 
                     // allocate some randomly sized chunk of memory
                     let ptr = libc::malloc(alloc_size);
-
-                    info!("allocated block {:p}", ptr);
-
                     if ptr.is_null() {
                         continue;
                     }
@@ -340,41 +335,10 @@ where
                     ptr
                 };
 
-                // let mem_ptr = {
-                //     let alloc_size = rng.gen::<usize>().min(actual_size).max(0xFFFFF);
-
-                //     // info!("desired alloc size 0x{:08X}", actual_size);
-                //     // allocate some randomly sized blob
-                //     let mem_ptr = libc::malloc(alloc_size);
-                //     info!("allocated block {:p}", mem_ptr);
-                //     if mem_ptr.is_null() {
-                //         continue;
-                //     }
-                //     #[cfg(macos)]
-                //     {
-                //         // on linux it isn't required to commit memory
-                //         let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
-                //         if error != 0 {
-                //             error!("memory advise returned an error {}", error);
-                //         }
-                //     }
-
-                //     mem_ptr
-                // };
-
                 // we are searching for some address in between
                 let offset = rng.gen::<usize>().min(max - actual_size);
-                info!("Generated memory offset for pointer: 0x{:08X}", offset);
-
                 let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
-
-                // let actual_mem = libc::realloc(mem_ptr as *mut libc::c_void, actual_size) as *mut T;
-
-                info!("memory is now located at {:p}", actual_mem);
-
                 actual_mem.write(T::default());
-
-                info!("writing object was successful");
 
                 return Ok(NonNull::new_unchecked(actual_mem));
             }
