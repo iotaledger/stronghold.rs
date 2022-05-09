@@ -330,7 +330,7 @@ where
                     #[cfg(target_os = "macos")]
                     {
                         // on linux it isn't required to commit memory
-                        let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
+                        let error = libc::madvise(ptr, actual_size, libc::MADV_WILLNEED);
                         if error != 0 {
                             error!("memory advise returned an error {}", error);
                             continue;
