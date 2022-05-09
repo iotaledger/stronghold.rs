@@ -47,7 +47,12 @@ Please check the following list:
 
 - **Ensure the bug was not already reported** by searching on GitHub under [**Issues**](https://github.com/iotaledger/stronghold.rs/issues). If the bug has already been reported **and the issue is still open**, add a comment to the existing issue instead of opening a new one.
 
-**Note:** If you find a **Closed** issue that seems similar to what you're experiencing, open a new issue and include a link to the original issue in the body of your new one.
+
+::: Note
+
+If you find a **Closed** issue that seems similar to what you're experiencing, open a new issue and include a link to the original issue in the body of your new one.
+
+:::
 
 ### Submitting a Bug Report
 
