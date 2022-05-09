@@ -66,11 +66,11 @@ If you also want to fix the bug, submit a [pull request](#pull-requests) and ref
 
 This section guides you through suggesting a new feature. Following these guidelines helps maintainers and the community collaborate to find the best possible way forward with your suggestion.
 
-### Before suggesting a new feature
+### Before Suggesting a New Feature
 
 **Ensure the feature has not already been suggested** by searching on GitHub under [**Issues**](https://github.com/iotaledger/stronghold.rs/labels/request).
 
-### Suggesting a new feature
+### Suggesting a New Feature
 
 To suggest a new feature, open a [Feature Request](https://github.com/iotaledger/stronghold.rs/issues/new?template=feature_request.yml).
 
