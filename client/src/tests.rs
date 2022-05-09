@@ -3,6 +3,8 @@
 
 mod interface_tests;
 
+mod fresh;
 #[cfg(feature = "p2p")]
 mod network_tests;
+mod procedure_tests;
 mod store_tests;
