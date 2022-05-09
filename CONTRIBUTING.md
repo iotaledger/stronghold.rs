@@ -49,7 +49,7 @@ Please check the following list:
 
 **Note:** If you find a **Closed** issue that seems similar to what you're experiencing, open a new issue and include a link to the original issue in the body of your new one.
 
-### Submitting a bug report
+### Submitting a Bug Report
 
 To report a bug, [open a new issue](https://github.com/iotaledger/stronghold.rs/issues/new), and be sure to include as many details as possible, using the template.
 
