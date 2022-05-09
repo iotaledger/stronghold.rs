@@ -158,12 +158,8 @@ async fn concat_kdf_with_jwa() {
     );
 }
 
-// --- added tests from `dev`
-
 #[tokio::test]
 async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
-    // let (_cp, sh) = setup_stronghold().await?;
-
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
@@ -300,10 +296,6 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
     let procedures = vec![generate.into(), derive.into(), get_pk.into(), sign.into()];
     let output = client.execute_procedure_chained(procedures).unwrap();
 
-    // Skip output from Slip10Generate and Slip10Derive; ?
-    // output.next();
-    // output.next();
-
     let mut pub_key_vec: [u8; ed25519::PUBLIC_KEY_LENGTH] = [0u8; ed25519::PUBLIC_KEY_LENGTH];
     let proc_output: Vec<u8> = output[2].clone().into();
     pub_key_vec.clone_from_slice(proc_output.as_slice());
@@ -393,7 +385,6 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
 }
 
 async fn test_aead(
-    // sh: &mut Stronghold,
     client: &Client,
     key_location: Location,
     key: &[u8],
@@ -511,7 +502,6 @@ async fn usecase_diffie_hellman() -> Result<(), Box<dyn std::error::Error>> {
     let sk1 = GenerateKey {
         ty: KeyType::X25519,
         output: sk1_location.clone(),
-        // hint: fresh::record_hint(),
     };
     let pk1 = PublicKey {
         ty: KeyType::X25519,
@@ -529,7 +519,6 @@ async fn usecase_diffie_hellman() -> Result<(), Box<dyn std::error::Error>> {
     let sk2 = GenerateKey {
         ty: KeyType::X25519,
         output: sk2_location.clone(),
-        // hint: fresh::record_hint(),
     };
     let pk2 = PublicKey {
         ty: KeyType::X25519,
@@ -553,14 +542,13 @@ async fn usecase_diffie_hellman() -> Result<(), Box<dyn std::error::Error>> {
         private_key: sk1_location,
         public_key: pub_key_2,
         shared_key: fresh::location(),
-        // hint: fresh::record_hint(),
     };
     let derived_1_2 = Hkdf {
         hash_type: Sha2Hash::Sha256,
         salt: salt.clone(),
         label: label.clone(),
         ikm: dh_1_2.target().clone(),
-        okm: key_1_2,
+        okm: key_1_2.clone(),
     };
 
     let key_2_1 = fresh::location();
@@ -568,24 +556,29 @@ async fn usecase_diffie_hellman() -> Result<(), Box<dyn std::error::Error>> {
         private_key: sk2_location,
         public_key: pub_key_1,
         shared_key: fresh::location(),
-        // hint: fresh::record_hint(),
     };
     let derived_2_1 = Hkdf {
         hash_type: Sha2Hash::Sha256,
         salt: salt.clone(),
         label,
         ikm: dh_2_1.target().clone(),
-        okm: key_2_1,
+        okm: key_2_1.clone(),
     };
 
     let procedures = vec![dh_1_2.into(), derived_1_2.into(), dh_2_1.into(), derived_2_1.into()];
 
     assert!(client.execute_procedure_chained(procedures).is_ok());
 
-    // let hashed_shared_1_2 = client.read_secret(cp.clone(), key_1_2).await?.unwrap();
-    // let hashed_shared_2_1 = client.read_secret(cp, key_2_1).await?.unwrap();
+    let hashed_shared_1_2 = client
+        .vault(key_1_2.vault_path())
+        .read_secret(key_1_2.record_path())
+        .unwrap();
+    let hashed_shared_2_1 = client
+        .vault(key_2_1.vault_path())
+        .read_secret(key_2_1.record_path())
+        .unwrap();
 
-    // assert_eq!(hashed_shared_1_2, hashed_shared_2_1);
+    assert_eq!(hashed_shared_1_2, hashed_shared_2_1);
     Ok(())
 }
 
