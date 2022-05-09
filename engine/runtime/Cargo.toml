@@ -14,7 +14,7 @@ serde                   = { version = "1.0", features = [ "derive" ] }
 random                  = { version = "0.8.4", package = "rand" }
 dirs                    = { version = "4.0.0" }
 thiserror               = { version = "1.0" }
-iota-crypto             = { version = "0.8.0", features = ["sha"] }
+iota-crypto             = { version = "0.8.0", features = ["blake2b"] }
 
 [dev-dependencies]
 serde_json              = { version = "1.0" }
