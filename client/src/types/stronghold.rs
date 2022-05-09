@@ -412,7 +412,7 @@ impl Stronghold {
             }
 
             network_old::ClientRequest::Procedures { procedures } => {
-                let result = client.execure_procedure_chained(procedures);
+                let result = client.execute_procedure_chained(procedures);
                 assert!(result.is_ok());
                 assert!(tx.send(StrongholdNetworkResult::Proc(result)).is_ok());
 
