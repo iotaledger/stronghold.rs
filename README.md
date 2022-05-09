@@ -183,7 +183,7 @@ Stronghold has been audited for security vulnerabilities. This process is intend
 Contributions make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
 If you have a suggestion to improve this, please fork the repo and [create a pull request](https://github.com/iotaledger/stronghold.rs/compare). You can also [open an issue](https://github.com/iotaledger/stronghold.rs/issues/new/choose) with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+Do not forget to give the project a star! Thanks again!
 
 1. Fork the Project.
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`).
