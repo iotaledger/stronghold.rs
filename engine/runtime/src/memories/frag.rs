@@ -84,7 +84,7 @@ impl Frag {
         unsafe {
             if d(a.as_ref(), b.as_ref()) < distance {
                 return Err(MemoryError::Allocation(
-                    "Distance between segments below threshold".to_owned(),
+                    "Distance between parts below threshold".to_owned(),
                 ));
             }
         }
@@ -130,14 +130,13 @@ where
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
+        let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+            .unwrap_or(Some(0x1000i64))
+            .unwrap() as usize;
+        info!("Using page size {}", pagesize);
+
         unsafe {
             loop {
-                let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-                    .unwrap_or(Some(0x1000i64))
-                    .unwrap() as usize;
-
-                info!("Using page size {}", pagesize);
-
                 let mut addr: usize = (0x00007fff00000000 | (rng.gen::<usize>() >> 32)) & (!0usize ^ (pagesize - 1));
 
                 info!("Using addr  0x{:08X}", addr);
@@ -301,36 +300,81 @@ where
         let actual_size = std::mem::size_of::<T>();
         let mut rng = thread_rng();
 
+        let min = 0xFFFF;
+        let max = 0xFFFF_FFFF;
+
+        #[cfg(any(target_os = "unix", target_os = "linux"))]
+        let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+            .unwrap_or(Some(0x1000i64))
+            .unwrap() as usize;
+
+        // Within the loop we allocate a sufficiently "large" chunk of memory. A random
+        // offset will be added to the returned pointer and the object will be written. This
+        // actually leaks memory.
         loop {
             unsafe {
-                let alloc_size = rng.gen::<usize>().min(actual_size).max(0xFFFFF);
+                let mem_ptr = {
+                    let alloc_size = rng.gen::<usize>().min(min).max(max); // min was actual_size
 
-                info!("desired alloc size 0x{:08X}", actual_size);
+                    info!("desired alloc size 0x{:08X}", alloc_size);
 
-                let mem_ptr = libc::malloc(alloc_size);
+                    // allocate some randomly sized chunk of memory
+                    let ptr = libc::malloc(alloc_size);
 
-                info!("allocated block {:p}", mem_ptr);
+                    info!("allocated block {:p}", ptr);
 
-                if mem_ptr.is_null() {
-                    continue;
-                }
-
-                // on linux this isn't required to commit memory
-                #[cfg(any(target_os = "macos"))]
-                {
-                    let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
-
-                    if error != 0 {
-                        error!("memory advise returned an error {}", error);
+                    if ptr.is_null() {
+                        continue;
                     }
-                }
 
-                let actual_mem = libc::realloc(mem_ptr, actual_size) as *mut T;
-                info!("memory was reallocated {:p}", actual_mem);
+                    #[cfg(target_os = "macos")]
+                    {
+                        // on linux it isn't required to commit memory
+                        let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
+                        if error != 0 {
+                            error!("memory advise returned an error {}", error);
+                            continue;
+                        }
+                    }
+
+                    ptr
+                };
+
+                // let mem_ptr = {
+                //     let alloc_size = rng.gen::<usize>().min(actual_size).max(0xFFFFF);
+
+                //     // info!("desired alloc size 0x{:08X}", actual_size);
+                //     // allocate some randomly sized blob
+                //     let mem_ptr = libc::malloc(alloc_size);
+                //     info!("allocated block {:p}", mem_ptr);
+                //     if mem_ptr.is_null() {
+                //         continue;
+                //     }
+                //     #[cfg(macos)]
+                //     {
+                //         // on linux it isn't required to commit memory
+                //         let error = libc::madvise(mem_ptr, actual_size, libc::MADV_WILLNEED);
+                //         if error != 0 {
+                //             error!("memory advise returned an error {}", error);
+                //         }
+                //     }
+
+                //     mem_ptr
+                // };
+
+                // we are searching for some address in between
+                let offset = rng.gen::<usize>().min(max - actual_size);
+                info!("Generated memory offset for pointer: 0x{:08X}", offset);
+
+                let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
+
+                // let actual_mem = libc::realloc(mem_ptr as *mut libc::c_void, actual_size) as *mut T;
+
+                info!("memory is now located at {:p}", actual_mem);
 
                 actual_mem.write(T::default());
 
-                info!("writing object was successful ");
+                info!("writing object was successful");
 
                 return Ok(NonNull::new_unchecked(actual_mem));
             }
