@@ -58,7 +58,11 @@ If you find a **Closed** issue that seems similar to what you're experiencing, o
 
 To report a bug, [open a new issue](https://github.com/iotaledger/stronghold.rs/issues/new), and be sure to include as many details as possible, using the template.
 
-**Note:** Minor changes such as fixing a typo can but do not need an open issue.
+::: Note
+
+Minor changes such as fixing a typo can but do not need an open issue.
+
+:::
 
 If you also want to fix the bug, submit a [pull request](#pull-requests) and reference the issue.
 </details>
