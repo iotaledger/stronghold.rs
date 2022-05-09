@@ -23,7 +23,7 @@ If you have a general or technical question, you can use one of the following re
 
 Stronghold is currently being regarded as feature complete, but we cannot anticipate every future extension that might be useful or increases security. 
 
-So in order to contribute to Stronghold on GitHub, you can:
+So to contribute to Stronghold on GitHub, you can:
 
 - Report a bug
 - Suggest a new feature as an RFC inside [discussions](https://github.com/iotaledger/stronghold.rs/discussions)
