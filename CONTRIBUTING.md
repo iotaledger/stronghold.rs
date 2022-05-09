@@ -21,7 +21,7 @@ If you have a general or technical question, you can use one of the following re
 <summary>Ways to contribute :mag:</summary>
 <br>
 
-Stronghold is currently being regarded as feature complete, but we can't anticipate every future extension that might be useful or increases security. 
+Stronghold is currently being regarded as feature complete, but we cannot anticipate every future extension that might be useful or increases security. 
 
 So in order to contribute to Stronghold on GitHub, you can:
 
