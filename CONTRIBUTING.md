@@ -25,8 +25,8 @@ Stronghold is currently being regarded as feature complete, but we cannot antici
 
 So to contribute to Stronghold on GitHub, you can:
 
-- Report a bug
-- Suggest a new feature as an RFC inside [discussions](https://github.com/iotaledger/stronghold.rs/discussions)
+- Report a bug.
+- Suggest a new feature as an RFC inside [discussions](https://github.com/iotaledger/stronghold.rs/discussions).
     - _note_ we have a iota-wide TIP process, which includes RFCs. Work in Stronghold specific RFC templates is in progress. 
 
 </details>
