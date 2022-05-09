@@ -39,7 +39,7 @@ So to contribute to Stronghold on GitHub, you can:
 
 This section guides you through reporting a bug. Following these guidelines helps maintainers and the community understand the bug, reproduce the behavior, and find related bugs.
 
-### Before reporting a bug
+### Before Reporting a Bug
 
 Please check the following list:
 
