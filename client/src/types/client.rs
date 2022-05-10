@@ -228,7 +228,7 @@ impl Client {
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.execure_procedure_chained(vec![procedure.into()]);
+        let res = self.execute_procedure_chained(vec![procedure.into()]);
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
         Ok(mapped)
     }
@@ -236,7 +236,7 @@ impl Client {
     /// Executes a list of cryptographic [`crate::procedures::Procedure`]s sequentially and returns a collected output
     ///
     /// # Example
-    pub fn execure_procedure_chained(
+    pub fn execute_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {
