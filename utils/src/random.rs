@@ -42,3 +42,8 @@ pub fn coinflip() -> bool {
 pub fn usize(upper_bound: usize) -> usize {
     random::<usize>() % upper_bound
 }
+
+/// Returns a random passphrase as String
+pub fn passphrase() -> Option<String> {
+    Some(string(1024))
+}

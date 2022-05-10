@@ -186,7 +186,7 @@ impl Client {
             ids.push((key, vault_id, record_id));
         }
         let ids: [(Key<Provider>, VaultId, RecordId); N] =
-            <[_; N]>::try_from(ids).expect("buffers did not have exactly len N");
+            <[_; N]>::try_from(ids).expect("ids did not have exactly len N");
         Ok(ids)
     }
 
