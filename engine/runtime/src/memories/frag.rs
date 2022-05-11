@@ -250,9 +250,17 @@ where
                     }
 
                     if let Some(ref cfg) = config {
-                        let actual_distance = (&random_mapping as *const _ as usize).abs_diff(cfg.last_address);
+                        let actual_distance = (&*random_mapping as *const _ as usize).abs_diff(cfg.last_address);
                         if actual_distance < cfg.min_distance {
                             warn!("New allocation distance to previous allocation is below threshold.");
+
+                            // remove previous file mapping
+                            windows::Win32::System::Memory::UnmapViewOfFile(random_mapping);
+
+                            if let Err(e) = last_error() {
+                                return Err(e);
+                            }
+
                             continue;
                         }
                     }
