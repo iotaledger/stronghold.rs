@@ -249,23 +249,7 @@ where
                         return Err(e);
                     }
 
-                    if let Some(ref cfg) = config {
-                        let actual_distance = (&*random_mapping as *const _ as usize).abs_diff(cfg.last_address);
-                        if actual_distance < cfg.min_distance {
-                            warn!("New allocation distance to previous allocation is below threshold.");
-
-                            // remove previous file mapping
-                            if !windows::Win32::System::Memory::UnmapViewOfFile(random_mapping).as_bool() {
-                                if let Err(e) = last_error() {
-                                    return Err(e);
-                                }
-                            }
-
-                            continue;
-                        }
-                    }
-
-                    let _ = windows::Win32::System::Memory::MapViewOfFile(
+                    let ptr = windows::Win32::System::Memory::MapViewOfFile(
                         random_mapping,
                         windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
                         0,
@@ -275,6 +259,25 @@ where
 
                     if let Err(e) = last_error() {
                         return Err(e);
+                    }
+
+                    if let Some(ref cfg) = config {
+                        let actual_distance = (ptr as *const _ as usize).abs_diff(cfg.last_address);
+                        if actual_distance < cfg.min_distance {
+                            warn!(
+                                "New allocation distance to previous allocation is below threshold: {}",
+                                actual_distance
+                            );
+
+                            // remove previous file mapping
+                            if !windows::Win32::System::Memory::UnmapViewOfFile(ptr).as_bool() {
+                                if let Err(e) = last_error() {
+                                    return Err(e);
+                                }
+                            }
+
+                            continue;
+                        }
                     }
                 }
 
