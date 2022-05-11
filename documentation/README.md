@@ -18,7 +18,7 @@ This command installs all needed dependencies.
 ## Local Development
 
 ```console
-yarn iota-wiki start
+yarn start
 ```
 
 This command starts a local, wiki themed, development server and opens up a browser window. Most changes are reflected live without having to restart the server.
