@@ -27,7 +27,7 @@ pub enum FragStrategy {
     /// Anonymously maps a region of memory
     Map,
 
-    /// System's allocator will be called a few times
+    /// Using system allocator (`malloc` on linux/bsd/macos and `VirtualAlloc` on windows)
     Direct,
 }
 
@@ -37,8 +37,9 @@ pub enum FragStrategy {
 pub trait Alloc<T> {
     type Error;
 
-    /// Allocates `T`, returns an error if something wrong happened
-    fn alloc() -> Result<NonNull<T>, Self::Error>;
+    /// Allocates `T`, returns an error if something wrong happened. Takes an
+    /// optional configuration to check against a previous allocation
+    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error>;
 }
 
 // -----------------------------------------------------------------------------
@@ -46,6 +47,27 @@ pub trait Alloc<T> {
 /// Frag is being used as control object to load different allocators
 /// according to their strategy
 pub struct Frag;
+
+/// Configuration for the fragmenting allocator
+pub struct FragConfig {
+    /// The last address of a previous allocation. This
+    /// value will be used to calculate the minimum distance to the
+    /// previous allocation.
+    pub(crate) last_address: usize,
+
+    /// The  minimum distance to a previous allocation
+    pub(crate) min_distance: usize,
+}
+
+impl FragConfig {
+    /// Creates a new [`FragConfig`]
+    pub fn new(last_address: usize, min_distance: usize) -> Self {
+        Self {
+            last_address,
+            min_distance,
+        }
+    }
+}
 
 impl Frag {
     /// Returns a fragmenting allocator by strategy
@@ -57,13 +79,13 @@ impl Frag {
     ///
     /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
-    pub fn alloc_single<T>(s: FragStrategy) -> Result<NonNull<T>, MemoryError>
+    pub fn alloc_single<T>(strategy: FragStrategy, config: Option<FragConfig>) -> Result<NonNull<T>, MemoryError>
     where
         T: Default,
     {
-        match s {
-            FragStrategy::Direct => DirectAlloc::alloc(),
-            FragStrategy::Map => MemoryMapAlloc::alloc(),
+        match strategy {
+            FragStrategy::Direct => DirectAlloc::alloc(config),
+            FragStrategy::Map => MemoryMapAlloc::alloc(config),
         }
     }
 
@@ -72,20 +94,15 @@ impl Frag {
     where
         T: Default,
     {
-        let d = |a: &T, b: &T| {
-            let a = a as *const T as usize;
-            let b = b as *const T as usize;
-
-            a.abs_diff(b)
-        };
-
-        let a = Self::alloc_single::<T>(strategy)?;
-        let b = Self::alloc_single::<T>(strategy)?;
+        let a = Self::alloc_single::<T>(strategy, None)?;
+        let b = Self::alloc_single::<T>(strategy, Some(FragConfig::new(&a as *const _ as usize, distance)))?;
         unsafe {
-            if d(a.as_ref(), b.as_ref()) < distance {
-                return Err(MemoryError::Allocation(
-                    "Distance between parts below threshold".to_owned(),
-                ));
+            let actual_distance = calc_distance(a.as_ref(), b.as_ref());
+            if actual_distance < distance {
+                return Err(MemoryError::Allocation(format!(
+                    "Distance between parts below threshold: 0x{:016X}",
+                    actual_distance
+                )));
             }
         }
 
@@ -124,49 +141,60 @@ where
     type Error = MemoryError;
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn alloc() -> Result<NonNull<T>, Self::Error> {
+    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
+        let hr = "-".repeat(20);
+        info!("{0}Mapping Allocator{0}", hr);
+
         let size = std::mem::size_of::<T>();
 
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
+        let default_page_size = 0x1000i64;
+
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(0x1000i64))
+            .unwrap_or(Some(default_page_size))
             .unwrap() as usize;
+
         info!("Using page size {}", pagesize);
 
         unsafe {
             loop {
-                let mut addr: usize = (0x00007fff00000000 | (rng.gen::<usize>() >> 32)) & (!0usize ^ (pagesize - 1));
+                let mut addr: usize = (rng.gen::<usize>() >> 32) & (!0usize ^ (pagesize - 1));
 
-                info!("Using addr  0x{:08X}", addr);
+                info!("Desired addr  0x{:08X}", addr);
 
                 // the maximum size of the mapping
-                let max_alloc_size = 0xFFFF;
-                let desired_alloc_size = rng.gen::<usize>().min(size).max(max_alloc_size);
+                let max_alloc_size = 0xFFFFFF;
+
+                let desired_alloc_size: usize = rng.gen_range(size..=max_alloc_size);
 
                 info!("prealloc: desired alloc size 0x{:08X}", desired_alloc_size);
 
                 // this creates an anonymous mapping zeroed out.
                 let ptr = libc::mmap(
                     &mut addr as *mut _ as *mut libc::c_void,
-                    desired_alloc_size, // was size
+                    desired_alloc_size,
                     libc::PROT_READ | libc::PROT_WRITE,
                     libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
                     -1,
                     0,
                 );
 
-                info!("preallocated segment {:p}", ptr);
+                info!("Preallocated segment addr: {:p}", ptr);
 
                 if ptr == libc::MAP_FAILED {
+                    warn!("Memory mapping failed");
                     continue;
                 }
 
-                // write random bytes into allocated pages
-                let bytes = ptr as *mut usize;
-                let end = rng.gen_range(size..(size * 0x1000));
-                (size..end).for_each(|_| bytes.write(rng.gen()));
+                if let Some(ref cfg) = config {
+                    let actual_distance = (ptr as usize).abs_diff(cfg.last_address);
+                    if actual_distance < cfg.min_distance {
+                        warn!("New allocation distance to previous allocation is below threshold.");
+                        continue;
+                    }
+                }
 
                 #[cfg(any(target_os = "macos"))]
                 {
@@ -176,6 +204,7 @@ where
                     {
                         if error != 0 {
                             error!("madvise returned an error {}", error);
+                            continue;
                         }
                     }
                 }
@@ -186,7 +215,7 @@ where
                     let t = T::default();
                     ptr.write(t);
 
-                    info!("Object sucesfully written into mem location");
+                    info!("Object succesfully written into mem location");
 
                     return Ok(NonNull::new_unchecked(ptr));
                 }
@@ -195,7 +224,7 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc() -> Result<NonNull<T>, Self::Error> {
+    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
@@ -218,6 +247,14 @@ where
 
                 if let Err(e) = last_error() {
                     return Err(e);
+                }
+
+                if let Some(ref cfg) = config {
+                    let actual_distance = (ptr as usize).abs_diff(cfg.last_address);
+                    if actual_distance < cfg.min_distance {
+                        warn!("New allocation distance to previous allocation is below threshold.");
+                        continue;
+                    }
                 }
 
                 let _ = windows::Win32::System::Memory::MapViewOfFile(
@@ -294,7 +331,7 @@ where
     type Error = MemoryError;
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn alloc() -> Result<NonNull<T>, Self::Error> {
+    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
         use random::{thread_rng, Rng};
 
         let actual_size = std::mem::size_of::<T>();
@@ -303,9 +340,12 @@ where
         let min = 0xFFFF;
         let max = 0xFFFF_FFFF;
 
+        // pick a default, if system api call is not successful
+        let default_page_size = 0x1000i64;
+
         #[cfg(any(target_os = "unix", target_os = "linux"))]
         let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(0x1000i64))
+            .unwrap_or(Some(default_page_size))
             .unwrap() as usize;
 
         // Within the loop we allocate a sufficiently "large" chunk of memory. A random
@@ -335,6 +375,14 @@ where
                     ptr
                 };
 
+                if let Some(ref cfg) = config {
+                    let actual_distance = (mem_ptr as usize).abs_diff(cfg.last_address);
+                    if actual_distance < cfg.min_distance {
+                        warn!("New allocation distance to previous allocation is below threshold.");
+                        continue;
+                    }
+                }
+
                 // we are searching for some address in between
                 let offset = rng.gen::<usize>().min(max - actual_size);
                 let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
@@ -346,7 +394,7 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc() -> Result<NonNull<T>, Self::Error> {
+    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
         use windows::Win32::System::Memory::{VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 
         loop {
@@ -362,6 +410,14 @@ where
 
                 if actual_mem.is_null() {
                     if let Err(_) = last_error() {
+                        continue;
+                    }
+                }
+
+                if let Some(ref cfg) = config {
+                    let actual_distance = (actual_mem as usize).abs_diff(cfg.last_address);
+                    if actual_distance < cfg.min_distance {
+                        warn!("New allocation distance to previous allocation is below threshold.");
                         continue;
                     }
                 }
@@ -395,6 +451,14 @@ pub fn round_up(value: usize, base: usize) -> usize {
         0 => value,
         remainder => value + base - remainder,
     }
+}
+
+/// Calulates the distance between two pointers and returns it
+fn calc_distance<T>(a: &T, b: &T) -> usize {
+    let a = a as *const T as usize;
+    let b = b as *const T as usize;
+
+    a.abs_diff(b)
 }
 
 /// Checks for error codes under Windows.

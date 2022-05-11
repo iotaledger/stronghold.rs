@@ -23,7 +23,6 @@ impl Default for TestStruct {
     }
 }
 
-/// this fails under windows
 #[test]
 fn test_allocate_direct() {
     let _ = env_logger::builder()
@@ -67,7 +66,7 @@ where
         let aa = a.as_ref();
         let bb = b.as_ref();
 
-        assert!(distance(aa, bb) > min_distance);
+        assert!(distance(aa, bb) >= min_distance);
         assert_eq!(aa, &T::default());
         assert_eq!(bb, &T::default());
     }
