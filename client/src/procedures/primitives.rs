@@ -12,7 +12,10 @@ use crypto::{
         chacha::XChaCha20Poly1305,
         traits::{Aead, Tag},
     },
-    hashes::sha::{Sha256, Sha384, Sha512, SHA256_LEN, SHA384_LEN, SHA512_LEN},
+    hashes::{
+        sha::{Sha256, Sha384, Sha512, SHA256_LEN, SHA384_LEN, SHA512_LEN},
+        Digest,
+    },
     keys::{
         bip39,
         pbkdf::{PBKDF2_HMAC_SHA256, PBKDF2_HMAC_SHA384, PBKDF2_HMAC_SHA512},
@@ -50,6 +53,7 @@ pub enum StrongholdProcedure {
     X25519DiffieHellman(X25519DiffieHellman),
     Hmac(Hmac),
     Hkdf(Hkdf),
+    ConcatKdf(ConcatKdf),
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
@@ -75,6 +79,7 @@ impl Procedure for StrongholdProcedure {
             X25519DiffieHellman(proc) => proc.execute(runner).map(|o| o.into()),
             Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
+            ConcatKdf(proc) => proc.execute(runner).map(|o| o.into()),
             Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
@@ -98,6 +103,9 @@ impl StrongholdProcedure {
             | StrongholdProcedure::Ed25519Sign(Ed25519Sign { private_key: input, .. })
             | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { private_key: input, .. })
             | StrongholdProcedure::Hkdf(Hkdf { ikm: input, .. })
+            | StrongholdProcedure::ConcatKdf(ConcatKdf {
+                shared_secret: input, ..
+            })
             | StrongholdProcedure::Hmac(Hmac { key: input, .. })
             | StrongholdProcedure::AeadEncrypt(AeadEncrypt { key: input, .. })
             | StrongholdProcedure::AeadDecrypt(AeadDecrypt { key: input, .. }) => Some(input.clone()),
@@ -115,6 +123,7 @@ impl StrongholdProcedure {
             | StrongholdProcedure::GenerateKey(GenerateKey { output, .. })
             | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { shared_key: output, .. })
             | StrongholdProcedure::Hkdf(Hkdf { okm: output, .. })
+            | StrongholdProcedure::ConcatKdf(ConcatKdf { output, .. })
             | StrongholdProcedure::Pbkdf2Hmac(Pbkdf2Hmac { output, .. }) => Some(output.clone()),
             _ => None,
         }
@@ -158,7 +167,7 @@ procedures! {
     // Stronghold procedures that implement the `GenerateSecret` trait.
     GenerateSecret => { WriteVault, BIP39Generate, BIP39Recover, Slip10Generate, GenerateKey, Pbkdf2Hmac },
     // Stronghold procedures that implement the `DeriveSecret` trait.
-    DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf },
+    DeriveSecret => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf },
     // Stronghold procedures that implement the `UseSecret` trait.
     UseSecret => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     // Stronghold procedures that directly implement the `Procedure` trait.
@@ -787,5 +796,110 @@ impl UseSecret for AeadDecrypt {
 
     fn source(&self) -> &Location {
         &self.key
+    }
+}
+
+/// Executes the concat KDF as defined in Section 5.8.1 of NIST.800-56A.
+///
+/// This derives key material from an existing shared secret (e.g. generated through ECDH)
+/// and additional fixed inputs, such as identifiers of the involved parties (e.g. "Alice")
+/// and algorithms (e.g. "A128GCM").
+/// The provided hash function is applied to those inputs in a loop,
+/// until enough key material was produced.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcatKdf {
+    /// The hash function to use in the kdf.
+    pub hash: Sha2Hash,
+    /// The identifier of the used algorithm, e.g. `ECDH-ES+A256KW`.
+    pub algorithm_id: String,
+    /// The location of the shared secret `z`.
+    pub shared_secret: Location,
+    /// The number of bytes of key material that should be derived.
+    pub key_len: usize,
+    /// Agreement PartyUInfo.
+    pub apu: Vec<u8>,
+    /// Agreement PartyVInfo.
+    pub apv: Vec<u8>,
+    /// SuppPubInfo.
+    pub pub_info: Vec<u8>,
+    /// SuppPrivInfo.
+    pub priv_info: Vec<u8>,
+    /// The location to write the derived key material into.
+    pub output: Location,
+}
+
+impl DeriveSecret for ConcatKdf {
+    type Output = ();
+
+    fn derive(self, guard: Buffer<u8>) -> Result<Products<()>, FatalProcedureError> {
+        let derived_key_material: Vec<u8> = match self.hash {
+            Sha2Hash::Sha256 => self.concat_kdf::<Sha256>(guard.borrow().as_ref()),
+            Sha2Hash::Sha384 => self.concat_kdf::<Sha384>(guard.borrow().as_ref()),
+            Sha2Hash::Sha512 => self.concat_kdf::<Sha512>(guard.borrow().as_ref()),
+        }?;
+
+        Ok(Products {
+            secret: derived_key_material,
+            output: (),
+        })
+    }
+
+    fn source(&self) -> &Location {
+        &self.shared_secret
+    }
+
+    fn target(&self) -> &Location {
+        &self.output
+    }
+}
+
+impl ConcatKdf {
+    /// The Concat KDF as defined in Section 5.8.1 of NIST.800-56A.
+    fn concat_kdf<D: Digest>(&self, z: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        let mut digest: D = D::new();
+        let alg: &str = self.algorithm_id.as_ref();
+        let len: usize = self.key_len;
+        let apu: &[u8] = self.apu.as_ref();
+        let apv: &[u8] = self.apv.as_ref();
+        let pub_info: &[u8] = self.pub_info.as_ref();
+        let prv_info: &[u8] = self.priv_info.as_ref();
+
+        let mut output: Vec<u8> = Vec::new();
+
+        let target: usize = (len + (D::output_size() - 1)) / D::output_size();
+        let rounds: u32 =
+            u32::try_from(target).map_err(|_| FatalProcedureError::from("u32 iteration overflow".to_owned()))?;
+
+        for count in 0..rounds {
+            // Iteration Count
+            digest.update(&(count as u32 + 1).to_be_bytes());
+
+            // Derived Secret
+            digest.update(z);
+
+            // AlgorithmId
+            digest.update(&(alg.len() as u32).to_be_bytes());
+            digest.update(alg.as_bytes());
+
+            // PartyUInfo
+            digest.update(&(apu.len() as u32).to_be_bytes());
+            digest.update(apu);
+
+            // PartyVInfo
+            digest.update(&(apv.len() as u32).to_be_bytes());
+            digest.update(apv);
+
+            // SuppPubInfo
+            digest.update(pub_info);
+
+            // SuppPrivInfo
+            digest.update(prv_info);
+
+            output.extend_from_slice(&digest.finalize_reset());
+        }
+
+        output.truncate(len);
+
+        Ok(output)
     }
 }

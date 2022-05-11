@@ -192,8 +192,10 @@ impl Client {
     /// Loads the state of [`Self`] from a [`ClientState`]. Replaces all previous data.
     ///
     /// # Example
-    pub(crate) fn restore(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
+    pub(crate) fn restore(&mut self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
         let (keys, db, st) = state;
+
+        self.id = id;
 
         // reload keystore
         let mut keystore = self.keystore.try_write()?;
