@@ -250,7 +250,7 @@ where
                     }
 
                     if let Some(ref cfg) = config {
-                        let actual_distance = (ptr as usize).abs_diff(cfg.last_address);
+                        let actual_distance = (random_mapping as usize).abs_diff(cfg.last_address);
                         if actual_distance < cfg.min_distance {
                             warn!("New allocation distance to previous allocation is below threshold.");
                             continue;
