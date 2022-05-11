@@ -255,7 +255,7 @@ where
                             warn!("New allocation distance to previous allocation is below threshold.");
 
                             // remove previous file mapping
-                            if !windows::Win32::System::Memory::UnmapViewOfFile(random_mapping) {
+                            if !windows::Win32::System::Memory::UnmapViewOfFile(random_mapping).as_bool() {
                                 if let Err(e) = last_error() {
                                     return Err(e);
                                 }
