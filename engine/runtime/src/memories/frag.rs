@@ -229,79 +229,80 @@ where
         let mut rng = thread_rng();
 
         let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
+        loop {
+            unsafe {
+                // allocation prelude
+                {
+                    let r_addr = rng.gen::<u32>() >> 4;
 
-        unsafe {
-            // allocation prelude
-            {
-                let r_addr = rng.gen::<u32>() >> 4;
+                    let random_mapping = windows::Win32::System::Memory::CreateFileMappingW(
+                        handle,
+                        std::ptr::null_mut(),
+                        windows::Win32::System::Memory::PAGE_READWRITE,
+                        0,
+                        r_addr,
+                        windows::core::PCWSTR(std::ptr::null_mut()),
+                    )
+                    .map_err(|e| MemoryError::Allocation(e.to_string()))?;
 
-                let random_mapping = windows::Win32::System::Memory::CreateFileMappingW(
-                    handle,
-                    std::ptr::null_mut(),
-                    windows::Win32::System::Memory::PAGE_READWRITE,
-                    0,
-                    r_addr,
-                    windows::core::PCWSTR(std::ptr::null_mut()),
-                )
-                .map_err(|e| MemoryError::Allocation(e.to_string()))?;
+                    if let Err(e) = last_error() {
+                        return Err(e);
+                    }
 
-                if let Err(e) = last_error() {
-                    return Err(e);
-                }
+                    if let Some(ref cfg) = config {
+                        let actual_distance = (ptr as usize).abs_diff(cfg.last_address);
+                        if actual_distance < cfg.min_distance {
+                            warn!("New allocation distance to previous allocation is below threshold.");
+                            continue;
+                        }
+                    }
 
-                if let Some(ref cfg) = config {
-                    let actual_distance = (ptr as usize).abs_diff(cfg.last_address);
-                    if actual_distance < cfg.min_distance {
-                        warn!("New allocation distance to previous allocation is below threshold.");
-                        continue;
+                    let _ = windows::Win32::System::Memory::MapViewOfFile(
+                        random_mapping,
+                        windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
+                        0,
+                        0,
+                        r_addr as usize,
+                    );
+
+                    if let Err(e) = last_error() {
+                        return Err(e);
                     }
                 }
 
-                let _ = windows::Win32::System::Memory::MapViewOfFile(
-                    random_mapping,
-                    windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
-                    0,
-                    0,
-                    r_addr as usize,
-                );
+                // actual memory mapping
+                {
+                    let actual_size = std::mem::size_of::<T>() as u32;
+                    let actual_mapping = windows::Win32::System::Memory::CreateFileMappingW(
+                        handle,
+                        std::ptr::null_mut(),
+                        windows::Win32::System::Memory::PAGE_READWRITE,
+                        0,
+                        actual_size,
+                        windows::core::PCWSTR(std::ptr::null_mut()),
+                    )
+                    .map_err(|e| MemoryError::Allocation(e.to_string()))?;
 
-                if let Err(e) = last_error() {
-                    return Err(e);
+                    if let Err(e) = last_error() {
+                        return Err(e);
+                    }
+
+                    let actual_mem = windows::Win32::System::Memory::MapViewOfFile(
+                        actual_mapping,
+                        windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
+                        0,
+                        0,
+                        actual_size as usize,
+                    ) as *mut T;
+
+                    if let Err(e) = last_error() {
+                        return Err(e);
+                    }
+
+                    actual_mem.write(T::default());
+
+                    return Ok(NonNull::new_unchecked(actual_mem as *mut T));
                 }
-            }
-
-            // actual memory mapping
-            {
-                let actual_size = std::mem::size_of::<T>() as u32;
-                let actual_mapping = windows::Win32::System::Memory::CreateFileMappingW(
-                    handle,
-                    std::ptr::null_mut(),
-                    windows::Win32::System::Memory::PAGE_READWRITE,
-                    0,
-                    actual_size,
-                    windows::core::PCWSTR(std::ptr::null_mut()),
-                )
-                .map_err(|e| MemoryError::Allocation(e.to_string()))?;
-
-                if let Err(e) = last_error() {
-                    return Err(e);
-                }
-
-                let actual_mem = windows::Win32::System::Memory::MapViewOfFile(
-                    actual_mapping,
-                    windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
-                    0,
-                    0,
-                    actual_size as usize,
-                ) as *mut T;
-
-                if let Err(e) = last_error() {
-                    return Err(e);
-                }
-
-                actual_mem.write(T::default());
-
-                return Ok(NonNull::new_unchecked(actual_mem as *mut T));
             }
         }
     }
