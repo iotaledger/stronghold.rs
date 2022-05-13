@@ -4,14 +4,12 @@
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
 use iota_stronghold_new as stronghold;
-use stronghold::procedures::{Chain, Ed25519Sign, PublicKey, Slip10Derive, Slip10Generate};
-use stronghold::Client;
+use iota_stronghold_new::procedures::WriteVault;
 use stronghold::{
-    procedures::{GenerateKey, KeyType},
-    KeyProvider, Location, SnapshotPath, Stronghold,
+    procedures::{Chain, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate},
+    Client, KeyProvider, Location, SnapshotPath, Stronghold,
 };
 use thiserror::Error as DeriveError;
-use iota_stronghold_new::procedures::{WriteVault};
 
 const CLIENT_PATH: &str = "wasp";
 const VAULT_PATH: &str = "wasp";
@@ -29,19 +27,19 @@ pub struct StrongholdWrapper {
 #[non_exhaustive]
 pub enum WrapperError {
     #[error("Failed to open snapshot")]
-    FailedToOpenSnapshot,
+    OpenSnapshot,
 
     #[error("Failed to commit to snapshot")]
-    FailedToCommitToSnapshot,
+    CommitToSnapshot,
 
     #[error("Failed to create client")]
-    FailedToCreateClient,
+    CreateClient,
 
     #[error("Failed to write client")]
-    FailedToWriteClient,
+    WriteClient,
 
     #[error("Failed to execute procedure")]
-    FailedToExecuteProcedure,
+    ExecuteProcedure,
 }
 
 impl StrongholdWrapper {
@@ -57,14 +55,14 @@ impl StrongholdWrapper {
 
         let client = match client {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::FailedToOpenSnapshot),
+            Err(_err) => return Err(WrapperError::OpenSnapshot),
         };
 
-        return Ok(Self {
-            snapshot_path: snapshot_path.clone(),
+        Ok(Self {
+            snapshot_path,
             stronghold,
             client,
-        });
+        })
     }
 
     pub fn create_new(snapshot_path: String, key_as_hash: Vec<u8>) -> Result<Self, WrapperError> {
@@ -72,30 +70,28 @@ impl StrongholdWrapper {
 
         let client = match stronghold.create_client(CLIENT_PATH) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::FailedToCreateClient),
+            Err(_err) => return Err(WrapperError::CreateClient),
         };
 
         let result = Self {
-            snapshot_path: snapshot_path.clone(),
+            snapshot_path,
             stronghold,
             client,
         };
 
         log::info!("[Rust] Client created");
 
-        match result.stronghold.write_client(CLIENT_PATH) {
-            Err(_err) => return Err(WrapperError::FailedToWriteClient),
-            _ => {}
+        if let Err(_err) = result.stronghold.write_client(CLIENT_PATH) {
+            return Err(WrapperError::WriteClient);
         }
 
         log::info!("[Rust] Client written");
 
-        match result.commit(key_as_hash) {
-            Err(err) => return Err(err),
-            _ => {},
-        };
+        if let Err(err) = result.commit(key_as_hash) {
+            return Err(err);
+        }
 
-        return Ok(result);
+        Ok(result)
     }
 
     fn commit(&self, key_as_hash: Vec<u8>) -> Result<bool, WrapperError> {
@@ -104,8 +100,8 @@ impl StrongholdWrapper {
         let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
         let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
 
-        return match self.stronghold.commit(commit_snapshot_path, key_provider) {
-            Err(_err) => Err(WrapperError::FailedToCommitToSnapshot),
+        match self.stronghold.commit(commit_snapshot_path, key_provider) {
+            Err(_err) => Err(WrapperError::CommitToSnapshot),
             _ => Ok(true),
         }
     }
@@ -123,52 +119,45 @@ impl StrongholdWrapper {
 
         let procedure_result = match self.client.execute_procedure(public_key_procedure) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure),
         };
 
         let output: Vec<u8> = procedure_result.into();
 
-        return Ok(output);
+        Ok(output)
     }
 
     pub fn write_vault(&self, key_as_hash: Vec<u8>, record_path: String, data: Vec<u8>) -> Result<bool, WrapperError> {
-        let output_location = Location::Generic {
+        let location = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let sign_procedure = WriteVault {
-            data: data.clone(),
-            location: output_location,
-        };
+        let sign_procedure = WriteVault { data, location };
 
-        match self.client.execute_procedure(sign_procedure) {
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
-            _ => {}
-        };
+        if let Err(_err) = self.client.execute_procedure(sign_procedure) {
+            return Err(WrapperError::ExecuteProcedure);
+        }
 
-        return self.commit(key_as_hash);
+        self.commit(key_as_hash)
     }
 
     pub fn sign(&self, record_path: String, data: Vec<u8>) -> Result<Vec<u8>, WrapperError> {
-        let output_location = Location::Generic {
+        let private_key = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let sign_procedure = Ed25519Sign {
-            private_key: output_location,
-            msg: data.clone(),
-        };
+        let sign_procedure = Ed25519Sign { private_key, msg: data };
 
         let procedure_result = match self.client.execute_procedure(sign_procedure) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure),
         };
 
         let signature: Vec<u8> = procedure_result.into();
 
-        return Ok(signature);
+        Ok(signature)
     }
 
     pub fn derive_seed(&self, key_as_hash: Vec<u8>, address_index: u32) -> Result<ChainCode, WrapperError> {
@@ -196,23 +185,22 @@ impl StrongholdWrapper {
 
         let chain_code = match self.client.execute_procedure(slip10_derive) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure),
         };
 
         log::info!("[Rust] Derive generated");
         log::info!("[Rust] Storing client");
 
-        match self.stronghold.write_client(CLIENT_PATH) {
-            Err(_err) => return Err(WrapperError::FailedToWriteClient),
-            _ => {}
-        };
+        if let Err(_err) = self.stronghold.write_client(CLIENT_PATH) {
+            return Err(WrapperError::WriteClient);
+        }
 
         log::info!("[Rust] client stored");
 
-        return match self.commit(key_as_hash) {
+        match self.commit(key_as_hash) {
             Err(err) => Err(err),
             _ => Ok(chain_code),
-        };
+        }
     }
 
     pub fn generate_seed(&self, key_as_hash: Vec<u8>) -> Result<bool, WrapperError> {
@@ -228,29 +216,23 @@ impl StrongholdWrapper {
             output,
         };
 
-        match self.client.execute_procedure(slip10_generate) {
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
-            _ => {}
+        if let Err(_err) = self.client.execute_procedure(slip10_generate) {
+            return Err(WrapperError::ExecuteProcedure);
         }
 
         log::info!("[Rust] Key generated");
         log::info!("[Rust] Storing client");
 
-        match self.stronghold.write_client(CLIENT_PATH) {
-            Err(_err) => return Err(WrapperError::FailedToWriteClient),
-            _ => {}
-        };
+        if let Err(_err) = self.stronghold.write_client(CLIENT_PATH) {
+            return Err(WrapperError::WriteClient);
+        }
 
         log::info!("[Rust] client stored");
 
-        return self.commit(key_as_hash);
+        self.commit(key_as_hash)
     }
 
-    pub fn generate_ed25519_keypair(
-        &self,
-        key_as_hash: Vec<u8>,
-        record_path: String,
-    ) -> Result<bool, WrapperError> {
+    pub fn generate_ed25519_keypair(&self, key_as_hash: Vec<u8>, record_path: String) -> Result<bool, WrapperError> {
         let output = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),
@@ -260,21 +242,19 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] Generating Key procedure started");
 
-        match self.client.execute_procedure(generate_key_procedure) {
-            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
-            _ => {},
+        if let Err(_err) = self.client.execute_procedure(generate_key_procedure) {
+            return Err(WrapperError::ExecuteProcedure);
         }
 
         log::info!("[Rust] Key generated");
         log::info!("[Rust] Storing client");
 
-        match self.stronghold.write_client(CLIENT_PATH) {
-            Err(_err) => return Err(WrapperError::FailedToWriteClient),
-            _ => {}
-        };
+        if let Err(_err) = self.stronghold.write_client(CLIENT_PATH) {
+            return Err(WrapperError::WriteClient);
+        }
 
         log::info!("[Rust] client stored");
 
-        return self.commit(key_as_hash);
+        self.commit(key_as_hash)
     }
 }
