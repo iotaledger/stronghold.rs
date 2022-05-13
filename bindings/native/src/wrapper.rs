@@ -8,6 +8,7 @@ use stronghold::{
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
 use thiserror::Error as DeriveError;
+use iota_stronghold_new::procedures::{WriteVault};
 
 const CLIENT_PATH: &str = "wasp";
 const VAULT_PATH: &str = "wasp";
@@ -44,7 +45,7 @@ impl StrongholdWrapper {
     pub fn from_file(snapshot_path: String, key_as_hash: Vec<u8>) -> Result<Self, WrapperError> {
         let stronghold = Stronghold::default();
 
-        println!("[Rust] Loading snapshot => {}", snapshot_path);
+        log::info!("[Rust] Loading snapshot => {}", snapshot_path);
 
         let commit_snapshot_path = &SnapshotPath::from_path(snapshot_path.clone());
         let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
@@ -71,30 +72,39 @@ impl StrongholdWrapper {
             Err(_err) => return Err(WrapperError::FailedToCreateClient),
         };
 
-        println!("[Rust] Client created");
+        let result = Self {
+            snapshot_path: snapshot_path.clone(),
+            stronghold,
+            client,
+        };
 
-        match stronghold.write_client(CLIENT_PATH) {
+        log::info!("[Rust] Client created");
+
+        match result.stronghold.write_client(CLIENT_PATH) {
             Err(_err) => return Err(WrapperError::FailedToWriteClient),
             _ => {}
         }
 
-        println!("[Rust] Client written");
+        log::info!("[Rust] Client written");
 
-        println!("[Rust] Writing snapshot => {}", snapshot_path);
-
-        let commit_snapshot_path = &SnapshotPath::from_path(snapshot_path.clone());
-        let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
-
-        match stronghold.commit(commit_snapshot_path, key_provider) {
-            Err(_err) => return Err(WrapperError::FailedToCommitToSnapshot),
-            _ => {}
+        match result.commit(key_as_hash) {
+            Err(err) => return Err(err),
+            _ => {},
         };
 
-        return Ok(Self {
-            snapshot_path: snapshot_path.clone(),
-            stronghold,
-            client,
-        });
+        return Ok(result);
+    }
+
+    fn commit(&self, key_as_hash: Vec<u8>) -> Result<bool, WrapperError> {
+        log::info!("[Rust] Committing to snapshot");
+
+        let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
+        let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
+
+        return match self.stronghold.commit(commit_snapshot_path, key_provider) {
+            Err(_err) => Err(WrapperError::FailedToCommitToSnapshot),
+            _ => Ok(true),
+        }
     }
 
     pub fn get_public_key(&self, record_path: String) -> Result<Vec<u8>, WrapperError> {
@@ -116,6 +126,25 @@ impl StrongholdWrapper {
         let output: Vec<u8> = procedure_result.into();
 
         return Ok(output);
+    }
+
+    pub fn write_vault(&self, key_as_hash: Vec<u8>, record_path: String, data: Vec<u8>) -> Result<bool, WrapperError> {
+        let output_location = Location::Generic {
+            record_path: record_path.as_bytes().to_vec(),
+            vault_path: VAULT_PATH.as_bytes().to_vec(),
+        };
+
+        let sign_procedure = WriteVault {
+            data: data.clone(),
+            location: output_location,
+        };
+
+        match self.client.execute_procedure(sign_procedure) {
+            Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
+            _ => {}
+        };
+
+        return self.commit(key_as_hash);
     }
 
     pub fn sign(&self, record_path: String, data: Vec<u8>) -> Result<Vec<u8>, WrapperError> {
@@ -154,7 +183,7 @@ impl StrongholdWrapper {
 
         let chain = Chain::from_u32_hardened(vec![address_index]);
 
-        println!("[Rust] Deriving Seed procedure started");
+        log::info!("[Rust] Deriving Seed procedure started");
 
         let slip10_derive = Slip10Derive {
             chain,
@@ -167,28 +196,20 @@ impl StrongholdWrapper {
             Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
         };
 
-        println!("[Rust] Derive generated");
-        println!("[Rust] Storing client");
+        log::info!("[Rust] Derive generated");
+        log::info!("[Rust] Storing client");
 
         match self.stronghold.write_client(CLIENT_PATH) {
             Err(_err) => return Err(WrapperError::FailedToWriteClient),
             _ => {}
         };
 
-        println!("[Rust] client stored");
-        println!("[Rust] Committing to snapshot");
+        log::info!("[Rust] client stored");
 
-        let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
-        let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
-
-        match self.stronghold.commit(commit_snapshot_path, key_provider) {
-            Err(_err) => return Err(WrapperError::FailedToCommitToSnapshot),
-            _ => {}
-        }
-
-        println!("[Rust] Snapshot committed!");
-
-        return Ok(chain_code);
+        return match self.commit(key_as_hash) {
+            Err(err) => Err(err),
+            _ => Ok(chain_code),
+        };
     }
 
     pub fn generate_seed(&self, key_as_hash: Vec<u8>) -> Result<bool, WrapperError> {
@@ -197,7 +218,7 @@ impl StrongholdWrapper {
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        println!("[Rust] Generating Seed procedure started");
+        log::info!("[Rust] Generating Seed procedure started");
 
         let slip10_generate = Slip10Generate {
             size_bytes: Some(SEED_LENGTH),
@@ -209,27 +230,17 @@ impl StrongholdWrapper {
             _ => {}
         }
 
-        println!("[Rust] Key generated");
-        println!("[Rust] Storing client");
+        log::info!("[Rust] Key generated");
+        log::info!("[Rust] Storing client");
 
         match self.stronghold.write_client(CLIENT_PATH) {
             Err(_err) => return Err(WrapperError::FailedToWriteClient),
             _ => {}
         };
 
-        println!("[Rust] client stored");
+        log::info!("[Rust] client stored");
 
-        println!("[Rust] Committing to snapshot");
-
-        let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
-        let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
-
-        match self.stronghold.commit(commit_snapshot_path, key_provider) {
-            Err(_err) => return Err(WrapperError::FailedToCommitToSnapshot),
-            _ => {}
-        }
-
-        return Ok(true);
+        return self.commit(key_as_hash);
     }
 
     pub fn generate_ed25519_keypair(
@@ -244,35 +255,23 @@ impl StrongholdWrapper {
 
         let generate_key_procedure = GenerateKey { ty: KEY_TYPE, output };
 
-        println!("[Rust] Generating Key procedure started");
+        log::info!("[Rust] Generating Key procedure started");
 
         match self.client.execute_procedure(generate_key_procedure) {
             Err(_err) => return Err(WrapperError::FailedToExecuteProcedure),
             _ => {},
         }
 
-        println!("[Rust] Key generated");
-        println!("[Rust] Storing client");
+        log::info!("[Rust] Key generated");
+        log::info!("[Rust] Storing client");
 
         match self.stronghold.write_client(CLIENT_PATH) {
             Err(_err) => return Err(WrapperError::FailedToWriteClient),
             _ => {}
         };
 
-        println!("[Rust] client stored");
+        log::info!("[Rust] client stored");
 
-        println!("[Rust] Committing to snapshot");
-
-        let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
-        let key_provider = &KeyProvider::try_from(key_as_hash).unwrap();
-
-        match self.stronghold.commit(commit_snapshot_path, key_provider) {
-            Err(_err) => return Err(WrapperError::FailedToCommitToSnapshot),
-            _ => {}
-        }
-
-        println!("[Rust] Snapshot committed!");
-
-        return Ok(true);
+        return self.commit(key_as_hash);
     }
 }

@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"stronghold_go"
+	stronghold_go "stronghold"
 	"testing"
 )
 
@@ -30,8 +30,8 @@ func getNewDBPath() string {
 }
 
 func initializeStrongholdTest(t *testing.T, withNewPath bool) (*stronghold_go.StrongholdNative, string) {
+	stronghold_go.SetLogLevel(5)
 	stronghold := stronghold_go.NewStronghold(testPassword)
-
 	if withNewPath {
 		dbPath := getNewDBPath()
 
@@ -86,9 +86,9 @@ func TestLoadingOfSnapshot(t *testing.T) {
 
 func TestKeyGeneration(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
-	err := stronghold.GenerateED25519KeyPair("test")
+	_, err := stronghold.GenerateED25519KeyPair("test")
 
 	if err != nil {
 		t.Error(err)
@@ -97,7 +97,7 @@ func TestKeyGeneration(t *testing.T) {
 
 func TestSign(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
 	stronghold.GenerateED25519KeyPair("test")
 
@@ -107,33 +107,45 @@ func TestSign(t *testing.T) {
 		t.Error(err)
 	}
 
-	if len(signature) != 64 {
+	if len(signature) != stronghold_go.SignatureSize {
 		t.Error("Signature size is invalid")
 	}
 }
 
 func TestGenerateSeed(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
-	stronghold.GenerateSeed()
+	_, err := stronghold.GenerateSeed()
+
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestGenerateSeedDerive(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
 	stronghold.GenerateSeed()
-	stronghold.DeriveSeed(1)
+	_, err := stronghold.DeriveSeed(1)
+
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestGetPublicKeyFromDerivedSeed(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
 	stronghold.GenerateSeed()
 	stronghold.DeriveSeed(1)
-	publicKey := stronghold.GetPublicKeyFromDerived(1)
+	publicKey, err := stronghold.GetPublicKeyFromDerived(1)
+
+	if err != nil {
+		t.Error(err)
+	}
 
 	if len(publicKey) != stronghold_go.PublicKeySize {
 		t.Error("Public key does not match size")
@@ -142,7 +154,7 @@ func TestGetPublicKeyFromDerivedSeed(t *testing.T) {
 
 func TestGetAddressFromDerivedSeed(t *testing.T) {
 	stronghold, dbPath := initializeStrongholdTest(t, true)
-	stronghold.Create(dbPath) //nolint:errcheck
+	stronghold.Create(dbPath)
 
 	stronghold.GenerateSeed()
 	stronghold.DeriveSeed(1)
@@ -153,8 +165,13 @@ func TestGetAddressFromDerivedSeed(t *testing.T) {
 	}
 
 	t.Log(address)
+}
 
-	/*if len(address) != stronghold_go.PublicKeySize {
-		t.Error("Public key does not match size")
-	}*/
+func TestErrorInvalidPath(t *testing.T) {
+	stronghold := stronghold_go.NewStronghold("foobar")
+	_, err := stronghold.Open("ThisPathDoesNotExist")
+
+	if err == nil {
+		t.Fail()
+	}
 }

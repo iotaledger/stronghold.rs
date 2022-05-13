@@ -27,3 +27,4 @@ tokio                   = { version = "1.15.0", features = ["full"] }
 base64                  = { version = "0.13.0" }
 iota-crypto             = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519" ] }
 lazy_static = "1.4.0"
+log                     = { version = "0.4.14" }

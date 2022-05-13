@@ -1,4 +1,4 @@
-package stronghold_go
+package stronghold
 
 import (
 	"encoding/hex"
@@ -19,6 +19,28 @@ func NewStronghold(key string) *StrongholdNative {
 	return stronghold
 }
 
+// SetLogLevel
+/**
+  0 => LevelFilter::Off
+  1 => LevelFilter::Error
+  2 => LevelFilter::Warn
+  3 => LevelFilter::Info
+  4 => LevelFilter::Debug
+  5 => LevelFilter::Trace
+*/
+
+func SetLogLevel(level int) {
+	setLogLevel(level)
+}
+
+func (s *StrongholdNative) validate() error {
+	if s.ptr == nil {
+		return errors.New("snapshot is unavailable. Call Open/Create")
+	}
+
+	return nil
+}
+
 func (s *StrongholdNative) Open(snapshotPath string) (bool, error) {
 	if s.ptr != nil {
 		return false, errors.New("snapshot is already open")
@@ -31,7 +53,11 @@ func (s *StrongholdNative) Open(snapshotPath string) (bool, error) {
 		return false, err
 	}
 
-	s.ptr = loadSnapshot(snapshotPath, buffer.String())
+	s.ptr, err = loadSnapshot(snapshotPath, buffer.String())
+
+	if err != nil {
+		return false, err
+	}
 
 	return true, nil
 }
@@ -48,96 +74,90 @@ func (s *StrongholdNative) Create(snapshotPath string) (bool, error) {
 		return false, err
 	}
 
-	s.ptr = createSnapshot(snapshotPath, buffer.String())
+	s.ptr, err = createSnapshot(snapshotPath, buffer.String())
+
+	if err != nil {
+		return false, err
+	}
 
 	return true, nil
 }
 
 func (s *StrongholdNative) Close() (bool, error) {
-	if s.ptr == nil {
-		return false, errors.New("no instance to be closed")
+	if err := s.validate(); err != nil {
+		return false, err
 	}
 
 	destroyStronghold(s.ptr)
+	s.ptr = nil
 
 	return true, nil
 }
 
-func (s *StrongholdNative) GenerateED25519KeyPair(recordPath string) error {
-	if s.ptr == nil {
-		return errors.New("snapshot is unavailable. Call Open/Create")
+func (s *StrongholdNative) GenerateED25519KeyPair(recordPath string) ([PublicKeySize]byte, error) {
+	if err := s.validate(); err != nil {
+		return [PublicKeySize]byte{}, err
 	}
 
 	buffer, err := s.enclave.Open()
 	defer buffer.Destroy()
 
 	if err != nil {
-		return err
+		return [PublicKeySize]byte{}, err
 	}
 
-	generateED25519KeyPair(s.ptr, buffer.String(), recordPath)
-
-	return nil
+	return generateED25519KeyPair(s.ptr, buffer.String(), recordPath)
 }
 
 func (s *StrongholdNative) Sign(recordPath string, data []byte) ([SignatureSize]byte, error) {
-	if s.ptr == nil {
-		return [SignatureSize]byte{}, errors.New("snapshot is unavailable. Call Open/Create")
+	if err := s.validate(); err != nil {
+		return [SignatureSize]byte{}, err
 	}
 
-	signature := sign(s.ptr, recordPath, data)
-
-	return signature, nil
+	return sign(s.ptr, recordPath, data)
 }
 
 func (s *StrongholdNative) GetPublicKey(recordPath string) ([PublicKeySize]byte, error) {
-	if s.ptr == nil {
-		return [PublicKeySize]byte{}, errors.New("snapshot is unavailable. Call Open/Create")
+	if err := s.validate(); err != nil {
+		return [PublicKeySize]byte{}, err
 	}
 
-	publicKey := getPublicKey(s.ptr, recordPath)
-
-	return publicKey, nil
+	return getPublicKey(s.ptr, recordPath)
 }
 
-func (s *StrongholdNative) GetPublicKeyFromDerived(index uint32) [PublicKeySize]byte {
+func (s *StrongholdNative) GetPublicKeyFromDerived(index uint32) ([PublicKeySize]byte, error) {
 	recordPath := fmt.Sprintf("seed%d", index)
-	publicKey := getPublicKey(s.ptr, recordPath)
-	return publicKey
+	return getPublicKey(s.ptr, recordPath)
 }
 
-func (s *StrongholdNative) GenerateSeed() error {
-	if s.ptr == nil {
-		return errors.New("snapshot is unavailable. Call Open/Create")
+func (s *StrongholdNative) GenerateSeed() (bool, error) {
+	if err := s.validate(); err != nil {
+		return false, err
 	}
 
 	buffer, err := s.enclave.Open()
 	defer buffer.Destroy()
 
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	generateSeed(s.ptr, buffer.String())
-
-	return nil
+	return generateSeed(s.ptr, buffer.String())
 }
 
-func (s *StrongholdNative) DeriveSeed(index uint32) error {
-	if s.ptr == nil {
-		return errors.New("snapshot is unavailable. Call Open/Create")
+func (s *StrongholdNative) DeriveSeed(index uint32) (bool, error) {
+	if err := s.validate(); err != nil {
+		return false, err
 	}
 
 	buffer, err := s.enclave.Open()
 	defer buffer.Destroy()
 
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	deriveSeed(s.ptr, buffer.String(), index)
-
-	return nil
+	return deriveSeed(s.ptr, buffer.String(), index)
 }
 
 func getHex(b []byte) string {
@@ -148,17 +168,17 @@ func getHex(b []byte) string {
 }
 
 func (s *StrongholdNative) GetAddress(index uint32) (string, error) {
-	if s.ptr == nil {
-		return "", errors.New("snapshot is unavailable. Call Open/Create")
+	if err := s.validate(); err != nil {
+		return "", err
 	}
 
-	publicKey := s.GetPublicKeyFromDerived(index)
+	publicKey, err := s.GetPublicKeyFromDerived(index)
+
+	if err != nil {
+		return "", err
+	}
 
 	addressHash := blake2b.Sum256(publicKey[:])
 
-	fmt.Println(publicKey)
-	fmt.Println(addressHash)
-	fmt.Printf("len: %v\n", len(addressHash))
-	fmt.Println(getHex(addressHash[:]))
 	return getHex(addressHash[:]), nil
 }

@@ -1,10 +1,10 @@
-module stronghold_go
+module stronghold
 
 go 1.18
 
 require (
 	github.com/awnumar/memguard v0.22.2
-	golang.org/x/crypto v0.0.0-20220427172511-eb4f295cb31f
+	golang.org/x/crypto v0.0.0-20220511200225-c6db032c6c88
 )
 
 require (
