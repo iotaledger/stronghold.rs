@@ -1,3 +1,6 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
 use iota_stronghold_new as stronghold;
