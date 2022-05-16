@@ -33,7 +33,7 @@ func getNewDBPath() string {
 
 func initializeStrongholdTest(t *testing.T, withNewPath bool) (*stronghold_go.StrongholdNative, string) {
 	stronghold_go.SetLogLevel(5)
-	stronghold := stronghold_go.NewStronghold(testPassword)
+	stronghold := stronghold_go.NewStronghold([]byte(testPassword))
 	if withNewPath {
 		dbPath := getNewDBPath()
 
@@ -170,7 +170,7 @@ func TestGetAddressFromDerivedSeed(t *testing.T) {
 }
 
 func TestErrorInvalidPath(t *testing.T) {
-	stronghold := stronghold_go.NewStronghold("foobar")
+	stronghold := stronghold_go.NewStronghold([]byte("foobar"))
 	_, err := stronghold.Open("ThisPathDoesNotExist")
 
 	if err == nil {

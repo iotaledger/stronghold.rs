@@ -25,7 +25,7 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<Box<dyn Error>>> = RefCell::new(None);
 }
 
-fn push_error(err: WrapperError) {
+fn set_last_error(err: WrapperError) {
     LAST_ERROR.with(|prev| {
         *prev.borrow_mut() = Some(Box::new(err));
     });
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn stronghold_create(
     let stronghold_wrapper = match StrongholdWrapper::create_new(snapshot_path, key_as_hash) {
         Ok(res) => res,
         Err(err) => {
-            push_error(err);
+            set_last_error(err);
             return ptr::null_mut();
         }
     };
@@ -106,7 +106,7 @@ pub unsafe extern "C" fn stronghold_load(
     let stronghold_wrapper = match StrongholdWrapper::from_file(snapshot_path, key_as_hash) {
         Ok(res) => res,
         Err(err) => {
-            push_error(err);
+            set_last_error(err);
             return ptr::null_mut();
         }
     };
@@ -176,7 +176,7 @@ pub unsafe extern "C" fn stronghold_generate_ed25519_keypair(
     let chain_code = match stronghold_wrapper.generate_ed25519_keypair(key_as_hash, record_path) {
         Ok(res) => res,
         Err(err) => {
-            push_error(err);
+            set_last_error(err);
             return ptr::null_mut();
         }
     };
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn stronghold_write_vault(
     log::info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec()) {
-        push_error(err);
+        set_last_error(err);
         return false;
     }
 
@@ -240,7 +240,7 @@ pub unsafe extern "C" fn stronghold_generate_seed(
     log::info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.generate_seed(key_as_hash) {
-        push_error(err);
+        set_last_error(err);
         return false;
     }
 
@@ -269,7 +269,7 @@ pub unsafe extern "C" fn stronghold_derive_seed(
     log::info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.derive_seed(key_as_hash, address_index) {
-        push_error(err);
+        set_last_error(err);
         return false;
     }
 
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn stronghold_get_public_key(
     let public_key = match stronghold_wrapper.get_public_key(record_path) {
         Ok(res) => res,
         Err(err) => {
-            push_error(err);
+            set_last_error(err);
             return ptr::null_mut();
         }
     };
@@ -331,7 +331,7 @@ pub unsafe extern "C" fn stronghold_sign(
     let signature = match stronghold_wrapper.sign(record_path, data.to_vec()) {
         Ok(res) => res,
         Err(err) => {
-            push_error(err);
+            set_last_error(err);
             return ptr::null_mut();
         }
     };

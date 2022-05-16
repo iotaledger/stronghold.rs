@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/awnumar/memguard"
 	"golang.org/x/crypto/blake2b"
+	"os"
 )
 
 type StrongholdNative struct {
@@ -15,32 +16,56 @@ type StrongholdNative struct {
 	enclave *memguard.Enclave
 }
 
-func NewStronghold(key string) *StrongholdNative {
-	stronghold := &StrongholdNative{}
-	stronghold.enclave = memguard.NewEnclave([]byte(key))
+func zeroKeyBuffer(data *[]byte) {
+	for i := 0; i < len(*data); i++ {
+		(*data)[i] = 0
+	}
+}
+
+// NewStronghold will safely clear the provided key and make it unusable after this call.
+func NewStronghold(key []byte) *StrongholdNative {
+	stronghold := NewStrongholdUnsafe(key)
+	zeroKeyBuffer(&key)
 	return stronghold
 }
 
-// SetLogLevel
-/**
-  0 => LevelFilter::Off
-  1 => LevelFilter::Error
-  2 => LevelFilter::Warn
-  3 => LevelFilter::Info
-  4 => LevelFilter::Debug
-  5 => LevelFilter::Trace
-*/
-
-func SetLogLevel(level int) {
-	setLogLevel(level)
+// NewStrongholdUnsafe creates a Stronghold instance without clearing the provided key.
+// This might leave the provided key inside readable memory space.
+func NewStrongholdUnsafe(key []byte) *StrongholdNative {
+	stronghold := &StrongholdNative{}
+	stronghold.enclave = memguard.NewEnclave(key)
+	return stronghold
 }
 
-func (s *StrongholdNative) validate() error {
+type LogLevel int
+
+const (
+	LogLevelOff LogLevel = iota
+	LogLevelError
+	LogLevelWarn
+	LogLevelInfo
+	LogLevelDebug
+	LogLevelTrace
+)
+
+func SetLogLevel(level LogLevel) {
+	setLogLevel(int(level))
+}
+
+func (s *StrongholdNative) validate(customErrorMessage string) error {
 	if s.ptr == nil {
-		return errors.New("snapshot is unavailable. Call Open/Create")
+		return errors.New(customErrorMessage)
 	}
 
 	return nil
+}
+
+func (s *StrongholdNative) OpenOrCreate(snapshotPath string) (bool, error) {
+	if _, err := os.Stat(snapshotPath); errors.Is(err, os.ErrNotExist) {
+		return s.Create(snapshotPath)
+	}
+
+	return s.Open(snapshotPath)
 }
 
 func (s *StrongholdNative) Open(snapshotPath string) (bool, error) {
@@ -86,7 +111,7 @@ func (s *StrongholdNative) Create(snapshotPath string) (bool, error) {
 }
 
 func (s *StrongholdNative) Close() (bool, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("instance is already closed"); err != nil {
 		return false, err
 	}
 
@@ -97,7 +122,7 @@ func (s *StrongholdNative) Close() (bool, error) {
 }
 
 func (s *StrongholdNative) GenerateED25519KeyPair(recordPath string) ([PublicKeySize]byte, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return [PublicKeySize]byte{}, err
 	}
 
@@ -112,7 +137,7 @@ func (s *StrongholdNative) GenerateED25519KeyPair(recordPath string) ([PublicKey
 }
 
 func (s *StrongholdNative) Sign(recordPath string, data []byte) ([SignatureSize]byte, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return [SignatureSize]byte{}, err
 	}
 
@@ -120,7 +145,7 @@ func (s *StrongholdNative) Sign(recordPath string, data []byte) ([SignatureSize]
 }
 
 func (s *StrongholdNative) GetPublicKey(recordPath string) ([PublicKeySize]byte, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return [PublicKeySize]byte{}, err
 	}
 
@@ -133,7 +158,7 @@ func (s *StrongholdNative) GetPublicKeyFromDerived(index uint32) ([PublicKeySize
 }
 
 func (s *StrongholdNative) GenerateSeed() (bool, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return false, err
 	}
 
@@ -148,7 +173,7 @@ func (s *StrongholdNative) GenerateSeed() (bool, error) {
 }
 
 func (s *StrongholdNative) DeriveSeed(index uint32) (bool, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return false, err
 	}
 
@@ -170,7 +195,7 @@ func getHex(b []byte) string {
 }
 
 func (s *StrongholdNative) GetAddress(index uint32) (string, error) {
-	if err := s.validate(); err != nil {
+	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return "", err
 	}
 
