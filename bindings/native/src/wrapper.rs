@@ -176,7 +176,7 @@ impl StrongholdWrapper {
     where
         R: AsRef<[u8]>,
     {
-        let seed_derived_path = format!("{RECORD_PATH_SEED}{address_index}");
+        let seed_derived_path = format!("{RECORD_PATH_SEED}.{address_index}");
 
         let seed_location = Location::Generic {
             record_path: RECORD_PATH_SEED.as_bytes().to_vec(),
@@ -188,7 +188,13 @@ impl StrongholdWrapper {
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let chain = Chain::from_u32_hardened(vec![address_index]);
+        let chain = Chain::from_u32_hardened(vec![
+            44,   // BIP-0044
+            4218, // IOTA coin type
+            0,    // zero account id
+            0,    // public
+            address_index,
+        ]);
 
         log::info!("[Rust] Deriving Seed procedure started");
 

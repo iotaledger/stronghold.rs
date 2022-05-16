@@ -97,7 +97,7 @@ impl Client {
         Ok(keystore.vault_exists(vault_id))
     }
 
-    /// Returns Ok(true), if the record exsist. Ok(false), if not. An error is being
+    /// Returns Ok(true), if the record exists. Ok(false), if not. An error is being
     /// returned, if inner database could not be unlocked.
     ///
     /// # Example
