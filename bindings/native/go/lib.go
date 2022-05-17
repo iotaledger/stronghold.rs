@@ -3,7 +3,6 @@
 package stronghold
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/awnumar/memguard"
@@ -187,25 +186,18 @@ func (s *StrongholdNative) DeriveSeed(index uint32) (bool, error) {
 	return deriveSeed(s.ptr, buffer.String(), index)
 }
 
-func getHex(b []byte) string {
-	enc := make([]byte, len(b)*2+2)
-	copy(enc, "0x")
-	hex.Encode(enc[2:], b)
-	return string(enc)
-}
-
-func (s *StrongholdNative) GetAddress(index uint32) (string, error) {
+func (s *StrongholdNative) GetAddress(index uint32) ([PublicKeySize]byte, error) {
 	if err := s.validate("stronghold is closed. Call open()"); err != nil {
-		return "", err
+		return [PublicKeySize]byte{}, err
 	}
 
 	publicKey, err := s.GetPublicKeyFromDerived(index)
 
 	if err != nil {
-		return "", err
+		return [PublicKeySize]byte{}, err
 	}
 
 	addressHash := blake2b.Sum256(publicKey[:])
 
-	return getHex(addressHash[:]), nil
+	return addressHash, nil
 }
