@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use log::*;
+
 use runtime::{
     memories::frag::{Frag, FragStrategy},
     MemoryError,

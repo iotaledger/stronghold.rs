@@ -39,6 +39,9 @@ pub enum MemoryError {
 
     #[error("Failed to allocate memory ({0})")]
     Allocation(String),
+
+    #[error("Intended operation failed: ({0})")]
+    Operation(String),
 }
 
 /// A simple trait to force the types to call `zeroize()` when dropping

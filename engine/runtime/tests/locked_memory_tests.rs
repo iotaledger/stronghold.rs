@@ -125,6 +125,8 @@ fn test_clone(lm: impl LockedMemory, size: usize) {
     let buf_clone = buf_clone.unwrap();
     assert_eq!(*buf.borrow(), *buf_clone.borrow());
 
+    // drop(buf); // check, if locks are being released
+
     // Update the clone with a new value
     let new_data = random_vec(size);
     let new_buf = Buffer::alloc(&new_data, size);
