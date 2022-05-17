@@ -113,7 +113,7 @@ impl Frag {
     where
         T: Default,
     {
-        Self::alloc2(strategy, 0xFFFFF)
+        Self::alloc2(strategy, 0xFFFF)
     }
 }
 
