@@ -13,7 +13,7 @@ The documentation is built using [Docusaurus 2](https://docusaurus.io/). The dep
 yarn
 ```
 
-This command installs all needed dependencies.
+This command installs all necessary dependencies.
 
 ## Local Development
 
@@ -21,7 +21,7 @@ This command installs all needed dependencies.
 yarn start
 ```
 
-This command starts a local, wiki themed, development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+This command starts a local, wiki themed development server and opens up a browser window. Most changes are reflected live without having to restart the server.
 
 ## Including .md file
 
