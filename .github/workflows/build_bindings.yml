@@ -1,0 +1,60 @@
+name: Rust
+
+on:
+  push:
+    branches: [ dev-refactoring ]
+  pull_request:
+    branches: [ dev-refactoring ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [bindings]
+        os: [macos-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+
+    - name: Build target
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release 
+
+    # TODO Install bindgen
+
+    - name: Create header files
+      shell: bash
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd bindings/native/
+        ./bindgen.sh
+
+    # Export .s,.dll,.dylib(?) libstronghold_native module
+    # If ubuntu, export header files as well
+
+    - name: Package
+      shell: bash
+      run: |
+        cd target/${{ matrix.target }}/release/
+        ls -a
+
+# Package all three results
+# Copy into archive
+# Root
+#    -> dist (including header files and libs)
+#    -> go.mod
+#    -> lib.go
+#    -> native.go
