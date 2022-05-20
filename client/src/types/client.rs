@@ -97,7 +97,7 @@ impl Client {
         Ok(keystore.vault_exists(vault_id))
     }
 
-    /// Returns Ok(true), if the record exsist. Ok(false), if not. An error is being
+    /// Returns Ok(true), if the record exists. Ok(false), if not. An error is being
     /// returned, if inner database could not be unlocked.
     ///
     /// # Example
@@ -192,8 +192,10 @@ impl Client {
     /// Loads the state of [`Self`] from a [`ClientState`]. Replaces all previous data.
     ///
     /// # Example
-    pub(crate) fn restore(&self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
+    pub(crate) fn restore(&mut self, state: ClientState, id: ClientId) -> Result<(), ClientError> {
         let (keys, db, st) = state;
+
+        self.id = id;
 
         // reload keystore
         let mut keystore = self.keystore.try_write()?;
@@ -226,7 +228,7 @@ impl Client {
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.execure_procedure_chained(vec![procedure.into()]);
+        let res = self.execute_procedure_chained(vec![procedure.into()]);
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
         Ok(mapped)
     }
@@ -234,7 +236,7 @@ impl Client {
     /// Executes a list of cryptographic [`crate::procedures::Procedure`]s sequentially and returns a collected output
     ///
     /// # Example
-    pub fn execure_procedure_chained(
+    pub fn execute_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {

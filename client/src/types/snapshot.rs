@@ -105,7 +105,6 @@ impl SnapshotPath {
     where
         P: AsRef<Path>,
     {
-        assert!(path.as_ref().is_absolute());
         Self {
             path: path.as_ref().to_path_buf(),
         }

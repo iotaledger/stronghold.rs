@@ -1,5 +1,4 @@
-<!-- This README is based on the BEST-README-Template (https://github.com/othneildrew Best-README-Template) -->
-<div id="top"></div>
+![banner](./documentation/static/img/Banner/banner_stronghold.png)
 
 <!-- PROJECT SHIELDS -->
 [![Contributors][contributors-shield]][contributors-url]

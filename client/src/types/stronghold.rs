@@ -107,7 +107,7 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
-        let client = Client::default();
+        let mut client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
         // load the snapshot from disk
@@ -137,8 +137,8 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
-        let client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+        let mut client = Client::default();
 
         let snapshot = self.snapshot.try_read()?;
 
@@ -412,7 +412,7 @@ impl Stronghold {
             }
 
             network_old::ClientRequest::Procedures { procedures } => {
-                let result = client.execure_procedure_chained(procedures);
+                let result = client.execute_procedure_chained(procedures);
                 assert!(result.is_ok());
                 assert!(tx.send(StrongholdNetworkResult::Proc(result)).is_ok());
 

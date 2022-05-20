@@ -75,12 +75,22 @@ impl ClientVault {
     ///
     /// # Security
     ///
-    /// THE CALL TO THIS METHOD IS INSECURE AS IT WILL EXPOSE SECRETS STORED INSIDE A VAULT
+    /// THE CALL TO THIS METHOD IS INSECURE AS IT WILL EXPOSE SECRETS STORED INSIDE A VAULT.
     #[cfg(test)]
-    pub fn read_secret(&self) {
-        todo!()
+    pub fn read_secret<P>(&self, record_path: P) -> Result<Vec<u8>, ClientError>
+    where
+        P: AsRef<[u8]>,
+    {
+        let location = Location::generic(self.vault_path.clone(), record_path.as_ref().to_vec());
+
+        let mut data = Vec::new();
+
+        self.client.get_guard(&location, |guarded_data| {
+            let guarded_data = guarded_data.borrow();
+            data.extend_from_slice(&*guarded_data);
+            Ok(())
+        })?;
+
+        Ok(data)
     }
 }
-
-// #[cfg(feature = "p2p")]
-// impl ClientVault {}

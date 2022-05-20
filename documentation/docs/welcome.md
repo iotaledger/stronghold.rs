@@ -1,6 +1,6 @@
 ---
 description: Stronghold is an open-source software library can be used to protect any digital secret. It is a secure database for working with cryptography, which ensures that secrets are never revealed - but can be used according to best practices.
-image: /img/logo/Stronghold_icon.png
+image: /img/Banner/banner_stronghold.png
 keywords:
 - open-source
 - secure
@@ -10,6 +10,9 @@ keywords:
 - p2p
 ---
 # Welcome
+
+![Stronghold](/img/Banner/banner_stronghold.png)
+
 Stronghold is an open-source software library that was originally built to protect IOTA Seeds, but can be used to protect any digital secret. 
 
 It is a secure database for working with cryptography, which ensures that secrets (like private keys) are never revealed - but can be used according to best practices.
