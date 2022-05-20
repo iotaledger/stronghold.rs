@@ -1,6 +1,6 @@
 # Stronghold Enhancement Proposal
 
-The scope of this document is to describe a process to enhance and extend the functionality of IOTA Stronghold software library. This process is strongly influenced by the rust RFC process. 
+The scope of this document describes a process to enhance and extend the functionality of the IOTA Stronghold software library. This process is influenced by the rust RFC process. 
 
 
 ## Process
