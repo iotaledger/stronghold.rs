@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{future, sync::Arc, time::Duration};
+use std::{future, ptr::addr_of, sync::Arc, time::Duration};
 
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
@@ -874,61 +874,18 @@ async fn test_write_remote_secret_export_public_key() {
 /// of the client, will be used to remotely execute function calls.
 #[tokio::test]
 async fn test_p2p_config() {
-    // let remote_client_path = rand::bytestring(1024);
-    // let remote = Stronghold::default();
-    // let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
-
-    // // generate a new keypair
-    // let remote_keypair = Keypair::generate_ed25519();
-    // let remote_keypair_location =
-    //     Location::const_generic(b"remote-keypair-location".to_vec(), b"remote-keypair-location".to_vec());
-    // let _ = remote.create_client_with_keys(
-    //     remote_client_path.clone(),
-    //     remote_keypair,
-    //     remote_keypair_location.clone(),
-    // );
-
-    // let result = remote.create_client(remote_client_path.clone());
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // let result = remote
-    //     .spawn_p2p(remote_client_path, config, Some(remote_keypair_location))
-    //     .await;
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
-
-    // let result = remote.start_listening(None).await;
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // // keep handle to server
-    // let stronghold_clone = remote.clone();
-    // let server = tokio::spawn(async move { stronghold_clone.serve(receiver_terminate_signal).await });
-
-    // // test cases here
-    // // ..
-
-    // // send termination signal
-    // assert!(sender_terminate_signal.send(()).await.is_ok());
-
-    // // await server event loop shutdown
-    // assert!(server.await.is_ok());
-
-    // // shutdown listening
-    // let result = remote.stop_listening().await;
-    // println!("stop listening: {:?}", result);
-    // assert!(result.is_ok());
+    // add test
 }
 #[tokio::test]
 async fn test_p2p_firewall() {
-    //
+    // add test
 }
 
 // FIXME: this test fails on remote_sync. Returning the StrongholdNetworkResult with
 // the inner hierarchy from remote results in "connection terminated". Using an empty
 // results produces an expected / predictable outcome.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn test_synchronize_snapshots() {
     // -- setup
     let remote_key_pair = Keypair::generate_ed25519();
