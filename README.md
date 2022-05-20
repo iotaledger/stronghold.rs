@@ -1,4 +1,4 @@
-![banner](./.meta/stronghold_beta.png)
+![banner](./documentation/static/img/Banner/banner_stronghold.png)
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
