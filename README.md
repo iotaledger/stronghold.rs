@@ -20,9 +20,6 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-    <a href="https://github.com/iotaledger/stronghold.rs">
-        <img src="https://raw.githubusercontent.com/iotaledger/stronghold.rs/dev/.meta/stronghold_beta.png" alt="Banner">
-    </a>
     <h3 align="center">Stronghold</h3>
     <p align="center">
         A Rust library to build a secure software storage for sensitive data.
