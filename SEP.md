@@ -10,7 +10,7 @@ The scope of this document describes a process to enhance and extend the functio
 2. Is the Enhancement Propopsal really necessary?
     - Does the Enhancement bring in any new features, or could this be a bugfix?
 3. Copy the template from below and fill in the necessary parts
-    - Put in a convincing motivation, a consise guide and implementation level explanation; if both parts are submitted poorly, this would clearly indicate a lack of understanding
+    - Put in a convincing motivation, a concise guide, and implementation level explanation; if both parts are submitted poorly, this would indicate a lack of understanding
 4. Paste your proposal under [Discussions](https://github.com/iotaledger/stronghold.rs/discussion) and tag the maintainer of the repository. 
     - Receive feedback and prepare to incorporate changes 
 5. Reach consensus from the community
