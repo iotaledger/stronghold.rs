@@ -32,7 +32,7 @@ Write one paragraph explanation of the feature.
 
 ## Motivation
 
-Describe the motivation behind the proposal. How does this proposal benefit Stronghold? Name a few Examples
+Describe the motivation behind the proposal. How does this proposal benefit Stronghold? Name a few examples.
 
 ## Reference-Level Explanation
 
