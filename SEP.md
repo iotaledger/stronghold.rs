@@ -67,7 +67,7 @@ Sometimes there is no prior art, which is fine.
 
 Use this section to discuss unresolved questions in your proposal and how you would resolve them. 
 
-## Future possibilities
+## Future Possibilities
 
 Use this section to elaborate on future work. Think about how this feature can be progressed. This section is intented to be less strict and can be used to place first ideas.
 
