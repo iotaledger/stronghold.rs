@@ -46,10 +46,10 @@ This is the technical part of the RFC. Please be precise and explain in sufficie
 
 Bring into discussion why the proposed feature might not be a good idea. 
 
-## Rationale and alternatives
+## Rationale and Alternatives
 
-- Show and explain why this is the best in the space of possible designs
-- What are possible other designs and what is the rationale for not choosing them?
+- Show and explain why this is the best in the space of possible designs.
+- What are other possible designs and what is the rationale for not choosing them?
 - How would Stronghold be affected, if this feature would not be accepted?
 
 ## Prior art
