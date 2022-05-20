@@ -38,9 +38,9 @@ Describe the motivation behind the proposal. How does this proposal benefit Stro
 
 This is the technical part of the RFC. Please be precise and explain in sufficient detail:
 
-- How the feature is going to be implemented
-- the interaction with other modules / features
-- Edges cases are specifically highlighted
+- How the feature is going to be implemented.
+- The interaction with other modules/features.
+- That edge cases are specifically highlighted.
 
 ## Drawbacks
 
