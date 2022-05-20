@@ -6,7 +6,7 @@ The scope of this document describes a process to enhance and extend the functio
 ## Process
 
 1. Look out for Issues
-    - The very fist step is to look out for issues, api enhancements, feature enhancements and feature proposals
+    - The very first step is to look out for issues, API enhancements, feature enhancements, and feature proposals
 2. Is the Enhancement Propopsal really necessary?
     - Does the Enhancement bring in any new features, or could this be a bugfix?
 3. Copy the template from below and fill in the necessary parts
