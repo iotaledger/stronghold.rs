@@ -55,6 +55,7 @@ use crate::network_old::Network;
 
 #[cfg(feature = "p2p")]
 use self::network_old::StrongholdRequest;
+
 #[cfg(feature = "p2p")]
 use self::network_old::{ClientRequest, NetworkConfig, SnapshotRequest, StrongholdNetworkResult};
 

@@ -1,5 +1,10 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
+// This overrides clippy's warning to hold a non-async lock across await points
+// and should be removed as soon as possible.
+#![allow(clippy::await_holding_lock)]
+
 use super::{location, snapshot};
 
 #[cfg(feature = "p2p")]
