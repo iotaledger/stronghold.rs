@@ -55,13 +55,13 @@ Bring into discussion why the proposed feature might not be a good idea.
 ## Prior art
 
 Discuss prior art, both the good and the bad, in relation to this proposal. 
-A few examples could be:
+A few examples of this are:
 
-- For memory safety: Check recent developments in cpu hardware. Try to balance cutting edge technologies with widely adopted techniques. examples could be Intel TXT, Arm TrustZone, RISC-V MultiZone
+- For memory safety: Check recent developments in cpu hardware. Try to balance cutting edge technologies with widely adopted techniques. Examples could be Intel TXT, Arm TrustZone, RISC-V MultiZone.
 
-This section shall encourage you to think about lessons learned from other libraries and employed security techniques, provide your readers with a fuller picture of your proposal. 
+This section will encourage you to think about lessons learned from other libraries and employed security techniques and provide your readers with a fuller picture of your proposal. 
 
-Sometimes there is no prior art, that is fine. 
+Sometimes there is no prior art, which is fine. 
 
 ## Unresolved Questions
 
