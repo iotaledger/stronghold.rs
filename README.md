@@ -166,7 +166,7 @@ See the [open issues](https://github.com/iotaledger/stronghold.rs/issues) for a 
 
 ## Security Audit(s)
 
-Stronghold has been audited for security vulnerabilities. This process is intended to be regular as soon as new security relevant features will be shipped with a new version.
+Stronghold has been audited for security vulnerabilities. This process is meant to be continuously regulated as soon as new security relevant features are shipped with a new version.
 
 | Date       | Branch         | Commit #    | Document                                                                                                                 | By                                        |
 |:-----------|:---------------|:------------|:-------------------------------------------------------------------------------------------------------------------------|:------------------------------------------|
