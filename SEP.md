@@ -15,7 +15,7 @@ The scope of this document describes a process to enhance and extend the functio
     - Receive feedback and prepare to incorporate changes 
 5. Reach consensus from the community
 6. Get your RFC accepted!
-    - If feedback has been incorporated, and all the necessary changes to the RFC brought the document into a final form, he feature will be accepted for implementation. 
+    - If the feedback has been incorporated, and all the necessary changes to the RFC brought the document to finality, the feature will be accepted for implementation. 
 
 
 ## License
