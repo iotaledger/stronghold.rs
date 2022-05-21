@@ -14,5 +14,5 @@ module.exports = {
             }
         ],
     ],
-    staticDirectories: [ ],
+    staticDirectories: [path.resolve(__dirname, 'static')],
 };
