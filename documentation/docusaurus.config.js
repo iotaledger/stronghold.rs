@@ -9,7 +9,7 @@ module.exports = {
                 path: path.resolve(__dirname, 'docs'),
                 routeBasePath: 'stronghold.rs',
                 sidebarPath: path.resolve(__dirname, 'sidebars.js'),
-                editUrl: 'https://github.com/iotaledger/stronghold/edit/dev/documentation',
+                editUrl: 'https://github.com/iotaledger/stronghold/edit/dev-refactor/documentation',
                 remarkPlugins: [require('remark-code-import'), require('remark-import-partial'), require('remark-remove-comments')],
             }
         ],
