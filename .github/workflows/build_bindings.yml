@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Generate C bindings from public rust headers for use with Go
   bind_gen:
     name: C Bindings
     runs-on: ubuntu-latest
@@ -38,16 +39,19 @@ jobs:
         override: true
 
     - name: Install cbindgen
+      # Only install cbindgen if the hash of the rust files doesn't match the cached hash
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
       run: cargo install --force cbindgen
 
     - name: Generate C bindings
+      # Only run cbindgen if the hash of the rust files doesn't match the cached hash
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
       run: |
         cd bindings/native
         ./bindgen.sh
 
   build:
+    # Build the lib for each desired OS
     name: Build bindings on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: bind_gen
@@ -58,6 +62,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    # Get the C header files that were cached in the previous job
     - name: Cache C bindings
       id: cache_bind_gen
       uses: actions/cache@v3
@@ -67,6 +72,14 @@ jobs:
           bindings/native/go/dist/*.h
           bindings/native/go/dist/*.hpp
 
+    # If the C header files weren't found, error out
+    - name: Fail if C bindings could not be found
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      uses: actions/github-script@v6
+      with:
+        script: core.setFailed(`Actions failed to find the cached generated C bindings`);
+
+    # Get the cached rust dependencies from a previous run
     - name: Cache Rust dependencies
       uses: actions/cache@v3
       with:
@@ -80,25 +93,19 @@ jobs:
           ~/.cargo/.crates2.json
           target/**
 
-    - name: Fail if C bindings could not be found
-      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
-      uses: actions/github-script@v6
-      with:
-        script: core.setFailed(`Actions failed to find the cached generated C bindings`);
-
     - name: Install rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
         override: true
 
-    - name: Install LLVM and Clang # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
+    # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
+    - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@32c4866ebb71e0949e8833eb49beeebed48532bd
       if: ${{ startsWith(matrix.os, 'windows') }}
       with:
         version: "11.0"
         directory: ${{ runner.temp }}/llvm
-
     - name: Set LIBCLANG_PATH
       run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
       if: startsWith(matrix.os, 'windows')
@@ -109,6 +116,7 @@ jobs:
         command: build
         args: --release --manifest-path=bindings/native/Cargo.toml
 
+    # Create an OS specific artifact
     - name: Archive lib artifact
       uses: actions/upload-artifact@v3
       with:
@@ -119,6 +127,7 @@ jobs:
           target/release/*stronghold_native.so
           target/release/*stronghold_native.dylib
     
+    # Create an artifact that contains ALL of the binaries for easy distribution
     - name: Aggregate binaries
       uses: actions/upload-artifact@v3
       with:
@@ -130,6 +139,7 @@ jobs:
           target/release/*stronghold_native.so
           target/release/*stronghold_native.dylib
 
+  # Take the output from each OS build job and combine them into a single Go module
   release:
     name: Create universal Go module
     runs-on: ubuntu-latest
@@ -137,6 +147,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    # Get the C header files that were cached in the first job
     - name: Get cached C bindings
       uses: actions/cache@v3
       with:
@@ -145,12 +156,14 @@ jobs:
           bindings/native/go/dist/*.h
           bindings/native/go/dist/*.hpp
 
+    # Download aggregated binary artifact
     - name: Download binaries
       uses: actions/download-artifact@v3
       with:
         name: libstronghold
         path: bindings/native/go/dist
 
+    # Create the Go module artifact
     - name: Archive Go module
       uses: actions/upload-artifact@v3
       with:
