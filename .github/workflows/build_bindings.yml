@@ -138,7 +138,11 @@ jobs:
         name: go-libstronghold
         if-no-files-found: error
         path: |
-          bindings/native/go
+          bindings/native/go/go.*
+          bindings/native/go/*.go
+          bindings/native/go/dist/*stronghold_native.dll
+          bindings/native/go/dist/*stronghold_native.so
+          bindings/native/go/dist/*stronghold_native.dylib
           !bindings/native/go/tests/**
           !bindings/native/go/*/build/**
           !bindings/native/go/*/deps/**
