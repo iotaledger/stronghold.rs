@@ -138,3 +138,5 @@ jobs:
         path: |
           bindings/native/go
           !bindings/native/go/tests/**
+          !bindings/native/go/*/build/**
+          !bindings/native/go/*/deps/**
