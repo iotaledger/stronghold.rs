@@ -40,7 +40,7 @@ jobs:
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
       run: |
         cd bindings/native
-        bindgen.sh
+        ./bindgen.sh
 
   build:
     name: Build bindings on ${{ matrix.os }}
