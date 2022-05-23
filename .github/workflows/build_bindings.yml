@@ -2,7 +2,7 @@ name: Build Bindings
 
 on:
   push:
-    branches: [ dev-refactoring ]
+    branches: [ add_native_bindings ]
   pull_request:
     branches: [ dev-refactoring ]
 
