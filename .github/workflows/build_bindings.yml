@@ -16,16 +16,7 @@ jobs:
       rust_hash: ${{ steps.rust_headers_hash.outputs.rust_hash }}
     steps:
     - uses: actions/checkout@v3
-
-    - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-
-    - name: Install cbindgen
-      run: cargo install --force cbindgen
-
+    
     - id: rust_headers_hash
       run: echo "::set-output name=rust_hash::${{ hashFiles('bindings/native/*.toml', 'bindings/native/src/*.rs') }}"
 
@@ -35,6 +26,17 @@ jobs:
       with:
         key: cbindgen-${{ steps.rust_headers_hash.outputs.rust_hash }}
         path: bindings/native/go/dist
+
+    - name: Install rust
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install cbindgen
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: cargo install --force cbindgen
 
     - name: Generate C bindings
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
