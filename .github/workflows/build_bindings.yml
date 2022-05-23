@@ -137,6 +137,12 @@ jobs:
     - name: Download binaries
       uses: actions/download-artifact@v3
       with:
+        # name: ubuntu-latest-libstronghold
+        path: bindings/native/go/dist
+
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
         name: ubuntu-latest-libstronghold
         path: bindings/native/go/dist
 
