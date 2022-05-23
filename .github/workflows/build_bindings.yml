@@ -70,7 +70,7 @@ jobs:
     - name: Cache Rust dependencies
       uses: actions/cache@v3
       with:
-        key: ${{ matrix.os }}-rust-${{ needs.bind_gen.outputs.rust_hash }}
+        key: ${{ matrix.os }}-rust-${{ hashFiles('bindings/native/Cargo.toml') }}
         path: |
           ~/.cargo/bin/**
           ~/.cargo/registry/index/**
@@ -139,11 +139,13 @@ jobs:
       with:
         name: ubuntu-latest-libstronghold
         path: bindings/native/go/dist
+
     - name: Download binaries
       uses: actions/download-artifact@v3
       with:
         name: windows-latest-libstronghold
         path: bindings/native/go/dist
+
     - name: Download binaries
       uses: actions/download-artifact@v3
       with:
@@ -164,6 +166,7 @@ jobs:
         # bindings/native/go/dist/*.hpp
         path: |
           bindings/native/go/**
+          !**/.DS_Store
           !bindings/native/go/tests/**
           !bindings/native/go/*/build/**
           !bindings/native/go/*/deps/**
