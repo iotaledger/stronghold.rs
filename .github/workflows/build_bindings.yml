@@ -38,7 +38,7 @@ jobs:
 
     - name: Generate C bindings
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
-      run: sh bindings/native/go/bindgen.sh
+      run: cat bindings/native/go/bindgen.sh
 
   build:
     name: Build bindings on ${{ matrix.os }}
