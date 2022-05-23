@@ -99,7 +99,9 @@ jobs:
         name: ${{ matrix.os }}-libstronghold
         if-no-files-found: error
         path: |
-          target/release/*stronghold_native.{dll,so,dylib}
+          target/release/*stronghold_native.dll
+          target/release/*stronghold_native.so
+          target/release/*stronghold_native.dylib
 
   release:
     name: Compile universal Go module
