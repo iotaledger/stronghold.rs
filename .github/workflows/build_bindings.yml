@@ -38,7 +38,9 @@ jobs:
 
     - name: Generate C bindings
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
-      run: bindings/native/bindgen.sh
+      run: |
+        cd bindings/native
+        bindgen.sh
 
   build:
     name: Build bindings on ${{ matrix.os }}
