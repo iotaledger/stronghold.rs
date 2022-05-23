@@ -16,10 +16,6 @@ name = "stronghold_native"
 crate-type = ["cdylib"]
 bench = false
 
-[profile.release]
-strip = true  # Automatically strip symbols from the binary.
-lto = true # optimize at the link stage
-
 [dependencies]
 libc = "0.2.2"
 thiserror               = { version = "1.0.30" }

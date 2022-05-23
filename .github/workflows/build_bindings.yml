@@ -25,7 +25,9 @@ jobs:
       uses: actions/cache@v3
       with:
         key: cbindgen-${{ steps.rust_headers_hash.outputs.rust_hash }}
-        path: bindings/native/go/dist
+        path: |
+          bindings/native/go/dist/*.h
+          bindings/native/go/dist/*.hpp
 
     - name: Install rust
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
@@ -143,6 +145,8 @@ jobs:
           bindings/native/go/dist/*stronghold_native.dll
           bindings/native/go/dist/*stronghold_native.so
           bindings/native/go/dist/*stronghold_native.dylib
+          bindings/native/go/dist/*.h
+          bindings/native/go/dist/*.hpp
           !bindings/native/go/tests/**
           !bindings/native/go/*/build/**
           !bindings/native/go/*/deps/**
