@@ -61,7 +61,7 @@ jobs:
         path: bindings/native/go/dist
 
     - name: Fail if C bindings could not be found
-      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == true }}
       uses: actions/github-script@v6
       with:
         script: core.setFailed(`Actions failed to find the cached generated C bindings`);
