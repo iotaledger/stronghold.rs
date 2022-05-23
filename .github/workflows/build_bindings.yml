@@ -48,6 +48,8 @@ jobs:
     name: Build bindings on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: bind_gen
+    outputs:
+      binary_hash: ${{ steps.rust_headers_hash.outputs.rust_hash }}
     strategy:
       # fail-fast: false
       matrix:
@@ -76,14 +78,14 @@ jobs:
 
     - name: Install LLVM and Clang # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
       uses: KyleMayes/install-llvm-action@32c4866ebb71e0949e8833eb49beeebed48532bd
-      if: ${{ startsWith(matrix.config.os, 'windows') }}
+      if: ${{ startsWith(matrix.os, 'windows') }}
       with:
         version: "11.0"
         directory: ${{ runner.temp }}/llvm
 
     - name: Set LIBCLANG_PATH
       run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
-      if: startsWith(matrix.config.os, 'windows')
+      if: startsWith(matrix.os, 'windows')
 
     - name: Build target
       uses: actions-rs/cargo@v1
@@ -91,11 +93,48 @@ jobs:
         command: build
         args: --release --manifest-path=bindings/native/Cargo.toml
 
-    - name: Archive artifacts
+    - name: Archive lib artifact
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ matrix.os }}-package
+        name: ${{ matrix.os }}-libstronghold
+        if-no-files-found: error
         path: |
-          target/release/libstronghold_native.*
-          bindings/native/go/**
+          target/release/*
+
+  release:
+    name: Compile universal Go module
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Get cached C bindings
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
+        path: bindings/native/go/dist
+
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
+        name: ubuntu-latest-libstronghold
+        path: bindings/native/go/dist
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
+        name: windows-latest-libstronghold
+        path: bindings/native/go/dist
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
+        name: macOS-latest-libstronghold
+        path: bindings/native/go/dist
+
+    - name: Archive Go module
+      uses: actions/upload-artifact@v3
+      with:
+        name: go-libstronghold
+        if-no-files-found: error
+        path: |
+          bindings/native/go
           !bindings/native/go/tests/**
