@@ -6495,7 +6495,7 @@ __metadata:
 
 "iota-wiki-cli@iota-community/iota-wiki-cli#v2":
   version: 1.7.0
-  resolution: "iota-wiki-cli@https://github.com/iota-community/iota-wiki-cli.git#commit=ef2f73d6464205353a1660413a667b6318f378a7"
+  resolution: "iota-wiki-cli@https://github.com/iota-community/iota-wiki-cli.git#commit=ee983421e6029e4802c69c9adf812c8ab80b0c42"
   dependencies:
     "@babel/generator": ^7.17.9
     "@babel/parser": ^7.17.9
@@ -6516,11 +6516,12 @@ __metadata:
     ink-text-input: ^4.0.3
     isomorphic-git: ^1.17.2
     plugin-image-zoom: flexanalytics/plugin-image-zoom
+    prettier: 2.6.0
     react: ^17.0.2
     react-dom: ^17.0.2
   bin:
     iota-wiki: dist/index.js
-  checksum: 346cdf5c237e251e35d08a77385e690f118fa4aa20fbb7beb450210c43f564100dabe06cf516b7706c18ed967d50ac7c2e658269944874d7a548d1f2b8f837a1
+  checksum: dae3c9d1ec7389ba670b45e577b2b09ef944463a47ac43b62755873b66d9bbc6a99a0fedc464bad87085360eb101ba4de2474ddcf2bcf69222c12e1692400f68
   languageName: node
   linkType: hard
 
@@ -8785,6 +8786,15 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   version: 2.0.0
   resolution: "prepend-http@npm:2.0.0"
   checksum: 7694a9525405447662c1ffd352fcb41b6410c705b739b6f4e3a3e21cf5fdede8377890088e8934436b8b17ba55365a615f153960f30877bf0d0392f9e93503ea
+  languageName: node
+  linkType: hard
+
+"prettier@npm:2.6.0":
+  version: 2.6.0
+  resolution: "prettier@npm:2.6.0"
+  bin:
+    prettier: bin-prettier.js
+  checksum: 3e527ad62279676778a8404d18174d7ca2365ada4caba6eebbcdd9907d1187afd3bc6ade5b4e5f5d4549bb9fb71e45ca8930d71500017635524f8fc05bc52e93
   languageName: node
   linkType: hard
 
