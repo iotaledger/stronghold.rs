@@ -1,8 +1,8 @@
-name: Rust
+name: Build Bindings
 
 on:
   push:
-    branches: [ dev-refactoring ]
+    branches: [ add_native_bindings ]
   pull_request:
     branches: [ dev-refactoring ]
 
@@ -10,51 +10,88 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [bindings]
-        os: [macos-latest]
-
+  bind_gen:
+    runs-on: ubuntu-latest
+    outputs:
+      rust_hash: ${{ steps.rust_headers_hash.outputs.rust_hash }}
     steps:
     - uses: actions/checkout@v3
+
     - name: Install rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
         override: true
 
+    - name: Install cbindgen
+      run: cargo install --force cbindgen
+
+    - id: rust_headers_hash
+      run: echo "::set-output name=rust_hash::${{ hashFiles('bindings/native/*.toml', 'bindings/native/src/*.rs') }}"
+
+    - name: Cache bindings
+      id: cache_bind_gen
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ steps.rust_headers_hash.outputs.rust_hash }}
+        path: bindings/native/go/dist
+
+    - name: Generate C bindings
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: sh bindings/native/go/bindgen.sh
+
+  build:
+    name: Build bindings on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: bind_gen
+    strategy:
+      # fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Get cached C bindings
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
+        path: bindings/native/go/dist
+
+    - name: Fail if C bindings could not be found
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      uses: actions/github-script@v6
+      with:
+        script: core.setFailed(`Actions failed to find the cached generated C bindings`);
+
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install LLVM and Clang # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
+      uses: KyleMayes/install-llvm-action@32c4866ebb71e0949e8833eb49beeebed48532bd
+      if: ${{ startsWith(matrix.config.os, 'windows') }}
+      with:
+        version: "11.0"
+        directory: ${{ runner.temp }}/llvm
+
+    - name: Set LIBCLANG_PATH
+      run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
+      if: startsWith(matrix.config.os, 'windows')
 
     - name: Build target
       uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --release 
+        args: --release --manifest-path=bindings/native/Cargo.toml
 
-    # TODO Install bindgen
-
-    - name: Create header files
-      shell: bash
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        cd bindings/native/
-        ./bindgen.sh
-
-    # Export .s,.dll,.dylib(?) libstronghold_native module
-    # If ubuntu, export header files as well
-
-    - name: Package
-      shell: bash
-      run: |
-        cd target/${{ matrix.target }}/release/
-        ls -a
-
-# Package all three results
-# Copy into archive
-# Root
-#    -> dist (including header files and libs)
-#    -> go.mod
-#    -> lib.go
-#    -> native.go
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.os }}-package
+        path: |
+          target/release/libstronghold_native.*
+          bindings/native/go/**
+          !bindings/native/go/tests/**
