@@ -1,11 +1,14 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use crypto::ciphers::aes_kw::AesKeyWrap;
+
 use crate::{
     procedures::{
-        AeadCipher, AeadDecrypt, AeadEncrypt, BIP39Generate, BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret,
-        Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType, MnemonicLanguage, PublicKey, Sha2Hash, Slip10Derive,
-        Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
+        AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
+        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType,
+        MnemonicLanguage, PublicKey, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
+        WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -18,8 +21,8 @@ use crypto::{
 };
 use stronghold_utils::random;
 
-#[tokio::test]
-async fn usecase_diffie_hellman_concat_kdf() {
+#[test]
+fn usecase_diffie_hellman_concat_kdf() {
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
@@ -114,8 +117,8 @@ async fn usecase_diffie_hellman_concat_kdf() {
 
 // Test vector from https://www.rfc-editor.org/rfc/rfc7518.html#appendix-C
 // This uses the concat KDF in the context of JWA.
-#[tokio::test]
-async fn concat_kdf_with_jwa() {
+#[test]
+fn test_concat_kdf_with_jwa() {
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
@@ -156,6 +159,69 @@ async fn concat_kdf_with_jwa() {
         derived_key_material,
         vec![86, 170, 141, 234, 248, 35, 109, 32, 92, 34, 40, 205, 113, 167, 16, 26]
     );
+}
+
+#[test]
+fn test_aes_256_keywrap_roundtrip() {
+    // Test Vector from https://tools.ietf.org/html/rfc3394#section-4.6.
+    let encryption_key: Vec<u8> = vec![
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+        30, 31,
+    ];
+    let plaintext: Vec<u8> = vec![
+        0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        12, 13, 14, 15,
+    ];
+    let ciphertext: Vec<u8> = vec![
+        40, 201, 244, 4, 196, 184, 16, 244, 203, 204, 179, 92, 251, 135, 248, 38, 63, 87, 134, 226, 216, 14, 211, 38,
+        203, 199, 240, 231, 26, 153, 244, 59, 251, 152, 139, 155, 122, 2, 221, 33,
+    ];
+
+    let client: Client = Client::default();
+
+    let encryption_key_location: Location = fresh::location();
+    let wrap_key_location: Location = fresh::location();
+    let plaintext_location: Location = fresh::location();
+
+    client
+        .execute_procedure(WriteVault {
+            data: encryption_key,
+            location: encryption_key_location.clone(),
+        })
+        .unwrap();
+
+    client
+        .execute_procedure(WriteVault {
+            data: plaintext.clone(),
+            location: wrap_key_location.clone(),
+        })
+        .unwrap();
+
+    let ctx: Vec<u8> = client
+        .execute_procedure(AesKeyWrapEncrypt {
+            cipher: AesKeyWrapCipher::Aes256,
+            encryption_key: encryption_key_location.clone(),
+            wrap_key: wrap_key_location,
+        })
+        .unwrap();
+
+    assert_eq!(ctx, ciphertext);
+
+    client
+        .execute_procedure(AesKeyWrapDecrypt {
+            cipher: AesKeyWrapCipher::Aes256,
+            decryption_key: encryption_key_location,
+            wrapped_key: ciphertext,
+            output: plaintext_location.clone(),
+        })
+        .unwrap();
+
+    let ptx: Vec<u8> = client
+        .vault(plaintext_location.vault_path())
+        .read_secret(plaintext_location.record_path())
+        .unwrap();
+
+    assert_eq!(ptx, plaintext);
 }
 
 #[tokio::test]

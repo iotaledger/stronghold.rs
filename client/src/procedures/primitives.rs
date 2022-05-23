@@ -9,6 +9,7 @@ pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
         aes::Aes256Gcm,
+        aes_kw::Aes256Kw,
         chacha::XChaCha20Poly1305,
         traits::{Aead, Tag},
     },
@@ -51,6 +52,8 @@ pub enum StrongholdProcedure {
     Hmac(Hmac),
     Hkdf(Hkdf),
     ConcatKdf(ConcatKdf),
+    AesKeyWrapEncrypt(AesKeyWrapEncrypt),
+    AesKeyWrapDecrypt(AesKeyWrapDecrypt),
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
@@ -77,6 +80,8 @@ impl Procedure for StrongholdProcedure {
             Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
             ConcatKdf(proc) => proc.execute(runner).map(|o| o.into()),
+            AesKeyWrapEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
+            AesKeyWrapDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
             Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
@@ -136,7 +141,6 @@ macro_rules! procedures {
             impl From<$Proc> for StrongholdProcedure {
                 fn from(proc: $Proc) -> Self {
                     StrongholdProcedure::$Proc(proc)
-
                 }
             }
         )+
@@ -184,8 +188,9 @@ macro_rules! generic_procedures {
 generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
     UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
-    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf }
+    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt }
 }
 
 procedures! {
@@ -920,5 +925,99 @@ impl ConcatKdf {
         output.truncate(len);
 
         Ok(output)
+    }
+}
+
+/// The available ciphers for AES key wrapping.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum AesKeyWrapCipher {
+    Aes256,
+}
+
+/// Encrypts a key in a vault using another key, and returns the ciphertext.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AesKeyWrapEncrypt {
+    /// The cipher to use for encryption.
+    pub cipher: AesKeyWrapCipher,
+    /// The key to use for encryption of the `wrap_key`.
+    pub encryption_key: Location,
+    /// The key to wrap.
+    pub wrap_key: Location,
+}
+
+impl UseSecret<2> for AesKeyWrapEncrypt {
+    type Output = Vec<u8>;
+
+    fn use_secret(self, guard: [Buffer<u8>; 2]) -> Result<Self::Output, FatalProcedureError> {
+        self.wrap_key(guard[0].borrow().as_ref(), guard[1].borrow().as_ref())
+    }
+
+    fn source(&self) -> [Location; 2] {
+        [self.encryption_key.clone(), self.wrap_key.clone()]
+    }
+}
+
+impl AesKeyWrapEncrypt {
+    fn wrap_key(&self, encryption_key: &[u8], wrap_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        // This uses Aes256Kw unconditionally, since AesKeyWrapCipher has just one variant.
+        // The enum was added for future proofing so support for other variants can be added non-breakingly.
+        let mut ciphertext: Vec<u8> = vec![0; wrap_key.len() + Aes256Kw::BLOCK];
+
+        let wrap: Aes256Kw = Aes256Kw::new(encryption_key);
+        wrap.wrap_key(wrap_key, &mut ciphertext)?;
+
+        Ok(ciphertext)
+    }
+}
+
+/// Decrypts a provided wrapped key using a decryption key, and writes the result into an output location.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AesKeyWrapDecrypt {
+    /// The cipher to use for decryption.
+    pub cipher: AesKeyWrapCipher,
+    /// The key to use for decryption of the `wrapped_key`.
+    pub decryption_key: Location,
+    /// The ciphertext of the key to unwrap.
+    pub wrapped_key: Vec<u8>,
+    /// The location into which to write the decrypted key.
+    pub output: Location,
+}
+
+impl DeriveSecret<1> for AesKeyWrapDecrypt {
+    type Output = ();
+
+    fn derive(self, guard: [Buffer<u8>; 1]) -> Result<Products<Self::Output>, FatalProcedureError> {
+        let plaintext: Vec<u8> = self.unwrap_key(guard[0].borrow().as_ref())?;
+        Ok(Products {
+            secret: plaintext,
+            output: (),
+        })
+    }
+
+    fn source(&self) -> [Location; 1] {
+        [self.decryption_key.clone()]
+    }
+
+    fn target(&self) -> &Location {
+        &self.output
+    }
+}
+
+impl AesKeyWrapDecrypt {
+    fn unwrap_key(&self, decryption_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+        // This uses Aes256Kw unconditionally, since AesKeyWrapCipher has just one variant.
+        // The enum was added for future proofing so support for other variants can be added non-breakingly.
+        let plaintext_len: usize = self.wrapped_key.len().checked_sub(Aes256Kw::BLOCK).ok_or_else(|| {
+            FatalProcedureError::from(format!(
+                "ciphertext needs to have a length >= than the block size: {}",
+                Aes256Kw::BLOCK
+            ))
+        })?;
+        let mut plaintext: Vec<u8> = vec![0; plaintext_len];
+
+        let wrap: Aes256Kw = Aes256Kw::new(decryption_key);
+        wrap.unwrap_key(self.wrapped_key.as_ref(), &mut plaintext)?;
+
+        Ok(plaintext)
     }
 }
