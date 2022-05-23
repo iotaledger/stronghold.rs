@@ -64,7 +64,9 @@ jobs:
       uses: actions/cache@v3
       with:
         key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
-        path: bindings/native/go/dist
+        path: |
+          bindings/native/go/dist/*.h
+          bindings/native/go/dist/*.hpp
 
     - name: Fail if C bindings could not be found
       if: ${{ steps.cache_bind_gen.outputs.cache-hit == true }}
@@ -116,7 +118,9 @@ jobs:
       uses: actions/cache@v3
       with:
         key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
-        path: bindings/native/go/dist
+        path: |
+          bindings/native/go/dist/*.h
+          bindings/native/go/dist/*.hpp
 
     - name: Download binaries
       uses: actions/download-artifact@v3
