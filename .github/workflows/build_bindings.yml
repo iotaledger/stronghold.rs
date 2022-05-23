@@ -118,6 +118,17 @@ jobs:
           target/release/*stronghold_native.dll
           target/release/*stronghold_native.so
           target/release/*stronghold_native.dylib
+    
+    - name: Aggregate binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: libstronghold
+        if-no-files-found: error
+        retention-days: 1
+        path: |
+          target/release/*stronghold_native.dll
+          target/release/*stronghold_native.so
+          target/release/*stronghold_native.dylib
 
   release:
     name: Create universal Go module
@@ -137,25 +148,7 @@ jobs:
     - name: Download binaries
       uses: actions/download-artifact@v3
       with:
-        # name: ubuntu-latest-libstronghold
-        path: bindings/native/go/dist
-
-    - name: Download binaries
-      uses: actions/download-artifact@v3
-      with:
-        name: ubuntu-latest-libstronghold
-        path: bindings/native/go/dist
-
-    - name: Download binaries
-      uses: actions/download-artifact@v3
-      with:
-        name: windows-latest-libstronghold
-        path: bindings/native/go/dist
-
-    - name: Download binaries
-      uses: actions/download-artifact@v3
-      with:
-        name: macOS-latest-libstronghold
+        name: libstronghold
         path: bindings/native/go/dist
 
     - name: Archive Go module
@@ -163,13 +156,6 @@ jobs:
       with:
         name: go-libstronghold
         if-no-files-found: error
-        # bindings/native/go/go.*
-        # bindings/native/go/*.go
-        # bindings/native/go/dist/*stronghold_native.dll
-        # bindings/native/go/dist/*stronghold_native.so
-        # bindings/native/go/dist/*stronghold_native.dylib
-        # bindings/native/go/dist/*.h
-        # bindings/native/go/dist/*.hpp
         path: |
           bindings/native/go/**
           !**/.DS_Store
