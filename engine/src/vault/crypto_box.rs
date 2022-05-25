@@ -12,9 +12,6 @@ use std::{
     marker::PhantomData,
 };
 
-// We store key in non contiguous memory spread in ram
-const NC_CONFIGURATION: NCConfig = NCConfig::FullRam;
-
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
 pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
     type Error: Debug;

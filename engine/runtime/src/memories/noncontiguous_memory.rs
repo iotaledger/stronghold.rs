@@ -30,6 +30,9 @@ static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen
 // Currently we only support data of 32 bytes in noncontiguous memory
 pub const NC_DATA_SIZE: usize = 32;
 
+// Temporary, we currently only use non contiguous with the two shards in RAM
+pub const NC_CONFIGURATION: NCConfig = FullRam;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NCConfig {
     FullFile,
@@ -65,9 +68,6 @@ impl LockedMemory for NonContiguousMemory {
     /// Unlocks the memory and returns an unlocked Buffer
     /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
-        // refresh shard before unlock
-        self.refresh()?;
-
         let data1 = blake2b::Blake2b256::digest(&self.get_buffer_from_shard1().borrow());
 
         let data = match &self.shard2 {
@@ -82,6 +82,9 @@ impl LockedMemory for NonContiguousMemory {
                 x
             }
         };
+
+        // Refresh shards positions after unlocking them
+        self.refresh()?;
 
         Ok(Buffer::alloc(&data, NC_DATA_SIZE))
     }
@@ -263,8 +266,7 @@ impl<'de> Visitor<'de> for NonContiguousMemoryVisitor {
             seq.push(e);
         }
 
-        // TODO we need to get back the previous config
-        let seq = NonContiguousMemory::alloc(seq.as_slice(), seq.len(), FullRam)
+        let seq = NonContiguousMemory::alloc(seq.as_slice(), seq.len(), NC_CONFIGURATION)
             .expect("Failed to allocate NonContiguousMemory during deserialization");
 
         Ok(seq)
@@ -381,7 +383,8 @@ mod tests {
     fn test_nc_with_alloc() {
         use random::Rng;
 
-        let threshold = 0x4000;
+        // Usual size for a page
+        let threshold = 0x1000;
         let mut payload = [0u8; NC_DATA_SIZE];
         let mut rng = random::thread_rng();
         assert!(rng.try_fill(&mut payload).is_ok(), "Error filling payload bytes");
