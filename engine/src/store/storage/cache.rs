@@ -241,7 +241,7 @@ impl<K: Hash + Eq + Clone, V: Clone + Debug> Cache<K, V> {
     }
 
     /// Returns a list of all keys inside the [`Cache`] as references
-    pub fn list_keys(&self) -> Vec<K> {
+    pub fn keys(&self) -> Vec<K> {
         self.table.keys().cloned().collect()
     }
 
