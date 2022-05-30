@@ -131,6 +131,23 @@ impl Store {
         *inner = cache;
         Ok(())
     }
+
+    /// Returns a list of all keys inside the store
+    ///
+    /// # Examples
+    /// ```
+    /// use iota_stronghold::Store;
+    ///
+    /// let store = Store::default();
+    /// store.insert(b"key-1".to_vec(), b"val-1".to_vec(), None);
+    /// store.insert(b"key-2".to_vec(), b"val-2".to_vec(), None);
+    /// store.insert(b"key-3".to_vec(), b"val-3".to_vec(), None);
+    /// store.reload(cache);
+    /// ```
+    pub fn list_keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
+        let inner = self.cache.try_read()?;
+        Ok(inner.list_keys())
+    }
 }
 
 // compatibility implementation

@@ -17,7 +17,7 @@ use std::{
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache<K, V>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Clone,
     V: Clone + Debug,
 {
     // hashmap of data.
@@ -30,7 +30,7 @@ where
     last_scan_at: Option<SystemTime>,
 }
 
-impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone + Debug> Cache<K, V> {
     /// creates a new empty [`Cache`]
     /// # Example
     /// ```
@@ -240,6 +240,11 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
         self.last_scan_at = None;
     }
 
+    /// Returns a list of all keys inside the [`Cache`] as references
+    pub fn list_keys(&self) -> Vec<K> {
+        self.table.keys().cloned().collect()
+    }
+
     /// attempts to remove expired items based on the current system time provided.
     fn try_remove_expired_items(&mut self, now: SystemTime) {
         if let Some(frequency) = self.scan_freq {
@@ -257,7 +262,7 @@ impl<K: Hash + Eq, V: Clone + Debug> Cache<K, V> {
 }
 
 /// Default implementation for [`Cache<K, V>`]
-impl<K: Hash + Eq, V: Clone + Debug> Default for Cache<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone + Debug> Default for Cache<K, V> {
     fn default() -> Self {
         Cache::new()
     }
