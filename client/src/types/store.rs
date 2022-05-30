@@ -142,7 +142,12 @@ impl Store {
     /// store.insert(b"key-1".to_vec(), b"val-1".to_vec(), None);
     /// store.insert(b"key-2".to_vec(), b"val-2".to_vec(), None);
     /// store.insert(b"key-3".to_vec(), b"val-3".to_vec(), None);
-    /// store.reload(cache);
+    /// let expected = vec![b"key-1".to_vec(), b"key-2".to_vec(), b"key-3".to_vec()];
+    /// let result = store.list_keys();
+    /// assert!(result.is_ok());
+    /// let mut actual = result.unwrap();
+    /// actual.sort();
+    /// assert_eq!(actual, expected);
     /// ```
     pub fn list_keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
         let inner = self.cache.try_read()?;
