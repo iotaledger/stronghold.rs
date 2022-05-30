@@ -149,7 +149,7 @@ impl Store {
     /// actual.sort();
     /// assert_eq!(actual, expected);
     /// ```
-    pub fn list_keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
+    pub fn keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
         let inner = self.cache.try_read()?;
         Ok(inner.list_keys())
     }
