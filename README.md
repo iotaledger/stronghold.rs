@@ -80,7 +80,7 @@ This section should list any major frameworks/libraries used to bootstrap your p
 -->
 ### Built With
 
-* [Rust](https://www.rust-lang.org/)
+* [Rust Programming Language](https://www.rust-lang.org/)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -196,9 +196,6 @@ Distributed under the Apache License. See [`LICENSE`](LICENSE) for more informat
 ## Contact
 
 Project Link: [https://github.com/iotaledger/stronghold.rs](https://github.com/iotaledger/stronghold.rs)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
