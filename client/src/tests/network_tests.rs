@@ -885,7 +885,7 @@ async fn test_p2p_firewall() {
 // the inner hierarchy from remote results in "connection terminated". Using an empty
 // results produces an expected / predictable outcome.
 #[tokio::test]
-// #[ignore]
+#[ignore]
 async fn test_synchronize_snapshots() {
     // -- setup
     let remote_key_pair = Keypair::generate_ed25519();
