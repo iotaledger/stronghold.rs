@@ -9,6 +9,8 @@ description         = "Data structures for memory protection at runtime"
 repository          = "https://github.com/iotaledger/stronghold.rs"
 homepage            = "https://wiki.iota.org/stronghold.rs/welcome"
 documentation       = "https://wiki.iota.org/stronghold.rs/welcome"
+keywords            = [ "iota", "stronghold", "security" ]
+categories          = [ "security" ]
     
 [lib]
 name                = "runtime"

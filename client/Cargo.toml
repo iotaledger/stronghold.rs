@@ -6,10 +6,10 @@ license             = "Apache-2.0"
 readme              = "README.md"
 description         = "Client interface for Stronghold"
 authors             = [ "IOTA Stiftung" ]
-keywords            = [ "iota", "stronghold", "security" ]
-categories          = [ "security" ]
 homepage            = "https://wiki.iota.org/stronghold.rs/welcome"
 repository          = "https://github.com/iotaledger/stronghold.rs"
+keywords            = [ "iota", "stronghold", "security" ]
+categories          = [ "security" ]
 
 [features]
 default             = [ "std" ]
