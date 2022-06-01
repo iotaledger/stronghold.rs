@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.5.1]
+
+- Bump
+  - Bumped due to a bump in stronghold-runtime.
+  - [6f1c160a](https://www.github.com/iotaledger/stronghold.rs/commit/6f1c160a3182f136868406bdca99022efd45dd67) Fix versions for covector on 2022-06-01
+
 ## \[0.5.0]
 
 - - Refactor Sink and Stream implementation for EventChannel
