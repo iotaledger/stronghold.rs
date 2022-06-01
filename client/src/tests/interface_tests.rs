@@ -1,19 +1,71 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{borrow::BorrowMut, error::Error, path::Path};
+use std::{
+    borrow::BorrowMut,
+    error::Error,
+    ops::{Deref, DerefMut},
+    path::{Path, PathBuf},
+};
 
 use crate::{
     procedures::{GenerateKey, KeyType, StrongholdProcedure},
     Client, ClientError, ClientVault, KeyProvider, Location, Snapshot, SnapshotPath, Store, Stronghold,
 };
 use engine::vault::RecordHint;
+use regex::Replacer;
 use stronghold_utils::random as rand;
 use zeroize::Zeroize;
 
 /// Returns a fixed sized vector of random bytes
 fn fixed_random_bytes(length: usize) -> Vec<u8> {
     std::iter::repeat_with(rand::random::<u8>).take(length).collect()
+}
+
+struct Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    cmd: F,
+    inner: T,
+}
+
+impl<T, F> Drop for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn drop(&mut self) {
+        (self.cmd)(&mut self.inner)
+    }
+}
+
+impl<T, F> Deref for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T, F> DerefMut for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<T, F> From<(T, F)> for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn from((inner, cmd): (T, F)) -> Self {
+        Self { cmd, inner }
+    }
 }
 
 #[tokio::test]
@@ -138,17 +190,186 @@ fn test_stronghold_purge_client() {
     assert!(matches!(err2, ClientError::ClientDataNotPresent));
 }
 
-#[tokio::test]
-async fn purge_client() {}
+#[test]
+fn purge_client() {
+    // This test will create a client, write secret data into the vault, commit
+    // the state into a snapshot. Then purge the client, commit the purged state
+    // and reload the client, with an empty state
+    let client_path = fixed_random_bytes(1024);
+    let vault_path = fixed_random_bytes(1024);
+    let record_path = fixed_random_bytes(1024);
 
-#[tokio::test]
-async fn write_client_to_snapshot() {}
+    let filename = base64::encode(fixed_random_bytes(8));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
 
-#[tokio::test]
-async fn test_load_client_from_snapshot() {}
+    let snapshot = SnapshotPath::from_path(&snapshot_path);
 
-#[tokio::test]
-async fn test_load_multiple_clients_from_snapshot() {}
+    let stronghold = Stronghold::default();
 
-#[tokio::test]
-async fn test_multiple_clients_modification_from_and_to_snapshot() {}
+    let result = stronghold.create_client(client_path.clone());
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    let loc_secret = Location::const_generic(vault_path.clone(), record_path.clone());
+    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024));
+
+    assert!(result.is_ok());
+
+    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    assert!(result.is_ok());
+
+    let key_provider = result.unwrap();
+
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // purge client
+    assert!(stronghold.purge_client(client).is_ok());
+
+    // the next commit also deletes it from the snapshot file
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // check, if client still exists
+    let result = stronghold.load_client(client_path.clone());
+    assert!(result.is_err());
+
+    // re-init stronghold
+    let stronghold = Stronghold::default();
+
+    // reload from snapshot
+    let result = stronghold.load_client_from_snapshot(client_path, &key_provider, &snapshot);
+    assert!(result.is_ok(), "Failed to load client from snapshot");
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path);
+    assert!(vault.read_secret(record_path).is_err());
+}
+
+#[test]
+fn write_client_to_snapshot() {
+    let stronghold = Stronghold::default();
+
+    let snapshot_path = {
+        let name = base64::encode(fixed_random_bytes(8));
+        let name = name.replace('/', "n");
+
+        let mut dir = std::env::temp_dir();
+        dir.push(name);
+
+        SnapshotPath::from_path(dir)
+    };
+
+    let keyprovider = {
+        let key = fixed_random_bytes(32);
+        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+    };
+
+    // create a client and write some secret into the state
+    {
+        let client = stronghold.create_client(fixed_random_bytes(256)).unwrap();
+        let vault_path = fixed_random_bytes(256);
+        let record_path = fixed_random_bytes(256);
+        let vault = client.vault(vault_path.clone());
+
+        vault
+            .write_secret(
+                Location::const_generic(vault_path, record_path),
+                fixed_random_bytes(1024),
+            )
+            .expect("Failed to write secret into vault");
+    }
+
+    let result = stronghold.commit(&snapshot_path, &keyprovider);
+
+    assert!(
+        result.is_ok(),
+        "Failed to commit client data {:?}, snapshot path: {:?}",
+        result,
+        snapshot_path.as_path()
+    );
+}
+
+#[test]
+fn test_load_client_from_snapshot() {
+    let client_path = fixed_random_bytes(1024);
+    let vault_path = fixed_random_bytes(1024);
+    let record_path = fixed_random_bytes(1024);
+
+    let filename = base64::encode(fixed_random_bytes(32));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
+
+    let defer = Defer::from((snapshot_path, |path: &'_ PathBuf| {
+        println!("Removing file");
+        let _ = std::fs::remove_file(path);
+    }));
+
+    let snapshot = SnapshotPath::from_path(&*defer);
+    let stronghold = Stronghold::default();
+
+    let result = stronghold.create_client(client_path.clone());
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    let result = vault.write_secret(
+        Location::const_generic(vault_path, record_path),
+        fixed_random_bytes(1024),
+    );
+
+    assert!(result.is_ok());
+
+    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    assert!(result.is_ok());
+
+    let key_provider = result.unwrap();
+
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // reload from snapshot
+    assert!(stronghold
+        .load_client_from_snapshot(client_path, &key_provider, &snapshot)
+        .is_ok());
+}
+
+#[test]
+fn test_load_multiple_clients_from_snapshot() {
+    let number_of_clients = 10;
+    let client_path_vec: Vec<Vec<u8>> = (0..number_of_clients).map(|_| fixed_random_bytes(256)).collect();
+
+    let stronghold = Stronghold::default();
+
+    let snapshot_path = {
+        let name = base64::encode(fixed_random_bytes(8));
+        let name = name.replace('/', "n");
+        let mut dir = std::env::temp_dir();
+        dir.push(name);
+
+        SnapshotPath::from_path(dir)
+    };
+
+    let keyprovider = {
+        let key = fixed_random_bytes(32);
+        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+    };
+
+    client_path_vec.iter().for_each(|path| {
+        let _ = stronghold.create_client(path.clone());
+    });
+
+    let result = stronghold.commit(&snapshot_path, &keyprovider);
+    assert!(result.is_ok(), "Failed to commit clients state {:?}", result);
+
+    client_path_vec.iter().for_each(|path| {
+        let result = stronghold.load_client_from_snapshot(path, &keyprovider, &snapshot_path);
+        assert!(result.is_ok(), "Failed to load client from snapshot path {:?}", result);
+    });
+}
