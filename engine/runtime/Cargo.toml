@@ -1,28 +1,28 @@
 [package]
-name                = "stronghold-runtime"
-version             = "0.4.0"
-authors             = [ "IOTA Stiftung", "Alexandre Dang <alexandre.dang@iota.org" ]
-edition             = "2021"
-readme              = "README.md"
-license             = "Apache-2.0"
-description         = "Data structures for memory protection at runtime"
-repository          = "https://github.com/iotaledger/stronghold.rs"
-homepage            = "https://wiki.iota.org/stronghold.rs/welcome"
-documentation       = "https://wiki.iota.org/stronghold.rs/welcome"
-keywords            = [ "iota", "stronghold", "security" ]
-categories          = [ "security" ]
-    
+name = "stronghold-runtime"
+version = "0.5.0"
+authors = [ "IOTA Stiftung", "Alexandre Dang <alexandre.dang@iota.org" ]
+edition = "2021"
+readme = "README.md"
+license = "Apache-2.0"
+description = "Data structures for memory protection at runtime"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://wiki.iota.org/stronghold.rs/welcome"
+documentation = "https://wiki.iota.org/stronghold.rs/welcome"
+keywords = [ "iota", "stronghold", "security" ]
+categories = [ "security" ]
+
 [lib]
-name                = "runtime"
+name = "runtime"
 
 [dependencies]
-zeroize             = { version = "1.4.3" }
-libsodium-sys       = { version = "0.2" }
-serde               = { version = "1.0", features = [ "derive" ] }
-random              = { version = "0.8.4", package = "rand" }
-dirs                = { version = "4.0.0" }
-thiserror           = { version = "1.0" }
-iota-crypto         = { version = "0.8.0", features = [ "blake2b" ] }
+zeroize = { version = "1.4.3" }
+libsodium-sys = { version = "0.2" }
+serde = { version = "1.0", features = [ "derive" ] }
+random = { version = "0.8.4", package = "rand" }
+dirs = { version = "4.0.0" }
+thiserror = { version = "1.0" }
+iota-crypto = { version = "0.8.0", features = [ "blake2b" ] }
 
 [dev-dependencies]
-serde_json          = { version = "1.0" }
+serde_json = { version = "1.0" }
