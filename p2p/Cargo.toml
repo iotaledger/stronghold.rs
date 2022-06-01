@@ -1,10 +1,7 @@
 [package]
 name = "stronghold-p2p"
-version = "0.3.0"
-authors = [
-  "IOTA Stiftung",
-  "Elena Frank <elena.frank@iota.org"
-]
+version = "0.4.0"
+authors = [ "IOTA Stiftung", "Elena Frank <elena.frank@iota.org" ]
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -16,25 +13,24 @@ name = "p2p"
 
 [dependencies]
 futures = "0.3"
-libp2p = { version = "0.43.0", default-features = false, features = ["noise", "yamux", "mdns", "relay", "serde"] }
+libp2p = { version = "0.43.0", default-features = false, features = [ "noise", "yamux", "mdns", "relay", "serde" ] }
 pin-project = "1.0.8"
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
-smallvec = { version = "1.6.1", features = ["serde"] }
+smallvec = { version = "1.6.1", features = [ "serde" ] }
 stronghold-derive = { path = "../derive", version = "0.2" }
 thiserror = "1.0.30"
-tokio = { version = "1.10", default-features = false, features = ["rt", "sync"] }
+tokio = { version = "1.10", default-features = false, features = [ "rt", "sync" ] }
 wasm-timer = "0.2.5"
 
 [features]
-default = [ "tcp-transport"]
-tcp-transport = ["libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket"]
+default = [ "tcp-transport" ]
+tcp-transport = [ "libp2p/tcp-tokio", "libp2p/dns-tokio", "libp2p/websocket" ]
 
 [dev-dependencies]
-# remove the dependency on actix
 actix-rt = "2.5"
-iota_stronghold = { path = "../client" , features = ["p2p"] }
+iota_stronghold = { path = "../client", features = [ "p2p" ] }
 regex = "1.5"
-stronghold-utils = { path = "../utils", version = "0.3.0" }
-tokio = {version = "1.10", features = ["time", "macros", "io-std", "io-util"] }
-libp2p = { version = "0.43.0", default-features = false, features = ["tcp-tokio"] }
+stronghold-utils = { path = "../utils", version = "0.3.1" }
+tokio = { version = "1.10", features = [ "time", "macros", "io-std", "io-util" ] }
+libp2p = { version = "0.43.0", default-features = false, features = [ "tcp-tokio" ] }
