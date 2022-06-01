@@ -1,5 +1,10 @@
 # Changelog
 
+## \[0.3.0]
+
+- Fix package description
+  - [b6e6977a](https://www.github.com/iotaledger/stronghold.rs/commit/b6e6977aba951c60d26ad7ef756719a93f8e5b95) fix: package description on 2022-06-02
+
 ## \[0.5.0]
 
 - Bump
