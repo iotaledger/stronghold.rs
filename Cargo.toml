@@ -2,7 +2,7 @@
 members = [
   "engine",
   "engine/runtime",
-  "engine/new_runtime",
+  "bindings/native",
   "client",
   "utils",
   "derive",

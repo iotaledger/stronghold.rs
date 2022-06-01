@@ -88,8 +88,8 @@ const EMPTY_QUEUE_SHRINK_THRESHOLD: usize = 100;
 /// the configuration of a firewall to set permissions individually for different peers and request types.
 pub struct NetworkBehaviour<Rq, Rs, TRq = Rq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     // Integrate Mdns protocol.
@@ -131,8 +131,8 @@ where
 
 impl<Rq, Rs, TRq> NetworkBehaviour<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     /// Create a new NetworkBehaviour for the libp2p swarm.
@@ -467,8 +467,8 @@ where
 
 impl<Rq, Rs, TRq> Libp2pNetworkBehaviour for NetworkBehaviour<Rq, Rs, TRq>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
     TRq: FwRequest<Rq>,
 {
     type ConnectionHandler = ProtoHandler<Rq, Rs>;
@@ -796,8 +796,8 @@ where
 }
 
 /// Trait for the generic request and response messages.
-pub trait RqRsMessage: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}
-impl<TRq: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static> RqRsMessage for TRq {}
+pub trait Request: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static {}
+impl<TRq: Serialize + DeserializeOwned + Send + Sync + fmt::Debug + 'static> Request for TRq {}
 
 /// Unique Id for each request.
 /// **Note**: This ID is only local and does not match the request's ID at the remote peer.

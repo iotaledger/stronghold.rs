@@ -77,11 +77,11 @@ fn test_vaults() {
 
     assert_eq!(list0.len(), 1);
 
-    let b = view.contains_record(&key0, vid0, rid0);
+    let b = view.contains_record(vid0, rid0);
 
     assert!(b);
 
-    let b = view.contains_record(&key0, vid0, rid01);
+    let b = view.contains_record(vid0, rid01);
 
     assert!(!b);
 
@@ -106,16 +106,14 @@ fn test_vaults() {
         .unwrap();
 
     // execute a procedure and put the result into a new record
-    view.exec_proc::<Infallible, _>(
-        &key0,
-        vid0,
-        rid0,
+    view.exec_procedure::<Infallible, _, 1>(
+        [(key0.clone(), vid0, rid0)],
         &key1,
         vid1,
         rid1,
         RecordHint::new(b"tester").unwrap(),
-        |guard| {
-            let data = guard.borrow();
+        |guards| {
+            let data = guards[0].borrow();
             let mut ret = Vec::new();
 
             ret.extend(data.iter());

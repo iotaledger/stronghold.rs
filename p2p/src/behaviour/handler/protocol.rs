@@ -13,7 +13,7 @@
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
 
-use crate::RqRsMessage;
+use crate::Request;
 use futures::{channel::oneshot, future::BoxFuture, prelude::*};
 use libp2p::{
     core::{
@@ -52,8 +52,8 @@ impl ProtocolName for MessageProtocol {
 #[derive(Debug)]
 pub struct ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     /// Supported protocols for inbound requests.
     /// Rejects all inbound requests if empty.
@@ -64,8 +64,8 @@ where
 
 impl<Rq, Rs> UpgradeInfo for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     type Info = MessageProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
@@ -77,8 +77,8 @@ where
 
 impl<Rq, Rs> InboundUpgrade<NegotiatedSubstream> for ResponseProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     // If a response was send back to remote.
     // False if the response channel was dropped on a higher level before a response was sent.
@@ -112,8 +112,8 @@ where
 #[derive(Debug)]
 pub struct RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     /// Supported protocols for outbound requests.
     pub protocols: SmallVec<[MessageProtocol; 2]>,
@@ -125,8 +125,8 @@ where
 
 impl<Rq, Rs> UpgradeInfo for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     type Info = MessageProtocol;
     type InfoIter = smallvec::IntoIter<[Self::Info; 2]>;
@@ -138,8 +138,8 @@ where
 
 impl<Rq, Rs> OutboundUpgrade<NegotiatedSubstream> for RequestProtocol<Rq, Rs>
 where
-    Rq: RqRsMessage,
-    Rs: RqRsMessage,
+    Rq: Request,
+    Rs: Request,
 {
     // Response from the remote for the sent request.
     type Output = Rs;

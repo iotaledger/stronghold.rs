@@ -1,28 +1,42 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-#![no_std]
+// No std maybe for later
+// #![no_std]
 
-//! Stronghold Protected-access Memory Runtime.
-//!
-//! These modules contain an interface for allocating and protecting
-//! the memory of secrets in Stronghold.  Data is protected from being accessed
-//! outside of a limited scope. Instead it must be accessed via the
-//! provided interfaces.
-//!
-//! Memory allocations are protected by guard pages before and after the
-//! allocation, an underflow canary, and are zeroed out when freed.
-
-mod allocator;
 mod boxed;
-mod guarded;
-mod guarded_vec;
-mod secret;
-mod sodium;
+pub mod locked_memory;
+pub mod memories;
 mod types;
+pub mod utils;
 
-pub use allocator::ZeroingAlloc;
-pub use guarded::Guarded;
-pub use guarded_vec::GuardedVec;
-pub use secret::Secret;
+pub use thiserror::Error as DeriveError;
 pub use types::Bytes;
+
+/// The memory types of this crate shall return this message when trying to debug them
+pub const DEBUG_MSG: &str = "Content of Locked Memory is hidden";
+
+/// The different types of Error that may be encountered while using this crate
+#[derive(Debug, DeriveError)]
+pub enum MemoryError {
+    #[error("Encryption Error")]
+    EncryptionError,
+
+    #[error("Decryption Error")]
+    DecryptionError,
+
+    #[error("Illegal non-contiguous size")]
+    NCSizeNotAllowed,
+
+    #[error("Lock unavailable")]
+    LockNotAvailable,
+
+    #[error("File System Error")]
+    FileSystemError,
+
+    #[error("Illegal zero-sized value provided")]
+    ZeroSizedNotAllowed,
+}
+
+/// A simple trait to force the types to call `zeroize()` when dropping
+pub trait ZeroizeOnDrop {}
