@@ -55,7 +55,6 @@
 //! };
 //! let rule: Rule<MessagePermission> = Rule::Restricted {
 //!     restriction: Arc::new(restriction),
-//!     _maker: PhantomData,
 //! };
 //!
 //! # let (firewall_tx, firewall_rx) = mpsc::channel(10);

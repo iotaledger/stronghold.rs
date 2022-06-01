@@ -37,10 +37,10 @@ impl BoxProvider for Provider {
 
         Self::random_buf(&mut nonce)?;
 
-        let key_bytes = key.bytes();
+        let key_bytes = &key.key;
 
         // conversion between types
-        let _key = generic_array::GenericArray::from_slice(&key_bytes.as_slice());
+        let _key = generic_array::GenericArray::from_slice(&*key_bytes.borrow());
         let _nonce = generic_array::GenericArray::from_mut_slice(&mut nonce);
         let _tag = generic_array::GenericArray::from_mut_slice(&mut tag);
 
@@ -61,10 +61,10 @@ impl BoxProvider for Provider {
 
         let mut plain = vec![0; cipher.len()];
 
-        let key_bytes = key.bytes();
+        let key_bytes = &key.key;
 
         // conversion between types
-        let _key = generic_array::GenericArray::from_slice(&key_bytes.as_slice());
+        let _key = generic_array::GenericArray::from_slice(&*key_bytes.borrow());
         let _nonce = generic_array::GenericArray::from_slice(&nonce);
         let _tag = generic_array::GenericArray::from_slice(&tag);
 

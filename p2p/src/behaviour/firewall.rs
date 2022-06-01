@@ -7,7 +7,7 @@ pub mod permissions;
 use core::fmt;
 use futures::channel::oneshot;
 use libp2p::PeerId;
-use std::{borrow::Borrow, collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, fmt::Debug, sync::Arc};
 
 /// Derive new type from the received request, that only contains firewall-relevant information.
 ///
@@ -78,7 +78,7 @@ pub enum Rule<TRq> {
     /// Approve /  Reject request based on the set function.
     Restricted {
         restriction: Arc<dyn Fn(&TRq) -> bool + Send + Sync>,
-        _maker: PhantomData<TRq>,
+        // _maker: PhantomData<TRq>,
     },
     /// Ask for individual approval for each request by sending a [`FirewallRequest::RequestApproval`] through the
     /// firewall-channel.
@@ -101,9 +101,11 @@ impl<TRq> Clone for Rule<TRq> {
         match self {
             Rule::AllowAll => Rule::AllowAll,
             Rule::RejectAll => Rule::RejectAll,
-            Rule::Restricted { restriction, _maker } => Rule::Restricted {
+            Rule::Restricted {
+                restriction, // , _maker
+            } => Rule::Restricted {
                 restriction: restriction.clone(),
-                _maker: *_maker,
+                // _maker: *_maker,
             },
             Rule::Ask => Rule::Ask,
         }

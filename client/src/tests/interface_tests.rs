@@ -1,389 +1,375 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{ActorError, Location, RecordHint, Stronghold};
-use stronghold_utils::random::bytestring;
+use std::{
+    borrow::BorrowMut,
+    error::Error,
+    ops::{Deref, DerefMut},
+    path::{Path, PathBuf},
+};
 
-#[actix::test]
-async fn test_stronghold() {
-    let vault_path = b"path".to_vec();
-    let client_path = b"test".to_vec();
+use crate::{
+    procedures::{GenerateKey, KeyType, StrongholdProcedure},
+    Client, ClientError, ClientVault, KeyProvider, Location, Snapshot, SnapshotPath, Store, Stronghold,
+};
+use engine::vault::RecordHint;
+use regex::Replacer;
+use stronghold_utils::random as rand;
+use zeroize::Zeroize;
 
-    let loc0 = Location::counter::<_, usize>("path", 0);
-    let loc1 = Location::counter::<_, usize>("path", 1);
-    let loc2 = Location::counter::<_, usize>("path", 2);
-
-    let store_loc = bytestring(4096);
-
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-
-    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
-        .await
-        .unwrap();
-
-    // clone it, and check for consistency
-    let stronghold2 = stronghold.clone();
-
-    // Write at the first record of the vault using Some(0).  Also creates the new vault.
-    assert!(stronghold2
-        .write_to_vault(
-            loc0.clone(),
-            b"test".to_vec(),
-            RecordHint::new(b"first hint").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    // read head.
-    let p = stronghold2
-        .read_secret(client_path.clone(), loc0.clone())
-        .await
-        .unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
-
-    // read head from first reference
-    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
-
-    // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    assert!(stronghold
-        .write_to_vault(
-            loc1.clone(),
-            b"another test".to_vec(),
-            RecordHint::new(b"another hint").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    // read head.
-    let p = stronghold.read_secret(client_path.clone(), loc1.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
-
-    assert!(stronghold
-        .write_to_vault(
-            loc2.clone(),
-            b"yet another test".to_vec(),
-            RecordHint::new(b"yet another hint").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    // read head.
-    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
-
-    // Read the first record of the vault.
-    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
-
-    // Read the head record of the vault.
-    let p = stronghold.read_secret(client_path.clone(), loc1).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
-
-    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
-
-    let ids = stronghold.list_hints_and_ids(vault_path.clone()).await.unwrap();
-    println!("{:?}", ids);
-
-    stronghold
-        .delete_data(loc0.clone(), true)
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap();
-
-    // attempt to read the first record of the vault.
-    let p = stronghold.read_secret(client_path.clone(), loc0.clone()).await.unwrap();
-
-    assert!(p.is_none());
-
-    let ids = stronghold.list_hints_and_ids(vault_path.clone()).await.unwrap();
-    println!("{:?}", ids);
-
-    stronghold
-        .write_to_store(store_loc.clone(), b"test".to_vec(), None)
-        .await
-        .unwrap();
-
-    let data = stronghold.read_from_store(store_loc.clone()).await.unwrap().unwrap();
-
-    assert_eq!(std::str::from_utf8(&data), Ok("test"));
-
-    stronghold.garbage_collect(vault_path).await.unwrap();
-
-    stronghold
-        .write_all_to_snapshot(&key_data, Some("test0".into()), None)
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
-
-    stronghold
-        .read_snapshot(client_path.clone(), None, &key_data, Some("test0".into()), None)
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
-
-    // read head after reading snapshot.
-
-    let p = stronghold.read_secret(client_path.clone(), loc2.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
-
-    let p = stronghold.read_secret(client_path.clone(), loc0).await.unwrap();
-
-    assert!(p.is_none());
-
-    stronghold.kill_stronghold(client_path.clone(), false).await.unwrap();
-
-    let p = stronghold.read_secret(client_path.clone(), loc2).await.unwrap();
-
-    assert!(p.is_none());
-
-    let data = stronghold.read_from_store(store_loc.clone()).await.unwrap().unwrap();
-
-    assert_eq!(std::str::from_utf8(&data), Ok("test"));
-
-    stronghold.delete_from_store(store_loc.clone()).await.unwrap();
-
-    let data = stronghold.read_from_store(store_loc).await.unwrap();
-
-    assert!(data.is_none());
-
-    stronghold.kill_stronghold(client_path.clone(), true).await.unwrap();
-
-    assert!(matches!(
-        stronghold.switch_actor_target(client_path).await,
-        Err(ActorError::TargetNotFound)
-    ))
+/// Returns a fixed sized vector of random bytes
+fn fixed_random_bytes(length: usize) -> Vec<u8> {
+    std::iter::repeat_with(rand::random::<u8>).take(length).collect()
 }
 
-#[actix::test]
-async fn run_stronghold_multi_actors() {
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
-
-    let client_path0 = b"test a".to_vec();
-    let client_path1 = b"test b".to_vec();
-    let client_path2 = b"test c".to_vec();
-    let client_path3 = b"test d".to_vec();
-
-    let loc0 = Location::counter::<_, usize>("path", 0);
-
-    let loc2 = Location::counter::<_, usize>("path", 2);
-    let loc3 = Location::counter::<_, usize>("path", 3);
-    let loc4 = Location::counter::<_, usize>("path", 4);
-
-    let mut stronghold = Stronghold::init_stronghold_system(client_path0.clone(), vec![])
-        .await
-        .unwrap();
-
-    stronghold
-        .spawn_stronghold_actor(client_path1.clone(), vec![])
-        .await
-        .unwrap();
-
-    stronghold.switch_actor_target(client_path0.clone()).await.unwrap();
-
-    assert!(stronghold
-        .write_to_vault(loc0.clone(), b"test".to_vec(), RecordHint::new(b"0").unwrap(), vec![],)
-        .await
-        .is_ok());
-
-    // read head.
-    let p = stronghold
-        .read_secret(client_path0.clone(), loc0.clone())
-        .await
-        .unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("test"));
-
-    stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
-
-    // Write on the next record of the vault using None.  This calls InitRecord and creates a new one at index 1.
-    assert!(stronghold
-        .write_to_vault(
-            loc0.clone(),
-            b"another test".to_vec(),
-            RecordHint::new(b"1").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    // read head.
-    let p = stronghold
-        .read_secret(client_path1.clone(), loc0.clone())
-        .await
-        .unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
-
-    stronghold.switch_actor_target(client_path0.clone()).await.unwrap();
-
-    assert!(stronghold
-        .write_to_vault(
-            loc0.clone(),
-            b"yet another test".to_vec(),
-            RecordHint::new(b"2").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    let p = stronghold
-        .read_secret(client_path0.clone(), loc0.clone())
-        .await
-        .unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("yet another test"));
-
-    let ids = stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
-    println!("actor 0: {:?}", ids);
-
-    stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("megasnap".into()), None)
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
-
-    stronghold.switch_actor_target(client_path1.clone()).await.unwrap();
-
-    let ids = stronghold.list_hints_and_ids(loc2.vault_path()).await.unwrap();
-    println!("actor 1: {:?}", ids);
-
-    stronghold
-        .spawn_stronghold_actor(client_path2.clone(), vec![])
-        .await
-        .unwrap();
-
-    stronghold
-        .read_snapshot(
-            client_path2.clone(),
-            Some(client_path1.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
-
-    // client_path2 correct?
-    let p = stronghold.read_secret(client_path2.clone(), loc0).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("another test"));
-
-    assert!(stronghold
-        .write_to_vault(
-            loc3.clone(),
-            b"a new actor test".to_vec(),
-            RecordHint::new(b"2").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    let p = stronghold.read_secret(client_path2.clone(), loc3).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test"));
-
-    assert!(stronghold
-        .write_to_vault(
-            loc4.clone(),
-            b"a new actor test again".to_vec(),
-            RecordHint::new(b"3").unwrap(),
-            vec![],
-        )
-        .await
-        .is_ok());
-
-    let p = stronghold.read_secret(client_path2, loc4.clone()).await.unwrap();
-
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("a new actor test again"));
-
-    let mut ids2 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
-
-    stronghold.switch_actor_target(client_path1).await.unwrap();
-
-    let mut ids1 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
-    ids2.sort();
-    ids1.sort();
-
-    println!("ids and hints => actor 1: {:?}", ids1);
-    println!("ids and hints => actor 2: {:?}", ids2);
-
-    assert_eq!(ids1, ids2);
-
-    stronghold
-        .spawn_stronghold_actor(client_path3.clone(), vec![])
-        .await
-        .unwrap();
-
-    stronghold
-        .read_snapshot(
-            client_path3,
-            Some(client_path0.clone()),
-            &key_data,
-            Some("megasnap".into()),
-            None,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Read snapshot error: {}", e));
-
-    let mut ids3 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
-    println!("actor 3: {:?}", ids3);
-
-    stronghold.switch_actor_target(client_path0).await.unwrap();
-
-    let mut ids0 = stronghold.list_hints_and_ids(loc4.vault_path()).await.unwrap();
-    println!("actor 0: {:?}", ids0);
-
-    ids0.sort();
-    ids3.sort();
-
-    assert_eq!(ids0, ids3);
-
-    // stronghold.system.print_tree();
+struct Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    cmd: F,
+    inner: T,
 }
 
-#[actix::test]
-async fn test_stronghold_generics() {
-    // let sys = ActorSystem::new().unwrap();
-    let key_data = b"abcdefghijklmnopqrstuvwxyz012345".to_vec();
+impl<T, F> Drop for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn drop(&mut self) {
+        (self.cmd)(&mut self.inner)
+    }
+}
 
-    let client_path = b"test a".to_vec();
+impl<T, F> Deref for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    type Target = T;
 
-    let slip10_seed = Location::generic("slip10", "seed");
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
 
-    let mut stronghold = Stronghold::init_stronghold_system(client_path.clone(), vec![])
-        .await
-        .unwrap();
+impl<T, F> DerefMut for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
 
-    assert!(stronghold
-        .write_to_vault(
-            slip10_seed.clone(),
-            b"AAAAAA".to_vec(),
-            RecordHint::new(b"first hint").unwrap(),
-            vec![],
-        )
-        .await
+impl<T, F> From<(T, F)> for Defer<T, F>
+where
+    F: FnMut(&T),
+{
+    fn from((inner, cmd): (T, F)) -> Self {
+        Self { cmd, inner }
+    }
+}
+
+#[tokio::test]
+async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
+    let vault_path = b"vault_path".to_vec();
+    let client_path = b"client_path".to_vec();
+
+    // load the base type
+    let stronghold = Stronghold::default();
+
+    let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
+    let keyprovider = KeyProvider::try_from(key).map_err(|e| format!("Error {:?}", e))?;
+    let snapshot_path: SnapshotPath = SnapshotPath::named("testing-snapshot.snapshot");
+
+    let snapshot = Snapshot::default();
+
+    // create a new empty client
+    let client = stronghold.create_client(client_path.clone())?;
+
+    let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
+
+    let generate_key_procedure = GenerateKey {
+        ty: KeyType::Ed25519,
+        output: output_location.clone(),
+        // hint: RecordHint::new(b"").unwrap(),
+    };
+
+    let procedure_result = client.execute_procedure(StrongholdProcedure::GenerateKey(generate_key_procedure));
+
+    assert!(procedure_result.is_ok());
+
+    let vault_exists = client.vault_exists(b"vault_path");
+    assert!(vault_exists.is_ok());
+    assert!(vault_exists.unwrap());
+
+    // get the public key
+    let public_key_procedure = crate::procedures::PublicKey {
+        ty: KeyType::Ed25519,
+        private_key: output_location,
+    };
+
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure.clone()));
+
+    assert!(procedure_result.is_ok());
+
+    let procedure_result = procedure_result.unwrap();
+    let output: Vec<u8> = procedure_result.into();
+
+    // some store data
+    let store = client.store();
+
+    let vault_location = Location::const_generic(vault_path.to_vec(), b"".to_vec());
+    let vault = client.vault(b"vault_path");
+
+    // create a new secret inside the vault
+    assert!(vault
+        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec()), vec![],)
         .is_ok());
-    let p = stronghold.read_secret(client_path, slip10_seed).await.unwrap();
-    assert_eq!(std::str::from_utf8(&p.unwrap()), Ok("AAAAAA"));
 
-    stronghold
-        .write_all_to_snapshot(&key_data.to_vec(), Some("generic".into()), None)
-        .await
-        .unwrap_or_else(|e| panic!("Actor error: {}", e))
-        .unwrap_or_else(|e| panic!("Write snapshot error: {}", e));
+    // write client into snapshot
+    stronghold.write_client(client_path.clone())?;
+
+    // commit all to snapshot file
+    stronghold.commit(&snapshot_path, &keyprovider)?;
+
+    //// -- reset stronghold, re-load snapshot from disk
+
+    // reset stronghold
+    let stronghold = stronghold.reset();
+
+    println!("load client from snapshot file");
+    let client = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path)?;
+
+    // Write the state of the client back into the snapshot
+    let procedure_result = client.execute_procedure(StrongholdProcedure::PublicKey(public_key_procedure));
+
+    assert!(procedure_result.is_ok());
+
+    Ok(())
+}
+
+// Tests that a freshly created client and a loaded client are correctly purged.
+#[test]
+fn test_stronghold_purge_client() {
+    let client_path = b"client_path".to_vec();
+    let client_path2 = b"client_path2".to_vec();
+
+    let stronghold = Stronghold::default();
+
+    let client = stronghold.create_client(&client_path).unwrap();
+    let client2 = stronghold.create_client(&client_path2).unwrap();
+
+    let output_location = crate::Location::generic(b"vault_path".to_vec(), b"record_path".to_vec());
+
+    let generate_key_procedure = GenerateKey {
+        ty: KeyType::Ed25519,
+        output: output_location.clone(),
+    };
+
+    client.execute_procedure(generate_key_procedure.clone()).unwrap();
+    client2.execute_procedure(generate_key_procedure).unwrap();
+
+    // Write clients into snapshot
+    stronghold.write_client(&client_path).unwrap();
+    stronghold.write_client(&client_path2).unwrap();
+
+    assert!(client.record_exists(&output_location).unwrap());
+    assert!(client2.record_exists(&output_location).unwrap());
+
+    // Reload client2 from the snapshot state.
+    std::mem::drop(client2);
+    let client2 = stronghold.load_client(&client_path2).unwrap();
+
+    stronghold.purge_client(client).unwrap();
+    stronghold.purge_client(client2).unwrap();
+
+    // Both clients should no longer be present in the snapshot.
+    let err = stronghold.load_client(&client_path).unwrap_err();
+    let err2 = stronghold.load_client(&client_path2).unwrap_err();
+
+    assert!(matches!(err, ClientError::ClientDataNotPresent));
+    assert!(matches!(err2, ClientError::ClientDataNotPresent));
+}
+
+#[test]
+fn purge_client() {
+    // This test will create a client, write secret data into the vault, commit
+    // the state into a snapshot. Then purge the client, commit the purged state
+    // and reload the client, with an empty state
+    let client_path = fixed_random_bytes(1024);
+    let vault_path = fixed_random_bytes(1024);
+    let record_path = fixed_random_bytes(1024);
+
+    let filename = base64::encode(fixed_random_bytes(8));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
+
+    let snapshot = SnapshotPath::from_path(&snapshot_path);
+
+    let stronghold = Stronghold::default();
+
+    let result = stronghold.create_client(client_path.clone());
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    let loc_secret = Location::const_generic(vault_path.clone(), record_path.clone());
+    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024));
+
+    assert!(result.is_ok());
+
+    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    assert!(result.is_ok());
+
+    let key_provider = result.unwrap();
+
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // purge client
+    assert!(stronghold.purge_client(client).is_ok());
+
+    // the next commit also deletes it from the snapshot file
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // check, if client still exists
+    let result = stronghold.load_client(client_path.clone());
+    assert!(result.is_err());
+
+    // re-init stronghold
+    let stronghold = Stronghold::default();
+
+    // reload from snapshot
+    let result = stronghold.load_client_from_snapshot(client_path, &key_provider, &snapshot);
+    assert!(result.is_ok(), "Failed to load client from snapshot");
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path);
+    assert!(vault.read_secret(record_path).is_err());
+}
+
+#[test]
+fn write_client_to_snapshot() {
+    let stronghold = Stronghold::default();
+
+    let snapshot_path = {
+        let name = base64::encode(fixed_random_bytes(8));
+        let name = name.replace('/', "n");
+
+        let mut dir = std::env::temp_dir();
+        dir.push(name);
+
+        SnapshotPath::from_path(dir)
+    };
+
+    let keyprovider = {
+        let key = fixed_random_bytes(32);
+        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+    };
+
+    // create a client and write some secret into the state
+    {
+        let client = stronghold.create_client(fixed_random_bytes(256)).unwrap();
+        let vault_path = fixed_random_bytes(256);
+        let record_path = fixed_random_bytes(256);
+        let vault = client.vault(vault_path.clone());
+
+        vault
+            .write_secret(
+                Location::const_generic(vault_path, record_path),
+                fixed_random_bytes(1024),
+            )
+            .expect("Failed to write secret into vault");
+    }
+
+    let result = stronghold.commit(&snapshot_path, &keyprovider);
+
+    assert!(
+        result.is_ok(),
+        "Failed to commit client data {:?}, snapshot path: {:?}",
+        result,
+        snapshot_path.as_path()
+    );
+}
+
+#[test]
+fn test_load_client_from_snapshot() {
+    let client_path = fixed_random_bytes(1024);
+    let vault_path = fixed_random_bytes(1024);
+    let record_path = fixed_random_bytes(1024);
+
+    let filename = base64::encode(fixed_random_bytes(32));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
+
+    let defer = Defer::from((snapshot_path, |path: &'_ PathBuf| {
+        println!("Removing file");
+        let _ = std::fs::remove_file(path);
+    }));
+
+    let snapshot = SnapshotPath::from_path(&*defer);
+    let stronghold = Stronghold::default();
+
+    let result = stronghold.create_client(client_path.clone());
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    let result = vault.write_secret(
+        Location::const_generic(vault_path, record_path),
+        fixed_random_bytes(1024),
+    );
+
+    assert!(result.is_ok());
+
+    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    assert!(result.is_ok());
+
+    let key_provider = result.unwrap();
+
+    let result = stronghold.commit(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    // reload from snapshot
+    assert!(stronghold
+        .load_client_from_snapshot(client_path, &key_provider, &snapshot)
+        .is_ok());
+}
+
+#[test]
+fn test_load_multiple_clients_from_snapshot() {
+    let number_of_clients = 10;
+    let client_path_vec: Vec<Vec<u8>> = (0..number_of_clients).map(|_| fixed_random_bytes(256)).collect();
+
+    let stronghold = Stronghold::default();
+
+    let snapshot_path = {
+        let name = base64::encode(fixed_random_bytes(8));
+        let name = name.replace('/', "n");
+        let mut dir = std::env::temp_dir();
+        dir.push(name);
+
+        SnapshotPath::from_path(dir)
+    };
+
+    let keyprovider = {
+        let key = fixed_random_bytes(32);
+        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+    };
+
+    client_path_vec.iter().for_each(|path| {
+        let _ = stronghold.create_client(path.clone());
+    });
+
+    let result = stronghold.commit(&snapshot_path, &keyprovider);
+    assert!(result.is_ok(), "Failed to commit clients state {:?}", result);
+
+    client_path_vec.iter().for_each(|path| {
+        let result = stronghold.load_client_from_snapshot(path, &keyprovider, &snapshot_path);
+        assert!(result.is_ok(), "Failed to load client from snapshot path {:?}", result);
+    });
 }

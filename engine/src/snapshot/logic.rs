@@ -64,10 +64,6 @@ pub enum WriteError {
 /// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
 /// and writes the ciphertext to the specifed output
 pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
-    // write magic and version bytes
-    output.write_all(&MAGIC)?;
-    output.write_all(&VERSION)?;
-
     // create ephemeral key pair.
     let ephemeral_key = x25519::SecretKey::generate().map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
 
@@ -120,9 +116,6 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 /// Read ciphertext from the input, decrypts it using the specified key and the associated data
 /// specified during encryption and returns the plaintext
 pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
-    // check the header for structure.
-    check_header(input)?;
-
     // create ephemeral private key.
     let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
     // get ephemeral private key from input.
@@ -169,7 +162,8 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result
     Ok(pt)
 }
 
-/// Atomically encrypt and [`write`](fn.write.html) the specified plaintext to the specified path
+/// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified
+/// plaintext to the specified path.
 ///
 /// This is achieved by creating a temporary file in the same directory as the specified path (same
 /// filename with a salted suffix). This is currently known to be problematic if the path is a
@@ -189,6 +183,9 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     let tmp = Path::new(&s);
 
     let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
+    // write magic and version bytes
+    f.write_all(&MAGIC)?;
+    f.write_all(&VERSION)?;
     write(&compressed_plain, &mut f, key, associated_data)?;
     f.sync_all()?;
 
@@ -197,10 +194,12 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     Ok(())
 }
 
-/// [`read`](fn.read.html) and decrypt the ciphertext from the specified path
+/// Check the file header, [`read`][self::read], and decompress the ciphertext from the specified path.
 pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
+    // check the header for structure.
+    check_header(&mut f)?;
     let pt = read(&mut f, key, associated_data)?;
 
     decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
@@ -266,6 +265,8 @@ mod test {
 
         let mut buf = Vec::new();
         write(&bs0, &mut buf, &key, &ad).unwrap();
+        let read = read(&mut buf.as_slice(), &key, &ad).unwrap();
+        assert_eq!(bs0, read);
     }
 
     #[test]
@@ -371,7 +372,11 @@ mod test {
             let data = hex::decode(tv.data).unwrap();
             let snapshot = hex::decode(tv.snapshot).unwrap();
 
-            let pt = read(&mut snapshot.as_slice(), &key, &ad).unwrap();
+            let mut slice = snapshot.as_slice();
+
+            // check the header for structure.
+            check_header(&mut slice).unwrap();
+            let pt = read(&mut slice, &key, &ad).unwrap();
 
             assert_eq!(pt, data);
         }
