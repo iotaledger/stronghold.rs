@@ -1,37 +1,39 @@
 [package]
-name        = "stronghold-rlu"
-version     = "0.1.0"
-edition     = "2021"
-authors     = ["IOTA Stiftung","Matthias Kandora <matthias.kandora@iota.org>"]
+name = "stronghold-rlu"
+version = "0.2.0"
+edition = "2021"
+authors = [
+  "IOTA Stiftung",
+  "Matthias Kandora <matthias.kandora@iota.org>"
+]
 
 [lib]
-path        = "src/lib.rs"
+path = "src/lib.rs"
 
 [features]
-# add "guard_mem" to enable memory protection by default, but has a dependency to the runtime crate
-default     = []
-guarded     = ["guardmem"]
+default = [ ]
+guarded = [ "guardmem" ]
 
 [dependencies]
-thiserror   = "1.0.30" 
-log         = "0.4.14"
-zeroize     = { version = "1.4.3", features = ["zeroize_derive"] }
-guardmem    = { package = "stronghold_engine", path = "../engine", optional = true}
+thiserror = "1.0.30"
+log = "0.4.14"
+zeroize = { version = "1.4.3", features = [ "zeroize_derive" ] }
+guardmem = { package = "stronghold_engine", path = "../engine", optional = true }
 lazy_static = { version = "1.4.0" }
-atom        = { version = "0.4.0" }
+atom = { version = "0.4.0" }
 
 [dev-dependencies]
-tokio       = { version = "1.15.0", features = ["full"] }
-criterion   = { version = "0.3", features = ["async_tokio"] }
-env_logger  = { version = "0.9.0" }
-ctor        = { version = "0.1.21"}
-rand        = { version = "0.8.4" }
-threadpool  = { version = "1.8.1" }
-rand_utils  = { package = "stronghold-utils", path = "../utils/" }
+tokio = { version = "1.15.0", features = [ "full" ] }
+criterion = { version = "0.3", features = [ "async_tokio" ] }
+env_logger = { version = "0.9.0" }
+ctor = { version = "0.1.21" }
+rand = { version = "0.8.4" }
+threadpool = { version = "1.8.1" }
+rand_utils = { package = "stronghold-utils", path = "../utils/" }
 
 [[bench]]
-name        = "config"
-harness     = false 
+name = "config"
+harness = false
 
 [[test]]
-name        = "integration"
+name = "integration"
