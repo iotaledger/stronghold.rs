@@ -1,0 +1,4 @@
+---
+"stronghold-utils": minor
+---
+bump
