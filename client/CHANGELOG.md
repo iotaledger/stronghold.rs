@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.5.1]
+
+- bump
+  - Bumped due to a bump in stronghold-utils.
+  - [8548949b](https://www.github.com/iotaledger/stronghold.rs/commit/8548949b691ed85ec9140f28fc7eff11126916b3) version: bump utils on 2022-06-02
+
 ## \[0.5.0]
 
 - bump version
