@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.5.0]
+
+- bump version
+  - [b72f9fda](https://www.github.com/iotaledger/stronghold.rs/commit/b72f9fdaf68062dfcbc05155842f216649715ab5) fix: remove bindings from workspace dependencies on 2022-06-02
+  - [c9247092](https://www.github.com/iotaledger/stronghold.rs/commit/c9247092dfd9a95b926b66e06fdb3a0a4a3300a1) fix: package name on 2022-06-02
+
 ## \[0.6.0]
 
 - Fix package description
