@@ -2,6 +2,13 @@
 
 ## \[0.4.0]
 
+- bump version
+  - [8548949b](https://www.github.com/iotaledger/stronghold.rs/commit/8548949b691ed85ec9140f28fc7eff11126916b3) version: bump utils on 2022-06-02
+  - [96d895ae](https://www.github.com/iotaledger/stronghold.rs/commit/96d895aea09504d146176dd5b878e6144a01f1ae) apply version updates on 2022-06-02
+  - [f5e8a7a8](https://www.github.com/iotaledger/stronghold.rs/commit/f5e8a7a80fc9e7b16a8974f2905fe1cfb4d645f2) version: fix utils version; enable bump on 2022-06-02
+
+## \[0.4.0]
+
 - bump
   - [8548949b](https://www.github.com/iotaledger/stronghold.rs/commit/8548949b691ed85ec9140f28fc7eff11126916b3) version: bump utils on 2022-06-02
 
