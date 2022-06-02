@@ -1,4 +1,4 @@
 ---
-"iota_stronghold" : minor
+"iota-stronghold" : minor
 ---
 bump version
