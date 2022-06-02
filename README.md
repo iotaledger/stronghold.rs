@@ -112,8 +112,8 @@ The library comes with [examples](client/examples) but has no executables on its
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-An easy way to get acquainted with Stronghold is by checking out the [examples section](clinet/examples).
-Examples can be run from the command line interface. Stronghold comes with a simle CLI example, that
+An easy way to get acquainted with Stronghold is by checking out the [examples section](client/examples).
+Examples can be run from the command line interface. Stronghold comes with a simple CLI example, that
 showcases all features in brief. To run the example change into the [client](client) directory, and run
 
 ```sh
