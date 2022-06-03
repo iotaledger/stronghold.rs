@@ -1,6 +1,6 @@
 ---
 "stronghold-p2p" : patch
-"iota_stronghold" : patch
+"iota-stronghold" : patch
 "stronghold_engine" : patch
 "stronghold-rlu" : patch
 "stronghold-runtime" : patch
