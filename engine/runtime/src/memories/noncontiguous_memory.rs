@@ -25,7 +25,10 @@ use serde::{
     ser::{Serialize, Serializer},
 };
 
+use std::cell::RefCell;
+
 static IMPOSSIBLE_CASE: &str = "NonContiguousMemory: this case should not happen if allocated properly";
+static REFRESH_ERROR: &str = "NonContiguousMemory: Error while refreshing the shards";
 
 // Currently we only support data of 32 bytes in noncontiguous memory
 pub const NC_DATA_SIZE: usize = 32;
@@ -54,8 +57,8 @@ use MemoryShard::*;
 /// store keys hence the size of the data depends on the chosen box provider
 #[derive(Clone)]
 pub struct NonContiguousMemory {
-    shard1: MemoryShard,
-    shard2: MemoryShard,
+    shard1: RefCell<MemoryShard>,
+    shard2: RefCell<MemoryShard>,
     config: NCConfig,
 }
 
@@ -70,7 +73,7 @@ impl LockedMemory for NonContiguousMemory {
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         let data1 = blake2b::Blake2b256::digest(&self.get_buffer_from_shard1().borrow());
 
-        let data = match &self.shard2 {
+        let data = match &*self.shard2.borrow() {
             RamShard(ram2) => {
                 let buf = ram2.unlock()?;
                 let x = xor(&data1, &buf.borrow(), NC_DATA_SIZE);
@@ -83,8 +86,8 @@ impl LockedMemory for NonContiguousMemory {
             }
         };
 
-        // Refresh shards positions after unlocking them
-        self.refresh()?;
+        // Refresh the shards after each use
+        self.refresh().expect(REFRESH_ERROR);
 
         Ok(Buffer::alloc(&data, NC_DATA_SIZE))
     }
@@ -119,13 +122,17 @@ impl NonContiguousMemory {
             }
         };
 
-        let mem = NonContiguousMemory { shard1, shard2, config };
+        let mem = NonContiguousMemory {
+            shard1: RefCell::new(shard1),
+            shard2: RefCell::new(shard2),
+            config,
+        };
 
         Ok(mem)
     }
 
     fn get_buffer_from_shard1(&self) -> Buffer<u8> {
-        let shard1 = &self.shard1;
+        let shard1 = &*self.shard1.borrow();
 
         match shard1 {
             RamShard(ram) => ram.unlock().expect("Failed to retrieve buffer from Ram shard"),
@@ -136,7 +143,7 @@ impl NonContiguousMemory {
     // Refresh the shards to increase security, may be called every _n_ seconds or
     // punctually
     #[allow(dead_code)]
-    fn refresh(&self) -> Result<Self, MemoryError> {
+    fn refresh(&self) -> Result<(), MemoryError> {
         let random = random_vec(NC_DATA_SIZE);
 
         // Refresh shard1
@@ -150,7 +157,7 @@ impl NonContiguousMemory {
         let hash_of_old_shard1 = blake2b::Blake2b256::digest(data_of_old_shard1);
         let hash_of_new_shard1 = blake2b::Blake2b256::digest(&new_data1);
 
-        let new_shard2 = match &self.shard2 {
+        let new_shard2 = match &*self.shard2.borrow() {
             RamShard(ram2) => {
                 let buf = ram2.unlock()?;
                 let new_data2 = xor(&buf.borrow(), &hash_of_old_shard1, NC_DATA_SIZE);
@@ -166,11 +173,10 @@ impl NonContiguousMemory {
             }
         };
 
-        Ok(Self {
-            config: self.config.clone(),
-            shard1: new_shard1,
-            shard2: new_shard2,
-        })
+        self.shard1.replace(new_shard1);
+        self.shard2.replace(new_shard2);
+
+        Ok(())
     }
 
     /// Returns the memory addresses of the two inner shards.
@@ -179,8 +185,8 @@ impl NonContiguousMemory {
     /// only.
     #[cfg(test)]
     pub fn get_ptr_addresses(&self) -> Result<(usize, usize), MemoryError> {
-        let a = &self.shard1;
-        let b = &self.shard2;
+        let a = &*self.shard1.borrow();
+        let b = &*self.shard2.borrow();
 
         if let (MemoryShard::RamShard(a), MemoryShard::RamShard(b)) = (a, b) {
             let a_ptr = a.get_ptr_address();
@@ -213,8 +219,8 @@ impl Zeroize for MemoryShard {
 
 impl Zeroize for NonContiguousMemory {
     fn zeroize(&mut self) {
-        self.shard1.zeroize();
-        self.shard2.zeroize();
+        self.shard1.borrow_mut().zeroize();
+        self.shard2.borrow_mut().zeroize();
         self.config = FullRam;
     }
 }
@@ -296,18 +302,16 @@ mod tests {
         let ncm = ncm.unwrap();
 
         let shard1_before_refresh = ncm.get_buffer_from_shard1();
-        let shard2_before_refresh = if let FileShard(fm) = &ncm.shard2 {
+        let shard2_before_refresh = if let FileShard(fm) = &*ncm.shard2.borrow() {
             fm.unlock().unwrap()
         } else {
             panic!("{}", IMPOSSIBLE_CASE)
         };
-        let updated = ncm.refresh();
-        assert!(updated.is_ok());
 
-        let ncm = updated.unwrap();
+        assert!(ncm.refresh().is_ok());
 
         let shard1_after_refresh = ncm.get_buffer_from_shard1();
-        let shard2_after_refresh = if let FileShard(fm) = &ncm.shard2 {
+        let shard2_after_refresh = if let FileShard(fm) = &*ncm.shard2.borrow() {
             fm.unlock().unwrap()
         } else {
             panic!("{}", IMPOSSIBLE_CASE)
@@ -333,11 +337,11 @@ mod tests {
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
 
-        if let RamShard(ram1) = &ncm.shard1 {
+        if let RamShard(ram1) = &*ncm.shard1.borrow() {
             let buf = ram1.unlock().unwrap();
             assert_ne!(&*buf.borrow(), &data);
         }
-        if let RamShard(ram2) = &ncm.shard2 {
+        if let RamShard(ram2) = &*ncm.shard2.borrow() {
             let buf = ram2.unlock().unwrap();
             assert_ne!(&*buf.borrow(), &data);
         }
@@ -349,12 +353,12 @@ mod tests {
         assert!(ncm.is_ok());
         let ncm = ncm.unwrap();
 
-        if let RamShard(ram1) = &ncm.shard1 {
+        if let RamShard(ram1) = &*ncm.shard1.borrow() {
             let buf = ram1.unlock().unwrap();
             assert_ne!(&*buf.borrow(), &data);
         }
 
-        if let FileShard(fm) = &ncm.shard2 {
+        if let FileShard(fm) = &*ncm.shard2.borrow() {
             let buf = fm.unlock().unwrap();
             assert_ne!(&*buf.borrow(), &data);
         };
@@ -370,11 +374,11 @@ mod tests {
         let mut ncm = ncm.unwrap();
         ncm.zeroize();
 
-        if let RamShard(ram1) = &ncm.shard1 {
+        if let RamShard(ram1) = &*ncm.shard1.borrow() {
             assert!(ram1.unlock().is_err());
         }
 
-        if let FileShard(fm) = &ncm.shard2 {
+        if let FileShard(fm) = &*ncm.shard2.borrow() {
             assert!(fm.unlock().is_err());
         };
     }
@@ -402,5 +406,30 @@ mod tests {
             "Pointer distance below threshold: 0x{:08X}",
             distance
         );
+    }
+
+    // This test is relevant only if the implemented policy is to refresh shards every time we unlock NC memory
+    #[test]
+    fn test_refresh_on_unlock() {
+        use random::Rng;
+        let mut payload = [0u8; NC_DATA_SIZE];
+        let mut rng = random::thread_rng();
+        assert!(rng.try_fill(&mut payload).is_ok(), "Error filling payload bytes");
+
+        let nc = NonContiguousMemory::alloc(&payload, NC_DATA_SIZE, NCConfig::FullRam);
+        assert!(nc.is_ok(), "Failed to allocated nc memory");
+        let nc = nc.unwrap();
+
+        let ptrs = nc.get_ptr_addresses();
+        assert!(ptrs.is_ok());
+        let (a, b) = ptrs.unwrap();
+
+        assert!(nc.unlock().is_ok());
+        let ptrs = nc.get_ptr_addresses();
+        assert!(ptrs.is_ok());
+        let (new_a, new_b) = ptrs.unwrap();
+
+        assert_ne!(a, new_a);
+        assert_ne!(b, new_b);
     }
 }
