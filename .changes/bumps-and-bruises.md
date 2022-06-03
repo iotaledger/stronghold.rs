@@ -8,4 +8,4 @@
 "stronghold-derive" : patch
 ---
 
-bump all crate versions to update to new utils crate
+bump all crate versions to update to new utils modules
