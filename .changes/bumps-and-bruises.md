@@ -1,7 +1,7 @@
 ---
 "stronghold-p2p" : patch
 "iota-stronghold" : patch
-"stronghold_engine" : patch
+"stronghold-engine" : patch
 "stronghold-rlu" : patch
 "stronghold-runtime" : patch
 "stronghold-utils" : minor
