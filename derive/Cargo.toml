@@ -1,20 +1,23 @@
 [package]
-name                = "stronghold-derive"
-version             = "0.3.0"
-authors             = ["IOTA Stiftung", "tensor-programming <tensordeveloper@gmail.com>"]
-edition             = "2021"
-license             = "Apache-2.0"
-repository          = "https://github.com/iotaledger/stronghold.rs"
-homepage            = "https://stronghold.docs.iota.org"
-description         = "Proc macros and derives for Stronghold"
+name = "stronghold-derive"
+version = "0.3.0"
+authors = [
+  "IOTA Stiftung",
+  "tensor-programming <tensordeveloper@gmail.com>"
+]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/iotaledger/stronghold.rs"
+homepage = "https://stronghold.docs.iota.org"
+description = "Proc macros and derives for Stronghold"
 
 [lib]
-proc-macro          = true
+proc-macro = true
 
 [dependencies]
-syn                 = { version = "1.0", features = [ "parsing", "full", "extra-traits", "proc-macro" ] }
-quote               = "1.0"
-proc-macro2         = "1.0"
+syn = { version = "1.0", features = [ "parsing", "full", "extra-traits", "proc-macro" ] }
+quote = "1.0"
+proc-macro2 = "1.0"
 
 [dev-dependencies]
-iota_stronghold     = { path = "../client" }
+iota_stronghold = { path = "../client" }
