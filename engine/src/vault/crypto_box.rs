@@ -173,7 +173,7 @@ impl<T: BoxProvider> NCKey<T> {
                     T::box_key_len(),
                     NC_CONFIGURATION,
                 )
-                .expect("Failed to generate non contiguous memory for key")
+                .unwrap_or_else(|e| panic!("{}", e))
             },
             _box_provider: PhantomData,
         }
@@ -186,7 +186,7 @@ impl<T: BoxProvider> NCKey<T> {
         if key.len() == T::box_key_len() {
             Some(Self {
                 key: NonContiguousMemory::alloc(key.as_slice(), T::box_key_len(), NC_CONFIGURATION)
-                    .expect("Failed to generate non contiguous memory for key"),
+                    .unwrap_or_else(|e| panic!("{}", e)),
                 _box_provider: PhantomData,
             })
         } else {
@@ -196,7 +196,7 @@ impl<T: BoxProvider> NCKey<T> {
 
     pub fn encrypt_key<AD: AsRef<[u8]>>(&self, data: &Key<T>, ad: AD) -> Result<Vec<u8>, T::Error> {
         let key = Key {
-            key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
+            key: self.key.unlock().unwrap_or_else(|e| panic!("{}", e)),
             _box_provider: PhantomData,
         };
         T::box_seal(&key, ad.as_ref(), &*data.key.borrow())
@@ -204,7 +204,7 @@ impl<T: BoxProvider> NCKey<T> {
 
     pub fn decrypt_key<AD: AsRef<[u8]>>(&self, data: Vec<u8>, ad: AD) -> Result<Key<T>, DecryptError<T::Error>> {
         let key = Key {
-            key: self.key.unlock().expect("Failed to unlock non contiguous memory"),
+            key: self.key.unlock().unwrap_or_else(|e| panic!("{}", e)),
             _box_provider: PhantomData,
         };
         let opened = T::box_open(&key, ad.as_ref(), &data).map_err(DecryptError::Provider)?;
@@ -232,8 +232,8 @@ impl<T: BoxProvider> Eq for NCKey<T> {}
 
 impl<T: BoxProvider> PartialEq for NCKey<T> {
     fn eq(&self, other: &Self) -> bool {
-        let buf1 = self.key.unlock().expect("Failed to unlock non-contiguous memory");
-        let buf2 = other.key.unlock().expect("Failed to unlock non-contiguous memory");
+        let buf1 = self.key.unlock().unwrap_or_else(|e| panic!("{}", e));
+        let buf2 = other.key.unlock().unwrap_or_else(|e| panic!("{}", e));
         buf1 == buf2 && self._box_provider == other._box_provider
     }
 }
@@ -246,8 +246,8 @@ impl<T: BoxProvider> PartialOrd for NCKey<T> {
 
 impl<T: BoxProvider> Ord for NCKey<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let buf1 = self.key.unlock().expect("Failed to unlock non-contiguous memory");
-        let buf2 = other.key.unlock().expect("Failed to unlock non-contiguous memory");
+        let buf1 = self.key.unlock().unwrap_or_else(|e| panic!("{}", e));
+        let buf2 = other.key.unlock().unwrap_or_else(|e| panic!("{}", e));
         let b = buf1.borrow().cmp(&*buf2.borrow());
         b
     }
@@ -255,7 +255,7 @@ impl<T: BoxProvider> Ord for NCKey<T> {
 
 impl<T: BoxProvider> Hash for NCKey<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let buf = self.key.unlock().expect("Failed to unlock non-contiguous memory");
+        let buf = self.key.unlock().unwrap_or_else(|e| panic!("{}", e));
         buf.borrow().hash(state);
         self._box_provider.hash(state);
     }
@@ -264,31 +264,5 @@ impl<T: BoxProvider> Hash for NCKey<T> {
 impl<T: BoxProvider> Debug for NCKey<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "KeyData")
-    }
-}
-
-/// trait for encryptable data. Allows the data to be encrypted.
-pub trait NCEncrypt<T: From<Vec<u8>>>: AsRef<[u8]> {
-    /// encrypts a raw data and creates a type T from the ciphertext
-    fn encrypt<B: BoxProvider, AD: AsRef<[u8]>>(&self, key: &NCKey<B>, ad: AD) -> Result<T, B::Error> {
-        let key = Key {
-            key: key.key.unlock().expect("Failed to unlock non contiguous memory"),
-            _box_provider: PhantomData,
-        };
-        let sealed = B::box_seal(&key, ad.as_ref(), self.as_ref())?;
-        Ok(T::from(sealed))
-    }
-}
-
-/// Trait for decryptable data. Allows the data to be decrypted.
-pub trait NCDecrypt<T: TryFrom<Vec<u8>>>: AsRef<[u8]> {
-    /// decrypts raw data and creates a new type T from the plaintext
-    fn decrypt<P: BoxProvider, AD: AsRef<[u8]>>(&self, key: &NCKey<P>, ad: AD) -> Result<T, DecryptError<P::Error>> {
-        let key = Key {
-            key: key.key.unlock().expect("Failed to unlock non contiguous memory"),
-            _box_provider: PhantomData,
-        };
-        let opened = P::box_open(&key, ad.as_ref(), self.as_ref()).map_err(DecryptError::Provider)?;
-        T::try_from(opened).map_err(|_| DecryptError::Invalid)
     }
 }
