@@ -4,7 +4,6 @@
 "stronghold-engine" : patch
 "stronghold-rlu" : patch
 "stronghold-runtime" : patch
-"stronghold-utils" : minor
 "stronghold-derive" : patch
 ---
 
