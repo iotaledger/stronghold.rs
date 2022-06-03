@@ -28,6 +28,9 @@ pub enum MemoryError {
     #[error("Illegal non-contiguous size")]
     NCSizeNotAllowed,
 
+    #[error("Error while refreshing non-contiguous memory")]
+    NCRefreshError,
+
     #[error("Lock unavailable")]
     LockNotAvailable,
 
