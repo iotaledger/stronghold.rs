@@ -86,11 +86,6 @@ module.exports = {
       ]
     },
     {
-      type: 'doc',
-      id: 'products',
-      label: 'Products'
-    },
-    {
       type: 'category',
       label: 'Specification',
       items: [{
