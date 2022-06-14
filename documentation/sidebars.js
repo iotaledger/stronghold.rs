@@ -11,17 +11,9 @@
 
 module.exports = {
   mySidebar: [{
-    type: 'category',
+    type: 'doc',
     label: 'Getting Started',
-    items: [{
-      type: 'doc',
-      id: 'getting_started/welcome',
-      label: 'Welcome'
-    }, {
-      type: 'doc',
-      id: 'getting_started/overview',
-      label: 'Overview'
-    },]
+    id: 'getting_started',
   },
   {
     type: "category",
@@ -36,7 +28,12 @@ module.exports = {
   {
     type: 'category',
     label: 'Reference',
-    items: [{
+    items: [
+      {
+        type:'doc',
+        id: 'reference/overview',
+        label: "Overview"
+      },{
       type: 'category',
       label: 'Structure',
       items: [{
