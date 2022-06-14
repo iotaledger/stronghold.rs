@@ -2,6 +2,7 @@
 description: The snapshot crate defines and implements the encrypted offline storage format used by the Stronghold ecosystem.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - rust
 - crate
 - magic bytes

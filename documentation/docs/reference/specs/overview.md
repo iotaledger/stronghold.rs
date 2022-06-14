@@ -2,6 +2,7 @@
 description: This section describes the scope of the project and includes working documents on engineering and requirements specifications.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - documents
 - requirements
 - engineering

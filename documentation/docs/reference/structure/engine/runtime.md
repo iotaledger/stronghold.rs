@@ -2,6 +2,7 @@
 description: Runtime aims to provide utilities for performing computations as securely as possible with respect to the underlying operating system. The crate provides three primary Types for guarding data; GuardedVec, Guarded, and Secret.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - rust
 - crate
 - Guarded type

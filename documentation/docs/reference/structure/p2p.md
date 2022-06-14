@@ -2,6 +2,7 @@
 description: Peer to peer communications crate.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - rust
 - p2p
 - crate

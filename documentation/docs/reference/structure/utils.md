@@ -2,6 +2,7 @@
 description: The Utils crate contains common utilities for the stronghold libraries.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - rust
 - crate
 - common
