@@ -50,7 +50,7 @@ The [Tutorials folder](documentation/tutorials/_README.md) should contain articl
 
 ### Key Concepts
 
-The [Key concepts folder](documentation/key_concepts/_README.md) revolves around [explanations](https://diataxis.fr/explanation/), and are therefore **understanding oriented**.
+The [Key concepts folder](documentation/key_concepts/_README.md) revolves around [explanations](https://diataxis.fr/explanation/), and are therefore **understanding-oriented**.
 
 ### Reference
 
