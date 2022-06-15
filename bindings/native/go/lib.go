@@ -143,6 +143,11 @@ func (s *StrongholdNative) Sign(recordPath string, data []byte) ([SignatureSize]
 	return sign(s.ptr, recordPath, data)
 }
 
+func (s* StrongholdNative) SignForDerived(index uint32, data []byte) ([SignatureSize]byte, error) {
+	recordPath := fmt.Sprintf("seed.%d", index)
+	return s.Sign(recordPath, data)
+}
+
 func (s *StrongholdNative) GetPublicKey(recordPath string) ([PublicKeySize]byte, error) {
 	if err := s.validate("stronghold is closed. Call open()"); err != nil {
 		return [PublicKeySize]byte{}, err
@@ -152,7 +157,7 @@ func (s *StrongholdNative) GetPublicKey(recordPath string) ([PublicKeySize]byte,
 }
 
 func (s *StrongholdNative) GetPublicKeyFromDerived(index uint32) ([PublicKeySize]byte, error) {
-	recordPath := fmt.Sprintf("seed%d", index)
+	recordPath := fmt.Sprintf("seed.%d", index)
 	return getPublicKey(s.ptr, recordPath)
 }
 
