@@ -30,7 +30,7 @@ You can find guidance and an introduction to the needed tools and syntax on [our
 
 ## Default Structure
 
-IOTA projects usually house their Wiki documentation within the documentation folder of any project. This
+IOTA projects usually house their Wiki documentation in the `documentation` folder within their repositories. This
 template provides a set structure to separate concerns based on the [Diataxis framework](https://diataxis.fr/), with
 some minor modifications.
 
