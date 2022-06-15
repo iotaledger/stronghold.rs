@@ -31,7 +31,7 @@ You can find guidance and an introduction to the needed tools and syntax on [our
 ## Default Structure
 
 IOTA projects usually house their Wiki documentation in the `documentation` folder within their repositories. This
-template provides a set structure to separate concerns based on the [Diataxis framework](https://diataxis.fr/), with
+template provides a structure to separate reader concerns, applying the [Diataxis framework](https://diataxis.fr/) with
 some minor modifications.
 
 You do not need to use all of these sections, so please feel free to delete any which do not suit your needs.
