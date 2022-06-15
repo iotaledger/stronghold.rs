@@ -40,7 +40,7 @@ You do not have to use all of these sections, so please feel free to delete any 
 
 The [Getting Started folder](documentation/getting_started/_README.md) should be the first section in your documentation. It should give the user a high-level overview of the project, required prior knowledge, prerequisites, and ideally a quick setup guide, or "hello world".
 
-### How
+### How Tos
 
 The [How Tos folder](documentation/how_tos/_README.md) should only address concrete examples, or [how-to guides](https://diataxis.fr/how-to-guides/), which are **goal-oriented**.
 
