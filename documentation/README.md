@@ -34,7 +34,7 @@ IOTA projects usually house their Wiki documentation in the `documentation` fold
 template provides a structure to separate reader concerns, applying the [Diataxis framework](https://diataxis.fr/) with
 some minor modifications.
 
-You do not need to use all of these sections, so please feel free to delete any which do not suit your needs.
+You do not have to use all of these sections, so please feel free to delete any which do not suit your needs.
 
 ### Getting Started
 
