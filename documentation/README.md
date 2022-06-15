@@ -42,7 +42,7 @@ The [Getting Started folder](documentation/getting_started/_README.md) should be
 
 ### How
 
-The [How Tos folder](documentation/how_tos/_README.md) should only address concrete examples, or [how-to guides](https://diataxis.fr/how-to-guides/), which are **goal oriented**.
+The [How Tos folder](documentation/how_tos/_README.md) should only address concrete examples, or [how-to guides](https://diataxis.fr/how-to-guides/), which are **goal-oriented**.
 
 ### Tutorials
 
