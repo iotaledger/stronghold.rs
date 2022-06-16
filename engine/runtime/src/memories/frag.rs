@@ -56,7 +56,12 @@ pub trait Alloc<T: Default> {
 pub struct Frag<T: Default> {
     ptr: NonNull<T>,
     strategy: FragStrategy,
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     info: (*mut libc::c_void, usize),
+
+    #[cfg(target_os = "windows")]
+    info: Option<windows::Win32::Foundation::HANDLE>,
 }
 
 impl<T: Default> Deref for Frag<T> {
@@ -228,12 +233,7 @@ where
                     if actual_distance < cfg.min_distance {
                         warn!("New allocation distance to previous allocation is below threshold.");
 
-                        // Deallocate used memory
-                        let res = libc::munmap(c_ptr, desired_alloc_size);
-                        if res != 0 {
-                            error!("Failed to munmap");
-                            return Err(MemoryError::Allocation("Failed to munmap".to_owned()));
-                        }
+                        dealloc_map(c_ptr, desired_alloc_size)?;
                         continue;
                     }
                 }
@@ -271,21 +271,13 @@ where
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
-        // munmap returns 0 on success
-        unsafe {
-            let res = libc::munmap(frag.info.0, frag.info.1 as libc::size_t);
-            if res != 0 {
-                let os_error = std::io::Error::last_os_error();
-                return Err(MemoryError::Allocation(format!("Failed to munmap: {}", os_error)));
-            }
-        }
-        Ok(())
+        dealloc_map(frag.info.0, frag.info.1 as libc::size_t)
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
-        use random::{thread_rng, Rng};
-        let mut rng = thread_rng();
+    fn alloc(_config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
+        // use random::thread_rng;
+        // let mut rng = thread_rng();
 
         let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
         loop {
@@ -371,16 +363,23 @@ where
 
                     actual_mem.write(T::default());
 
-                    return Ok(NonNull::new_unchecked(actual_mem as *mut T));
+                    return Ok(Frag {
+                        ptr: NonNull::new_unchecked(actual_mem as *mut T),
+                        strategy: FragStrategy::Map,
+                        info: Some(actual_mapping),
+                    });
                 }
             }
         }
     }
 
     #[cfg(target_os = "windows")]
-    unsafe fn dealloc(ptr: NonNull<T>) -> Result<(), Self::Error> {
-        // TODO
-        Ok(())
+    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+        if let Some(handle) = frag.info {
+            dealloc_map(handle)
+        } else {
+            Err(MemoryError::Allocation("Cannot release file handle".to_owned()))
+        }
     }
 }
 
@@ -410,9 +409,9 @@ where
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn alloc(config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
         use random::{thread_rng, Rng};
+        let mut rng = thread_rng();
 
         let actual_size = std::mem::size_of::<T>();
-        let mut rng = thread_rng();
 
         let min = 0xFFFF;
         let max = 0xFFFF_FFFF;
@@ -454,7 +453,7 @@ where
                     let actual_distance = (mem_ptr as usize).abs_diff(cfg.last_address);
                     if actual_distance < cfg.min_distance {
                         warn!("New allocation distance to previous allocation is below threshold.");
-                        libc::free(mem_ptr);
+                        dealloc_direct(mem_ptr)?;
                         continue;
                     }
                 }
@@ -475,15 +474,11 @@ where
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
-        // double free cannot happen due to rust ownership typesystem
-        unsafe {
-            libc::free(frag.info.0 as *mut libc::c_void);
-        }
-        Ok(())
+        dealloc_direct(frag.info.0 as *mut libc::c_void)
     }
 
     #[cfg(target_os = "windows")]
-    fn alloc(config: Option<FragConfig>) -> Result<NonNull<T>, Self::Error> {
+    fn alloc(config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
         use windows::Win32::System::Memory::{VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 
         loop {
@@ -507,35 +502,78 @@ where
                     let actual_distance = (actual_mem as usize).abs_diff(cfg.last_address);
                     if actual_distance < cfg.min_distance {
                         warn!("New allocation distance to previous allocation is below threshold.");
+                        dealloc_direct(actual_mem)?;
                         continue;
                     }
                 }
 
                 let actual_mem = actual_mem as *mut T;
                 actual_mem.write(T::default());
-                return Ok(NonNull::new_unchecked(actual_mem));
-            };
+                return Ok(Frag {
+                    ptr: NonNull::new_unchecked(actual_mem),
+                    strategy: FragStrategy::Direct,
+                    info: None,
+                });
+            }
         }
     }
 
     #[cfg(target_os = "windows")]
-    unsafe fn dealloc(ptr: NonNull<T>) -> Result<(), Self::Error> {
-        use windows::Win32::System::Memory::VirtualFree;
+    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+        dealloc_direct(NonNull::as_ptr(frag.ptr) as *mut libc::c_void)
+    }
+}
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn dealloc_map(ptr: *mut libc::c_void, size: libc::size_t) -> Result<(), MemoryError> {
+    // munmap returns 0 on success
+    unsafe {
+        let res = libc::munmap(ptr, size);
+        if res != 0 {
+            let os_error = std::io::Error::last_os_error();
+            return Err(MemoryError::Allocation(format!("Failed to munmap: {}", os_error)));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn dealloc_map(handle: windows::Win32::Foundation::HANDLE) -> Result<(), MemoryError> {
+    // CloseHandle returns 0/FALSE when failing
+    unsafe {
+        let res = windows::Win32::Foundation::CloseHandle(handle);
+        if !res.as_bool() {
+            if let Err(e) = last_error() {
+                return Err(e);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn dealloc_direct(ptr: *mut libc::c_void) -> Result<(), MemoryError> {
+    // double free cannot happen due to rust ownership typesystem
+    unsafe {
+        libc::free(ptr);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn dealloc_direct(ptr: *mut libc::c_void) -> Result<(), MemoryError> {
+    use windows::Win32::System::Memory::VirtualFree;
+
+    unsafe {
         // VirtualFree returns 0/FALSE if the function fails
-        let res = VirtualFree(
-            NonNull::as_ptr(ptr) as *mut libc::c_void,
-            0,
-            windows::Win32::System::Memory::MEM_RELEASE,
-        )
-        .as_bool();
+        let res = VirtualFree(ptr, 0, windows::Win32::System::Memory::MEM_RELEASE).as_bool();
         if !res {
             if let Err(e) = last_error() {
                 return Err(e);
             }
         }
-        Ok(())
     }
+    Ok(())
 }
 
 // -----------------------------------------------------------------------------
