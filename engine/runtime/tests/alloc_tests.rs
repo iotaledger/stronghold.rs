@@ -7,7 +7,7 @@ use runtime::{
     memories::frag::{Frag, FragStrategy},
     MemoryError,
 };
-use std::{fmt::Debug, ptr::NonNull};
+use std::fmt::Debug;
 
 #[derive(PartialEq, Debug, Clone)]
 struct TestStruct {
@@ -55,22 +55,23 @@ fn test_allocate_map() {
 fn test_allocate<T, F>(allocator: F) -> Result<(), MemoryError>
 where
     T: Default + Debug + PartialEq,
-    F: Fn() -> Result<(NonNull<T>, NonNull<T>), MemoryError>,
+    F: Fn() -> Result<(Frag<T>, Frag<T>), MemoryError>,
 {
     let min_distance = 0xFFFF;
     let result = allocator();
-    assert!(result.is_ok(), "Failed to allocate memory: {:?}", result);
+    assert!(result.is_ok(), "Failed to allocate memory");
 
     let (a, b) = result.unwrap();
 
-    unsafe {
-        let aa = a.as_ref();
-        let bb = b.as_ref();
+    let aa = &*a;
+    let bb = &*b;
 
-        assert!(distance(aa, bb) >= min_distance);
-        assert_eq!(aa, &T::default());
-        assert_eq!(bb, &T::default());
-    }
+    assert!(distance(aa, bb) >= min_distance);
+    assert_eq!(aa, &T::default());
+    assert_eq!(bb, &T::default());
+
+    assert!(Frag::<T>::dealloc(a).is_ok());
+    assert!(Frag::<T>::dealloc(b).is_ok());
 
     Ok(())
 }

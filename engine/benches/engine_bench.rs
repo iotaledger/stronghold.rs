@@ -126,7 +126,13 @@ fn bench_allocate_direct(c: &mut Criterion) {
 
     c.bench_function("Allocate memory direct", |b| {
         b.iter(|| {
-            let _ = Frag::alloc::<TestStruct>(FragStrategy::Direct);
+            let strat = FragStrategy::Direct;
+            if let Ok((m1, m2)) = Frag::<TestStruct>::alloc(strat) {
+                Frag::dealloc(m1).expect("error while deallocating");
+                Frag::dealloc(m2).expect("error while deallocating");
+            } else {
+                panic!("error while allocating memory");
+            }
         });
     });
 }
@@ -149,7 +155,13 @@ fn bench_allocate_mapped(c: &mut Criterion) {
 
     c.bench_function("Allocate memory mapped", |b| {
         b.iter(|| {
-            let _ = Frag::alloc::<TestStruct>(FragStrategy::Map);
+            let strat = FragStrategy::Map;
+            if let Ok((m1, m2)) = Frag::<TestStruct>::alloc(strat) {
+                Frag::dealloc(m1).expect("error while deallocating");
+                Frag::dealloc(m2).expect("error while deallocating");
+            } else {
+                panic!("error while allocating memory");
+            }
         });
     });
 }
