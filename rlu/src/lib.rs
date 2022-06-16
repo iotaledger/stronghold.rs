@@ -44,6 +44,8 @@ pub mod rlu;
 pub mod types;
 pub mod var;
 
+mod stm;
+
 // public re-exports
 pub use breaker::BusyBreaker;
 pub use rlu::{RLUObject, RLUStrategy, Result, RluContext, TransactionError, RLU};

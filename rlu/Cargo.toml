@@ -14,7 +14,10 @@ keywords = [ "iota", "stronghold", "security" ]
 path = "src/lib.rs"
 
 [features]
-default = [ ]
+default = ["threaded"]
+async = ["futures"]
+threaded = []
+
 
 [dependencies]
 thiserror = "1.0.30"
@@ -22,6 +25,7 @@ log = "0.4.14"
 zeroize = { version = "1.4.3", features = [ "zeroize_derive" ] }
 lazy_static = { version = "1.4.0" }
 atom = { version = "0.4.0" }
+futures = {version = "0.3.21", optional = true}
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = [ "full" ] }

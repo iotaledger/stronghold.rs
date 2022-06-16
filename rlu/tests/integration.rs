@@ -89,7 +89,7 @@ fn reference_concurrent() {
         });
 
         // this effectively serializes the write / read operation, which is not intended
-        std::thread::sleep(Duration::from_millis(10));
+        // std::thread::sleep(Duration::from_millis(10));
 
         let j1 = std::thread::spawn(move || {
             r2.execute(|ctx| {
