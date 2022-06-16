@@ -61,7 +61,7 @@ pub struct Frag<T: Default> {
     info: (*mut libc::c_void, usize),
 
     #[cfg(target_os = "windows")]
-    info: Option<windows::Win32::Foundation::HANDLE>,
+    info: Option<windows::Win32::Foundation::HANDLE, *const libc::c_void>,
 }
 
 impl<T: Default> Deref for Frag<T> {
@@ -349,13 +349,14 @@ where
                         return Err(e);
                     }
 
-                    let actual_mem = windows::Win32::System::Memory::MapViewOfFile(
+                    let mem_view = windows::Win32::System::Memory::MapViewOfFile(
                         actual_mapping,
                         windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
                         0,
                         0,
                         actual_size as usize,
-                    ) as *mut T;
+                    );
+                    let actual_mem = mem_view as *mut T;
 
                     if let Err(e) = last_error() {
                         return Err(e);
@@ -364,9 +365,9 @@ where
                     actual_mem.write(T::default());
 
                     return Ok(Frag {
-                        ptr: NonNull::new_unchecked(actual_mem as *mut T),
+                        ptr: NonNull::new_unchecked(actual_mem),
                         strategy: FragStrategy::Map,
-                        info: Some(actual_mapping),
+                        info: Some((actual_mapping, mem_view)),
                     });
                 }
             }
@@ -375,8 +376,8 @@ where
 
     #[cfg(target_os = "windows")]
     fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
-        if let Some(handle) = frag.info {
-            dealloc_map(handle)
+        if let Some((handle, view)) = frag.info {
+            dealloc_map(handle, view)
         } else {
             Err(MemoryError::Allocation("Cannot release file handle".to_owned()))
         }
@@ -538,9 +539,17 @@ fn dealloc_map(ptr: *mut libc::c_void, size: libc::size_t) -> Result<(), MemoryE
 }
 
 #[cfg(target_os = "windows")]
-fn dealloc_map(handle: windows::Win32::Foundation::HANDLE) -> Result<(), MemoryError> {
-    // CloseHandle returns 0/FALSE when failing
+fn dealloc_map(handle: windows::Win32::Foundation::HANDLE, view: *const libc::c_void) -> Result<(), MemoryError> {
     unsafe {
+        // UnmapViewOfFile returns 0/FALSE when failing
+        let res = windows::Win32::System::Memory::UnmapViewOfFile(view);
+        if !res.as_bool() {
+            if let Err(e) = last_error() {
+                return Err(e);
+            }
+        }
+
+        // CloseHandle returns 0/FALSE when failing
         let res = windows::Win32::Foundation::CloseHandle(handle);
         if !res.as_bool() {
             if let Err(e) = last_error() {
