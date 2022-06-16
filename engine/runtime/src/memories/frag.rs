@@ -61,7 +61,7 @@ pub struct Frag<T: Default> {
     info: (*mut libc::c_void, usize),
 
     #[cfg(target_os = "windows")]
-    info: Option<windows::Win32::Foundation::HANDLE, *const libc::c_void>,
+    info: Option<(windows::Win32::Foundation::HANDLE, *const libc::c_void)>,
 }
 
 impl<T: Default> Deref for Frag<T> {
