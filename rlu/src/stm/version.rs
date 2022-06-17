@@ -11,13 +11,20 @@ use std::sync::{
     Arc,
 };
 
-/// `VersionLock`
+/// `VersionLock` is a special type of spinlock
 #[derive(Default, Clone)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
 }
 
 impl VersionLock {
+    /// Creates a new [`VersionLock`] with the desired version
+    pub fn new(version: usize) -> Self {
+        Self {
+            atomic: Arc::new(AtomicUsize::new(version)),
+        }
+    }
+
     /// Tries to acquire a lock and returns an `Ok(())` on success.
     pub fn try_lock(&self) -> Result<(), TxError> {
         if self.is_locked() {
@@ -28,6 +35,12 @@ impl VersionLock {
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
 
         Ok(())
+    }
+
+    /// Unlocks the [`VersionLock`] by simply clearing the lock bit
+    #[inline(always)]
+    pub fn unlock(&self) {
+        self.atomic.fetch_and(mask(), Ordering::SeqCst);
     }
 
     /// Returns `true`, if the version lock is present
@@ -49,17 +62,42 @@ impl VersionLock {
     }
 
     /// Release the lock and increment the version
-    pub fn release(&self) -> Result<(), TxError> {
+    pub fn release(&self) {
         // clear lock bit
-        self.atomic.fetch_and(mask(), Ordering::SeqCst);
-        self.atomic.fetch_add(1, Ordering::SeqCst);
+        self.unlock();
 
-        Ok(())
+        // increment version
+        self.atomic.fetch_add(1, Ordering::SeqCst);
     }
 
     /// Returns the stored version
     pub fn version(&self) -> usize {
         self.atomic.load(Ordering::SeqCst) & mask()
+    }
+}
+
+/// An atomic `VersionClock` with a simpler interface. This type should be
+/// used for keeping track of a global version counter
+#[derive(Clone, Default)]
+pub struct VersionClock {
+    atomic: Arc<AtomicUsize>,
+}
+
+impl VersionClock {
+    pub fn new(version: usize) -> Self {
+        Self {
+            atomic: Arc::new(AtomicUsize::new(version)),
+        }
+    }
+
+    /// Atomically increments the version and returns the previous value
+    pub fn increment(&self) -> Result<usize, TxError> {
+        Ok(self.atomic.fetch_add(1, Ordering::SeqCst))
+    }
+
+    /// Returns the current version
+    pub fn version(&self) -> usize {
+        self.atomic.load(Ordering::SeqCst)
     }
 }
 
@@ -97,7 +135,7 @@ mod tests {
         for _ in 0..runs {
             lock.try_lock()?;
             assert!(lock.is_locked());
-            lock.release()?;
+            lock.release();
         }
 
         assert_eq!(lock.version(), runs as usize);
@@ -119,7 +157,7 @@ mod tests {
             threadpool.execute(move || {
                 // some spin loop to wait for free lock
                 while inner.try_lock().is_err() {}
-                inner.release().expect("Release failed");
+                inner.release();
             })
         }
 

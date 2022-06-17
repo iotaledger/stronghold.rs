@@ -13,4 +13,7 @@ pub enum TxError {
 
     #[error("Transactional version has overflown")]
     VersionOverflow,
+
+    #[error("The Transaction is locked")]
+    TransactionLocked,
 }
