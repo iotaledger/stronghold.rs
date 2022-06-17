@@ -1,5 +1,13 @@
 # Changelog
 
+## \[0.6.0]
+
+- - update to crypto.rs `0.12.1`
+- update to hkdf `0.12`
+- [a340c6e2](https://www.github.com/iotaledger/stronghold.rs/commit/a340c6e23ef81ca5c3581e48ee81eccc76c214e9) add changes file on 2022-06-17
+- Inserting a value into the `Store` will return an optional previous value
+  - [1455038c](https://www.github.com/iotaledger/stronghold.rs/commit/1455038cc0a250df4d69fc36615826a0ba1b58b4) feat: add changes doc on 2022-06-17
+
 ## \[0.5.1]
 
 - bump all crate versions to update to new utils modules
