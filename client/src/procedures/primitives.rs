@@ -8,7 +8,7 @@ use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
-        aes::Aes256Gcm,
+        aes_gcm::Aes256Gcm,
         aes_kw::Aes256Kw,
         chacha::XChaCha20Poly1305,
         traits::{Aead, Tag},
@@ -879,7 +879,10 @@ impl DeriveSecret<1> for ConcatKdf {
 
 impl ConcatKdf {
     /// The Concat KDF as defined in Section 5.8.1 of NIST.800-56A.
-    fn concat_kdf<D: Digest>(&self, z: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+    fn concat_kdf<D: Digest + hkdf::hmac::digest::FixedOutputReset>(
+        &self,
+        z: &[u8],
+    ) -> Result<Vec<u8>, FatalProcedureError> {
         let mut digest: D = D::new();
         let alg: &str = self.algorithm_id.as_ref();
         let len: usize = self.key_len;
@@ -890,34 +893,34 @@ impl ConcatKdf {
 
         let mut output: Vec<u8> = Vec::new();
 
-        let target: usize = (len + (D::output_size() - 1)) / D::output_size();
+        let target: usize = (len + (<D as Digest>::output_size() - 1)) / <D as Digest>::output_size();
         let rounds: u32 =
             u32::try_from(target).map_err(|_| FatalProcedureError::from("u32 iteration overflow".to_owned()))?;
 
         for count in 0..rounds {
             // Iteration Count
-            digest.update(&(count as u32 + 1).to_be_bytes());
+            Digest::update(&mut digest, &(count as u32 + 1).to_be_bytes());
 
             // Derived Secret
-            digest.update(z);
+            Digest::update(&mut digest, z);
 
             // AlgorithmId
-            digest.update(&(alg.len() as u32).to_be_bytes());
-            digest.update(alg.as_bytes());
+            Digest::update(&mut digest, &(alg.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, alg.as_bytes());
 
             // PartyUInfo
-            digest.update(&(apu.len() as u32).to_be_bytes());
-            digest.update(apu);
+            Digest::update(&mut digest, &(apu.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, apu);
 
             // PartyVInfo
-            digest.update(&(apv.len() as u32).to_be_bytes());
-            digest.update(apv);
+            Digest::update(&mut digest, &(apv.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, apv);
 
             // SuppPubInfo
-            digest.update(pub_info);
+            Digest::update(&mut digest, pub_info);
 
             // SuppPrivInfo
-            digest.update(prv_info);
+            Digest::update(&mut digest, prv_info);
 
             output.extend_from_slice(&digest.finalize_reset());
         }

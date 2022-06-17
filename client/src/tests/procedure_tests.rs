@@ -15,7 +15,7 @@ use crate::{
 };
 
 use crypto::{
-    ciphers::{aes::Aes256Gcm, chacha::XChaCha20Poly1305},
+    ciphers::{aes_gcm::Aes256Gcm, chacha::XChaCha20Poly1305},
     keys::slip10::ChainCode,
     signatures::ed25519,
 };
