@@ -58,11 +58,7 @@ impl Store {
         lifetime: Option<Duration>,
     ) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write()?;
-
-        let previous = guard.remove(&key);
-        guard.insert(key.to_vec(), value, lifetime);
-
-        Ok(previous)
+        Ok(guard.insert(key.to_vec(), value, lifetime))
     }
 
     /// Tries to get the stored value via `key`
