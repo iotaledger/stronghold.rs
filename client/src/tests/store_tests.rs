@@ -10,7 +10,13 @@ fn test_insert_into_store() {
     let key = b"some key";
     let data = b"some data".to_vec();
 
-    assert!(store.insert(key.to_vec(), data, None).is_ok());
+    assert!(store.insert(key.to_vec(), data.clone(), None).is_ok());
+
+    let new_data = b"some_other_data".to_vec();
+
+    let previous = store.insert(key.to_vec(), new_data, None).unwrap();
+    assert!(previous.is_some());
+    assert_eq!(previous.unwrap(), data);
 }
 
 #[test]
