@@ -2,6 +2,7 @@
 description: Stronghold is an open-source software library can be used to protect any digital secret. It is a secure database for working with cryptography, which ensures that secrets are never revealed - but can be used according to best practices.
 image: /img/Banner/banner_stronghold.png
 keywords:
+- getting started
 - open-source
 - secure
 - secrets
@@ -38,15 +39,16 @@ If you want to get involved in discussions about this library, or you're looking
 ## What you will find here
 This documentation has six sections. 
 
-1. **The Overview**: detailed overview of the project
-2. **Structure**: explains the layout of the individual crates and systems
-3. **The Specification**: detailed explanation of requirements and functionality
-4. **Retrospective**: a look at the evolution of this project
-5. **Contribute**: how you can participate in the Stronghold software development
-6. **Get in touch**: join the community and become part of the X-Team
+1. **[Overview](reference/overview.md)**: detailed overview of the project
+2. **[Structure](reference/structure/overview.md)**: explains the layout of the individual crates and systems
+3. **[The Specification](reference/specs/overview.md)**: detailed explanation of requirements and functionality
+4. **[Retrospective](key_concepts/retrospective.md)**: a look at the evolution of this project
+5. **[Contribute](contribute.md)**: how you can participate in the Stronghold software development
+6. **[Get in touch](contribute#join-the-iota-stronghold-initiative)**: join the community and become part of the X-Team
 
 ## Software Bill of Materials
-We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version of that here:
+
+We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version with the following link:
 
 https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
 

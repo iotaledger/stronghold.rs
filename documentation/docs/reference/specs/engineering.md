@@ -2,6 +2,7 @@
 description: This document introduces the high-level specification of Stronghold.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- reference
 - rust
 - high level 
 - low level

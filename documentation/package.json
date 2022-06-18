@@ -16,7 +16,7 @@
     "remark-remove-comments": "^0.2.0"
   },
   "devDependencies": {
-    "iota-wiki-cli": "iota-community/iota-wiki-cli#v2"
+    "@iota-community/iota-wiki-cli": "iota-community/iota-wiki-cli#v2"
   },
   "packageManager": "yarn@3.2.0"
 }

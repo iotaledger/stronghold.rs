@@ -11,78 +11,90 @@
 
 module.exports = {
   mySidebar: [{
-      type: 'doc',
-      id: 'welcome',
-      label: 'Welcome'
-    }, {
-      type: 'doc',
-      id: 'overview',
-      label: 'Overview'
-    },
-    {
+    type: 'doc',
+    label: 'Getting Started',
+    id: 'getting_started',
+  },
+  {
+    type: "category",
+    label: "Key Concepts",
+    items: [
+      {
+        type: 'doc',
+        id: 'key_concepts/retrospective',
+        label: 'Retrospective'
+      },]
+  },
+  {
+    type: 'category',
+    label: 'Reference',
+    items: [
+      {
+        type:'doc',
+        id: 'reference/overview',
+        label: "Overview"
+      },{
       type: 'category',
       label: 'Structure',
       items: [{
-          type: 'doc',
-          id: 'structure/overview',
-          label: 'Overview'
-        }, {
-          type: 'doc',
-          id: 'structure/client',
-          label: 'Client'
-        },
-        {
-          type: 'category',
+        type: 'doc',
+        id: 'reference/structure/overview',
+        label: 'Overview'
+      }, {
+        type: 'doc',
+        id: 'reference/structure/client',
+        label: 'Client'
+      },
+      {
+        type: 'category',
+        label: 'Engine',
+        items: [
+          {
+            type: 'doc',
+            id: 'reference/structure/engine/overview',
+            label: 'Overview'
+          },
 
-          label: 'Engine',
-          items: [
+          {
+            type: 'doc',
+            id: 'reference/structure/engine/snapshot',
+            label: 'Snapshot'
+          },
 
-            {
-              type: 'doc',
-              id: 'structure/engine/overview',
-              label: 'Overview'
-            },
+          {
+            type: 'doc',
+            id: 'reference/structure/engine/vault',
+            label: 'Vault'
+          },
 
-            {
-              type: 'doc',
-              id: 'structure/engine/snapshot',
-              label: 'Snapshot'
-            },
+          {
+            type: 'doc',
+            id: 'reference/structure/engine/store',
+            label: 'Store'
+          },
 
-            {
-              type: 'doc',
-              id: 'structure/engine/vault',
-              label: 'Vault'
-            },
-
-            {
-              type: 'doc',
-              id: 'structure/engine/store',
-              label: 'Store'
-            },
-
-            {
-              type: 'doc',
-              id: 'structure/engine/runtime',
-              label: 'Runtime'
-            },
-          ],
-        },
-        {
-          type: 'doc',
-          id: 'structure/p2p',
-          label: 'P2P Communication'
-        },
-        {
-          type: 'doc',
-          id: 'structure/derive',
-          label: 'Derive'
-        },
-        {
-          type: 'doc',
-          id: 'structure/utils',
-          label: 'Utils'
-        },
+          {
+            type: 'doc',
+            id: 'reference/structure/engine/runtime',
+            label: 'Runtime'
+          },
+        ],
+      },
+      {
+        type: 'doc',
+        id: 'reference/structure/p2p',
+        label: 'P2P Communication'
+      },
+      {
+        type: 'doc',
+        id: 'reference/structure/derive',
+        label: 'Derive'
+      },
+      {
+        type: 'doc',
+        id: 'reference/structure/utils',
+        label: 'Utils'
+      },
       ]
     },
     {
@@ -90,33 +102,28 @@ module.exports = {
       label: 'Specification',
       items: [{
         type: 'doc',
-        id: 'specs/overview',
+        id: 'reference/specs/overview',
         label: 'Overview'
       }, {
         type: 'doc',
-        id: 'specs/scope',
+        id: 'reference/specs/scope',
         label: 'Scope'
       }, {
         type: 'doc',
-        id: 'specs/engineering',
+        id: 'reference/specs/engineering',
         label: 'Engineering'
-      }, ]
-    },
-    {
-      type: 'doc',
-      id: 'retrospective',
-      label: 'Retrospective'
-    },
-    {
-      type: 'doc',
-      id: 'contribute',
-      label: 'Contribute'
-    },
-    {
-      type: 'link',
-      href: 'https://github.com/iotaledger/stronghold.rs',
-      label: 'GitHub'
-    },
-
+      },]
+    },]
+  },
+  {
+    type: 'doc',
+    id: 'contribute',
+    label: 'Contribute'
+  },
+  {
+    type: 'link',
+    href: 'https://github.com/iotaledger/stronghold.rs',
+    label: 'GitHub'
+  },
   ]
 };
