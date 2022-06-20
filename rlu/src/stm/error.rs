@@ -3,7 +3,7 @@
 
 use thiserror::Error as DeriveError;
 
-#[derive(Debug, DeriveError)]
+#[derive(Debug, DeriveError, PartialEq)]
 pub enum TxError {
     #[error("Transaction failed")]
     Failed,
@@ -16,4 +16,7 @@ pub enum TxError {
 
     #[error("The Transaction is locked")]
     TransactionLocked,
+
+    #[error("Object is stale")]
+    StaleObject,
 }

@@ -11,10 +11,21 @@ use std::sync::{
     Arc,
 };
 
-/// `VersionLock` is a special type of spinlock
-#[derive(Default, Clone)]
+/// A [`VersionLock`] is a combination of a simple bounded spin-locking mechanism, needing
+/// 1-bit of a word-sized value to lock a certain region. The rest of the value is being
+/// used to increment a version counter. Use a [`VersionClock`], when you want to
+/// implement versioned updates on transactional memory regions.
+#[derive(Default)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
+}
+
+impl Clone for VersionLock {
+    fn clone(&self) -> Self {
+        Self {
+            atomic: Arc::new(AtomicUsize::new(self.version())),
+        }
+    }
 }
 
 impl VersionLock {
@@ -26,11 +37,32 @@ impl VersionLock {
     }
 
     /// Tries to acquire a lock and returns an `Ok(())` on success.
+    ///
+    /// # Example
+    /// ```
+    /// use stronghold_rlu::stm::VersionLock;
+    /// let lock = VersionLock::default();
+    /// lock.try_lock().expect("Failed to acquire lock");
+    /// assert!(lock.is_locked());
+    /// ```
     pub fn try_lock(&self) -> Result<(), TxError> {
-        if self.is_locked() {
-            return Err(TxError::LockPresent);
-        }
+        let bound = 1 << 31;
 
+        // bounded spin-locking
+        for n in 0..bound {
+            if self.is_locked() {
+                // indicate spin lock to the cpu
+                std::hint::spin_loop();
+
+                continue;
+            }
+
+            if n == (bound - 1) {
+                // return an error, if lock couldn't be acquire within given bounds
+                // this avoids a dead lock, but may create thread starving on the other end
+                return Err(TxError::LockPresent);
+            }
+        }
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
 
@@ -68,6 +100,14 @@ impl VersionLock {
 
         // increment version
         self.atomic.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn release_set(&self, value: usize) {
+        // clear the lock
+        self.unlock();
+
+        // set the new version
+        self.atomic.store(value, Ordering::SeqCst);
     }
 
     /// Returns the stored version

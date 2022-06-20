@@ -1,6 +1,13 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+//! # Software Transactional Memory (STM)
+//!
+//! This module implements a variation of the TL2 algorithm described by Shavit et al. Access to shared
+//! memory is being locked by a specialized bounded spin-lock with integrated versioning. The algorithm
+//! differentiates between reading and writing transaction, while having some reading transaction performance
+//! optimization in place.
+
 pub mod error;
 pub mod version;
 
@@ -15,18 +22,6 @@ use std::{
 
 use self::version::VersionClock;
 
-/// In the following we describe the PS version of the TL2 algorithm although
-/// most of the details carry through verbatim for PO as well.
-///
-/// We maintain thread local read- and write-sets as linked lists. Each read-set entries contains the address
-/// of the lock that “covers” the variable being read, and unlike former algorithms,
-/// does not need to contain the observed version number of the lock.
-///
-/// The write-set entries contain the address of the variable, the value to be written to the variable,
-/// and the address of its associated lock. In many cases the lock and location
-/// address are related and so we need to keep only one of them in the read-set. The
-/// write-set is kept in chronological order to avoid write-after-write hazards.
-#[derive(Clone)]
 pub struct Transaction<T>
 where
     T: Clone,
@@ -64,7 +59,10 @@ where
     T: Clone,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        todo!()
+        // Due to API limitations, we cannot return the address of the object itself,
+        // but has it in order to have some unique value to be stored inside the hashmap.
+        let addr = std::ptr::addr_of!(self) as usize;
+        addr.hash(state);
     }
 }
 
@@ -73,7 +71,10 @@ where
     T: Clone,
 {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        let a = std::ptr::addr_of!(self) as usize;
+        let b = std::ptr::addr_of!(other) as usize;
+
+        a == b
     }
 }
 
@@ -86,22 +87,36 @@ pub struct Stm {
 
 impl Stm {
     /// This runs a transaction with the given context. The TL2 algorithm makes
-    /// a distinction between write and read transactions. A write transaction does the following
-    /// steps:
-    /// 1. sample the global version to detect changes to the transactable data
-    /// 2. try to run the transaction (eg. the function with the [`Transaction`] parameter). keep track of
+    /// a distinction between write and read transactions. Calling this function
+    /// will start a read-write transaction according to this algorithm:
+    ///
+    /// 1. Get Current Version
+    ///    Sample the global version to detect changes to the transactable data
+    /// 2. Speculative Execution
+    ///    Try to run the transaction (eg. the function with the [`Transaction`] parameter). keep track of
     ///    the addresses loaded in the read set, and the address/value-to-be-written in a write set.
     ///    Check first, if a value has already been written in the write-set. return that value.
-    pub fn atomically<T, F>(&self, transaction: F) -> Result<(), TxError>
+    /// 3. Lock the write-set
+    /// 4. Validate the read-set
+    /// 6. Commit changes to memory
+    pub fn read_write<T, F>(&self, transaction: F) -> Result<(), TxError>
     where
-        F: Fn(Transaction<T>) -> Result<(), TxError>,
+        F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
         T: Clone + Send + Sync,
     {
         // we required the latest global version to check for version consistency of writes
 
         loop {
-            match transaction(Transaction::new(self.global.version())) {
-                Ok(_) => break,
+            let mut tx = Transaction::<T>::new(self.global.version());
+            match transaction(&mut tx) {
+                Ok(_) => {
+                    tx.lock_write_set()?;
+                    let wv = self.global.increment()? + 1;
+
+                    tx.commit(wv)?;
+
+                    break;
+                }
                 Err(e) => continue, // this can be augmented with a strategy
             }
         }
@@ -109,6 +124,25 @@ impl Stm {
         Ok(())
     }
 
+    /// This runs a transaction with the given context. The TL2 algorithm makes
+    /// a distinction between write and read transactions. Calling this function
+    /// will start a read transaction according to this algorithm:
+    ///
+    /// 1. Get Current Version
+    ///    Sample the global version to detect changes to the transactable data
+    /// 2. Speculative Execution
+    ///    Try to run the transaction (eg. the function with the [`Transaction`] parameter). keep track of
+    ///    the addresses loaded in the read set, and the address/value-to-be-written in a write set.
+    ///    Check first, if a value has already been written in the write-set. return that value.
+    pub fn read_only<T, F>(&self, transaction: F) -> Result<(), TxError>
+    where
+        F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
+        T: Clone + Send + Sync,
+    {
+        Ok(())
+    }
+
+    /// This will create a new transactional variable [`TVar`].
     pub fn create<T>(&self, val: T) -> TVar<T>
     where
         T: Clone,
@@ -133,28 +167,81 @@ where
         }
     }
 
-    /// this loads a transactional variable from the log
-    /// and returns a clone of the value
-    pub fn load(&self, tvar: &TVar<T>) -> Result<T, TxError> {
-        let pre_version = self.version;
+    /// This function loads the value from the transactional variable ([`TVar`]) and checks
+    /// for version consistency. If the value, is present in a write set, this to-be-written value
+    /// will be returned. In case there is a version mismatch, or the transactional variable is
+    /// locked, an error will be returned and the [`Transaction`] will be retried.
+    pub fn load(&mut self, tvar: &TVar<T>) -> Result<T, TxError> {
+        self.read.insert(tvar.clone());
+
+        if self.write.contains_key(tvar) {
+            return Ok(self.write.get(tvar).unwrap().clone());
+        }
 
         if tvar.local.is_locked() {
             return Err(TxError::TransactionLocked);
         }
 
-        let data = self.read.get(tvar);
+        let pre_version = tvar.local.version();
+        let data = tvar.original.lock().map_err(|e| TxError::LockPresent)?;
+
         let post_version = tvar.local.version();
 
-        // Ok(data)
-        todo!()
+        let is_locked = tvar.local.is_locked();
+        let version_mismatch = pre_version != post_version;
+        let stale_object = pre_version > self.version;
+
+        match is_locked || version_mismatch || stale_object {
+            true => Err(TxError::TransactionLocked),
+            false => Ok((*data).clone()),
+        }
     }
 
     /// this writes the value into the transactional log
-    pub fn store(&self, tvar: &TVar<T>, value: T) -> Result<(), TxError> {
-        // let mut guard = tvar.write.lock().expect("");
-        // *guard = Some(value);
+    pub fn store(&mut self, tvar: &TVar<T>, value: T) {
+        self.write.insert(tvar.clone(), value);
+    }
 
-        // tvar.local.release();
+    fn lock_write_set(&self) -> Result<(), TxError> {
+        for tvar in self.write.keys() {
+            if tvar.local.try_lock().is_err() {
+                return Err(TxError::Failed);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validates the read set
+    fn validate(&self, wv: usize) -> Result<(), TxError> {
+        let rv = self.version;
+        if rv + 1 == wv {
+            return Ok(());
+        }
+
+        for tvar in &self.read {
+            if tvar.local.version() >= rv {
+                return Err(TxError::StaleObject);
+            }
+
+            if tvar.local.is_locked() {
+                return Err(TxError::TransactionLocked);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Commits the write set to memory
+    fn commit(&self, wv: usize) -> Result<(), TxError> {
+        for (tvar, value) in &self.write {
+            let mut guard = tvar.original.lock().map_err(|_| TxError::LockPresent)?;
+            *guard = value.clone();
+
+            drop(guard);
+
+            tvar.local.release_set(wv)
+        }
 
         Ok(())
     }
@@ -162,14 +249,10 @@ where
 
 impl<T> TVar<T>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
-    pub fn version(&self) -> usize {
-        self.local.version()
-    }
-
-    pub fn read(&self) -> T {
-        self.original.lock().expect("").clone()
+    pub fn get(&self) -> Result<T, TxError> {
+        Ok((*self.original.lock().map_err(|_| TxError::LockPresent)?).clone())
     }
 }
 
@@ -178,6 +261,8 @@ unsafe impl<T> Sync for TVar<T> where T: Clone + Send + Sync {}
 
 #[cfg(test)]
 mod tests {
+    use crate::stm::Transaction;
+
     use super::Stm;
 
     /// Some testing struct
@@ -194,18 +279,24 @@ mod tests {
         let bank_alice = stm.create(10usize);
         let bank_bob = stm.create(100);
 
-        let result = stm.atomically(move |transaction| {
-            let mut amt_bob = transaction.load(&bank_bob)?;
+        let ba = bank_alice.clone();
+        let bb = bank_bob.clone();
+
+        let result = stm.read_write(move |tx: &mut Transaction<_>| {
+            let mut amt_bob = tx.load(&bb)?;
 
             let amt_alice = amt_bob - 20;
             amt_bob -= 20;
 
-            transaction.store(&bank_alice, amt_alice)?;
-            transaction.store(&bank_bob, amt_bob)?;
+            tx.store(&ba, amt_alice);
+            tx.store(&bb, amt_bob);
 
             Ok(())
         });
 
-        assert!(result.is_ok(), "Transaction failed")
+        assert!(result.is_ok(), "Transaction failed");
+
+        assert_eq!(bank_alice.get(), Ok(80));
+        assert_eq!(bank_bob.get(), Ok(80));
     }
 }
