@@ -7,7 +7,6 @@
 //! memory is being locked by a specialized bounded spin-lock with integrated versioning. The algorithm
 //! differentiates between reading and writing transaction, while having some reading transaction performance
 //! optimization in place.
-
 pub mod error;
 pub mod version;
 
@@ -139,6 +138,15 @@ impl Stm {
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
         T: Clone + Send + Sync,
     {
+        loop {
+            let mut tx = Transaction::<T>::new(self.global.version());
+            match transaction(&mut tx) {
+                Ok(_) => {
+                    break;
+                }
+                Err(e) => continue, // this can be augmented with a strategy
+            }
+        }
         Ok(())
     }
 
@@ -257,6 +265,7 @@ where
 }
 
 unsafe impl<T> Send for TVar<T> where T: Clone + Send + Sync {}
+
 unsafe impl<T> Sync for TVar<T> where T: Clone + Send + Sync {}
 
 #[cfg(test)]
