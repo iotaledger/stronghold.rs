@@ -15,24 +15,35 @@ use std::sync::{
 /// 1-bit of a word-sized value to lock a certain region. The rest of the value is being
 /// used to increment a version counter. Use a [`VersionClock`], when you want to
 /// implement versioned updates on transactional memory regions.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
 }
 
-impl Clone for VersionLock {
-    fn clone(&self) -> Self {
-        Self {
-            atomic: Arc::new(AtomicUsize::new(self.version())),
-        }
-    }
-}
+// impl Clone for VersionLock {
+//     fn clone(&self) -> Self {
+//         Self {
+//             atomic: Arc::new(AtomicUsize::new(self.version())),
+//         }
+//     }
+// }
 
 impl VersionLock {
     /// Creates a new [`VersionLock`] with the desired version
     pub fn new(version: usize) -> Self {
         Self {
             atomic: Arc::new(AtomicUsize::new(version)),
+        }
+    }
+
+    /// Creates a copy of the inner value.
+    ///
+    /// This function differentiates itself from the derived [`Clone`] implementation,
+    /// as the inner value will be copied in contrast to [`Clone`], that will clone the
+    /// atomic pointer.
+    pub fn copy(&self) -> Self {
+        Self {
+            atomic: Arc::new(AtomicUsize::new(self.version())),
         }
     }
 
@@ -49,7 +60,8 @@ impl VersionLock {
         let bound = 1 << 31;
 
         // bounded spin-locking
-        for n in 0..bound {
+        // for n in 0..bound {
+        loop {
             if self.is_locked() {
                 // indicate spin lock to the cpu
                 std::hint::spin_loop();
@@ -57,11 +69,12 @@ impl VersionLock {
                 continue;
             }
 
-            if n == (bound - 1) {
-                // return an error, if lock couldn't be acquire within given bounds
-                // this avoids a dead lock, but may create thread starving on the other end
-                return Err(TxError::LockPresent);
-            }
+            // if n == (bound - 1) {
+            //     // return an error, if lock couldn't be acquire within given bounds
+            //     // this avoids a dead lock, but may create thread starving on the other end
+            //     return Err(TxError::LockPresent);
+            // }
+            break;
         }
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
@@ -139,6 +152,12 @@ impl VersionClock {
     pub fn version(&self) -> usize {
         self.atomic.load(Ordering::SeqCst)
     }
+
+    pub fn copy(&self) -> Self {
+        Self {
+            atomic: Arc::new(AtomicUsize::new(self.version())),
+        }
+    }
 }
 
 /// Returns the word size in number of bits
@@ -184,6 +203,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "threaded")]
     fn test_version_lock_threaded() -> Result<(), TxError> {
         let lock = VersionLock::default();
         let max_runs = 0xFFFFF;
@@ -195,15 +215,14 @@ mod tests {
         for i in 0..runs {
             let inner = lock.clone();
             threadpool.execute(move || {
-                // some spin loop to wait for free lock
-                while inner.try_lock().is_err() {}
+                assert!(inner.try_lock().is_ok(), "Failed to get versioned lock");
                 inner.release();
             })
         }
 
         threadpool.join();
-
-        assert_eq!(lock.version(), runs as usize);
+        let version = lock.version();
+        assert_eq!(version, runs as usize);
 
         Ok(())
     }
