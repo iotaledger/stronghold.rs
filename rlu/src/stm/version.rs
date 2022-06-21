@@ -60,8 +60,8 @@ impl VersionLock {
         let bound = 1 << 31;
 
         // bounded spin-locking
-        // for n in 0..bound {
-        loop {
+        for n in 0..bound {
+            // loop {
             if self.is_locked() {
                 // indicate spin lock to the cpu
                 std::hint::spin_loop();
@@ -69,12 +69,11 @@ impl VersionLock {
                 continue;
             }
 
-            // if n == (bound - 1) {
-            //     // return an error, if lock couldn't be acquire within given bounds
-            //     // this avoids a dead lock, but may create thread starving on the other end
-            //     return Err(TxError::LockPresent);
-            // }
-            break;
+            if n == (bound - 1) {
+                // return an error, if lock couldn't be acquire within given bounds
+                // this avoids a dead lock, but may create thread starving on the other end
+                return Err(TxError::LockPresent);
+            }
         }
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
@@ -116,6 +115,7 @@ impl VersionLock {
     }
 
     pub fn release_set(&self, value: usize) {
+        println!("release lock and set version: {}", value);
         // clear the lock
         self.unlock();
 
@@ -143,20 +143,15 @@ impl VersionClock {
         }
     }
 
-    /// Atomically increments the version and returns the previous value
+    /// Atomically increments the version and returns the new value
     pub fn increment(&self) -> Result<usize, TxError> {
-        Ok(self.atomic.fetch_add(1, Ordering::SeqCst))
+        self.atomic.fetch_add(1, Ordering::SeqCst);
+        Ok(self.atomic.load(Ordering::SeqCst))
     }
 
     /// Returns the current version
     pub fn version(&self) -> usize {
         self.atomic.load(Ordering::SeqCst)
-    }
-
-    pub fn copy(&self) -> Self {
-        Self {
-            atomic: Arc::new(AtomicUsize::new(self.version())),
-        }
     }
 }
 
