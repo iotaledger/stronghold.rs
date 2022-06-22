@@ -9,17 +9,17 @@
 //! optimization in place.
 pub mod error;
 pub mod version;
-
+use self::version::VersionClock;
 pub use error::*;
-pub use version::VersionLock;
-
+use log::*;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::{Hash, Hasher},
     sync::{Arc, Mutex},
+    thread::ThreadId,
 };
-
-use self::version::VersionClock;
+pub use version::VersionLock;
 
 pub struct Transaction<T>
 where
@@ -49,11 +49,20 @@ pub enum Strategy {
     Abort,
 }
 
+/// This enum is for internal use only. It indicates either if
+/// it's the `Same` thread locking a [`TVar`], a `Foreign` thread or if
+/// `None` is actually present.
+enum ThreadLockState {
+    Same,
+    Foreign,
+    None,
+}
+
 /// [`TVar`] encapsulates the original value to be modified,
 /// keeps a local id, and writes copies of all changes into a log.
 ///
 /// The local id is being defined by the global id being kept by the STM
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TVar<T>
 where
     T: Clone,
@@ -63,6 +72,10 @@ where
 
     /// This is a local version clock
     lock: VersionLock,
+
+    /// The locking thread's id
+    #[cfg(feature = "threaded")]
+    locked_by: Arc<Mutex<Option<ThreadId>>>,
 }
 
 impl<T> Hash for TVar<T>
@@ -91,6 +104,53 @@ where
 
 impl<T> Eq for TVar<T> where T: Clone {}
 
+impl<T> TVar<T>
+where
+    T: Clone,
+{
+    pub fn get(&self) -> Result<T, TxError> {
+        Ok((*self.original.lock().map_err(|_| TxError::LockPresent)?).clone())
+    }
+}
+
+#[cfg(feature = "threaded")]
+impl<T> TVar<T>
+where
+    T: Clone,
+{
+    /// Returns Ok(true), if this var has been locked by this thread
+    /// FIXME: this method has a weird logic. If some thread_id is present
+    /// and locked and if the thread_id is the same, then return true,
+    /// otherwise false.
+    ///
+    /// if NO thread id is present, then this would a thrird option
+    /// and true is returned, but this would be semantically incorrect and creates confusion
+    fn thread_locked(&self) -> Result<ThreadLockState, TxError> {
+        let guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
+        if let Some(id) = *guard {
+            return match id.eq(&std::thread::current().id()) {
+                true => Ok(ThreadLockState::Same),
+                false => Ok(ThreadLockState::Foreign),
+            };
+        }
+        Ok(ThreadLockState::None)
+    }
+
+    /// Sets the current thread's id as holding the lock
+    fn set_thread_lock(&self) -> Result<(), TxError> {
+        let mut guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
+        *guard = Some(std::thread::current().id());
+        Ok(())
+    }
+
+    /// Clears the current thread's id from holding the lock
+    fn clear_thread_lock(&self) -> Result<(), TxError> {
+        let mut guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
+        *guard = None;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Stm {
     global: VersionClock,
@@ -114,23 +174,23 @@ impl Stm {
     pub fn read_write<T, F>(&self, transaction: F) -> Result<(), TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
-        T: Clone + Send + Sync,
+        T: Clone + Send + Sync + Debug,
     {
+        // we require the latest global version to check for version consistency of writes
         loop {
-            println!(
+            let mut tx = Transaction::<T>::new(self.global.version());
+            info!(
                 "TRANSACTION({:?}): START. GLOBAL VERSION ({:04})",
                 std::thread::current().id(),
                 self.global.version()
             );
-            // we require the latest global version to check for version consistency of writes
-            let mut tx = Transaction::<T>::new(self.global.version());
             match transaction(&mut tx) {
                 Ok(_) => {
                     if tx.lock_write_set().is_err() {
-                        println!("LOCK WRITE SET FAILED({:?})", std::thread::current().id());
+                        info!("LOCK WRITE SET FAILED({:?})", std::thread::current().id());
                         continue;
                     }
-                    println!(
+                    info!(
                         "INCREMENT GLOBAL VERSION(({:?})): ({}) + 1",
                         std::thread::current().id(),
                         self.global.version()
@@ -138,20 +198,20 @@ impl Stm {
                     let wv = self.global.increment()?;
 
                     if tx.validate(wv).is_err() {
-                        println!("VALIDATING READ SET FAILED({:?})", std::thread::current().id());
+                        info!("VALIDATING READ SET FAILED({:?})", std::thread::current().id());
                         continue;
                     }
 
                     if tx.commit(wv).is_err() {
-                        println!("COMMITTING VALUE FAILED({:?})", std::thread::current().id());
+                        info!("COMMITTING VALUE FAILED({:?})", std::thread::current().id());
                         continue;
                     };
 
                     break;
                 }
                 Err(e) => {
-                    println!("TRANSACTION({:?}): FAILED. RETRYING", std::thread::current().id());
-                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    info!("TRANSACTION({:?}): FAILED. RETRYING", std::thread::current().id());
+                    // std::thread::sleep(std::time::Duration::from_millis(1000));
                     continue;
                 } // this can be augmented with a strategy
             }
@@ -173,7 +233,7 @@ impl Stm {
     pub fn read_only<T, F>(&self, transaction: F) -> Result<(), TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
-        T: Clone + Send + Sync,
+        T: Clone + Send + Sync + Debug,
     {
         loop {
             let mut tx = Transaction::<T>::new(self.global.version());
@@ -195,6 +255,7 @@ impl Stm {
         TVar {
             original: Arc::new(Mutex::new(val)),
             lock: VersionLock::new(self.global.version()),
+            locked_by: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -202,7 +263,7 @@ impl Stm {
 #[cfg(feature = "threaded")]
 impl<T> Transaction<T>
 where
-    T: Clone,
+    T: Clone + Debug,
 {
     pub fn new(version: usize) -> Self {
         Self {
@@ -224,8 +285,20 @@ where
         }
 
         if tvar.lock.is_locked() {
-            println!("LOAD({:?}): PRECHECK TRANSACTION LOCKED", std::thread::current().id());
-            return Err(TxError::TransactionLocked);
+            match tvar.thread_locked()? {
+                ThreadLockState::Same | ThreadLockState::None => {
+                    tvar.lock.unlock();
+                    tvar.clear_thread_lock()?
+                }
+                ThreadLockState::Foreign => {
+                    info!(
+                        "LOAD({:?}): PRECHECK TRANSACTION LOCKED BY ({:?})",
+                        std::thread::current().id(),
+                        tvar.locked_by.lock().unwrap()
+                    );
+                    return Err(TxError::TransactionLocked);
+                }
+            }
         }
 
         let pre_version = tvar.lock.version();
@@ -240,8 +313,15 @@ where
 
         match version_mismatch || stale_object {
             true => {
-                println!("LOAD({:?}): TRANSACTION LOCKED", std::thread::current().id());
-                Err(TxError::TransactionLocked)
+                info!(
+                    "LOAD({:?}): VERSION MISMATCH ({}), STALE OBJECT ({}), PRE_VERSION ({}), TRANSACTION_VERSION ({})",
+                    std::thread::current().id(),
+                    version_mismatch,
+                    stale_object,
+                    pre_version,
+                    self.version
+                );
+                Err(TxError::VersionMismatch)
             }
             false => Ok((*data).clone()),
         }
@@ -259,7 +339,9 @@ where
         let mut fail_lock_write = false;
 
         for tvar in self.write.keys() {
-            println!("TRANSACTION({:?}): LOCK", std::thread::current().id());
+            info!("TRANSACTION({:?}): LOCK", std::thread::current().id());
+
+            tvar.set_thread_lock()?;
             if tvar.lock.try_lock().is_err() {
                 fail_lock_write = true;
                 break;
@@ -267,9 +349,12 @@ where
         }
 
         if fail_lock_write {
-            self.write.keys().for_each(|t| t.lock.unlock());
+            for tvar in self.write.keys() {
+                tvar.lock.unlock();
+                tvar.clear_thread_lock()?;
+            }
 
-            println!(
+            info!(
                 "LOCK WRITE SET({:?}): TRANSACTION LOCKED. RESETTING LOCKS",
                 std::thread::current().id()
             );
@@ -289,7 +374,7 @@ where
 
         for tvar in &self.read {
             if tvar.lock.version() >= rv {
-                println!("VALIDATE({:?}): OBJECT STALE", std::thread::current().id());
+                info!("VALIDATE({:?}): OBJECT STALE", std::thread::current().id());
 
                 return Err(TxError::StaleObject);
             }
@@ -300,7 +385,21 @@ where
             // if the same thread locks the transactional variable, then the validation will
             // fail when the object is stale, but the lock of the same thread is still present
             if tvar.lock.is_locked() {
-                println!(
+                match tvar.thread_locked()? {
+                    ThreadLockState::Same | ThreadLockState::None => {
+                        info!(
+                            "VALIDATE({:?}): TRANSACTION LOCKED BY US OR NONE. CLEARING LOCKS",
+                            std::thread::current().id()
+                        );
+                        tvar.lock.unlock();
+                        tvar.clear_thread_lock()?;
+
+                        continue;
+                    }
+                    _ => {}
+                }
+
+                info!(
                     "VALIDATE({:?}): READ SET VALIDATION: TRANSACTION LOCKED",
                     std::thread::current().id()
                 );
@@ -315,16 +414,22 @@ where
     #[inline(always)]
     fn commit(&self, wv: usize) -> Result<(), TxError> {
         for (tvar, value) in &self.write {
-            println!("COMMIT({:?}): BEGIN VERSION ({:04})", std::thread::current().id(), wv);
+            info!(
+                "COMMIT({:?}): BEGIN VERSION ({:04}) FOR VALUE ({:?})",
+                std::thread::current().id(),
+                wv,
+                value
+            );
             let mut guard = tvar.original.lock().map_err(|_| TxError::LockPresent)?;
             *guard = value.clone();
 
             drop(guard);
 
             tvar.lock.release_set(wv);
-            println!("COMMIT({:?}): VARIABLE UNLOCKED", std::thread::current().id());
+            tvar.clear_thread_lock()?;
+            info!("COMMIT({:?}): VARIABLE UNLOCKED", std::thread::current().id());
 
-            println!(
+            info!(
                 "COMMIT({:?}): END UNLOCKED VERSION ({:04}). IS LOCKED? ({})",
                 std::thread::current().id(),
                 tvar.lock.version(),
@@ -336,24 +441,17 @@ where
     }
 }
 
-impl<T> TVar<T>
-where
-    T: Clone,
-{
-    pub fn get(&self) -> Result<T, TxError> {
-        Ok((*self.original.lock().map_err(|_| TxError::LockPresent)?).clone())
-    }
-}
-
 // unsafe impl<T> Send for TVar<T> where T: Clone + Send + Sync {}
 
 // unsafe impl<T> Sync for TVar<T> where T: Clone + Send + Sync {}
 
 #[cfg(test)]
 mod tests {
-    use crate::stm::Transaction;
-
     use super::Stm;
+    use crate::stm::{TVar, Transaction};
+    use rand::Rng;
+    use std::collections::HashSet;
+    use threadpool::ThreadPool;
 
     /// Some testing struct
     #[derive(Default, Clone, PartialEq, Eq, Debug)]
@@ -393,18 +491,19 @@ mod tests {
     #[test]
     #[cfg(feature = "threaded")]
     fn test_stm_threaded() {
-        use crate::stm::TVar;
-        use rand::Rng;
-        use std::collections::HashSet;
-        use threadpool::ThreadPool;
+        #[cfg(feature = "verbose")]
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .init();
 
         let mut rng = rand::thread_rng();
         let stm = Stm::default();
         let entries: usize = rng.gen_range(2..10);
 
         let expected: HashSet<String> = (0..entries)
-            .map(|_| rng.gen())
-            .map(|e: usize| format!("{:016}", e))
+            .map(|_| rng.gen_range(0..256))
+            .map(|e: usize| format!("{:04}", e))
             .collect();
 
         let set: TVar<HashSet<String>> = stm.create(HashSet::new());
@@ -434,7 +533,8 @@ mod tests {
         assert!(result.is_ok());
 
         let actual = result.unwrap();
-        assert_eq!(actual, expected, "Actual HashSet is not equal to expected HashSet");
+
+        assert_eq!(expected, actual, "Actual HashSet is not equal to expected HashSet");
     }
 
     #[test]

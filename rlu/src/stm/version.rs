@@ -15,7 +15,7 @@ use std::sync::{
 /// 1-bit of a word-sized value to lock a certain region. The rest of the value is being
 /// used to increment a version counter. Use a [`VersionClock`], when you want to
 /// implement versioned updates on transactional memory regions.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
 }
@@ -115,7 +115,6 @@ impl VersionLock {
     }
 
     pub fn release_set(&self, value: usize) {
-        println!("release lock and set version: {}", value);
         // clear the lock
         self.unlock();
 

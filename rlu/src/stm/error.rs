@@ -19,4 +19,7 @@ pub enum TxError {
 
     #[error("Object is stale")]
     StaleObject,
+
+    #[error("Transactable Variable has wrong version")]
+    VersionMismatch,
 }
