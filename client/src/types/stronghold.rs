@@ -199,9 +199,12 @@ impl Stronghold {
         let mut snapshot = self.snapshot.try_write()?;
 
         if !snapshot_path.exists() {
-            return Err(ClientError::SnapshotfileMissing(
-                snapshot_path.as_path().to_str().unwrap().to_string(),
-            ));
+            let path = snapshot_path
+                .as_path()
+                .to_str()
+                .ok_or_else(|| ClientError::Inner("Cannot display path as string".to_string()))?;
+
+            return Err(ClientError::SnapshotfileMissing(path.to_string()));
         }
 
         // CRITICAL SECTION
