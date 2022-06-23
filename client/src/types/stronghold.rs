@@ -198,7 +198,7 @@ impl Stronghold {
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.try_write()?;
 
-        if std::fs::File::open(snapshot_path.as_path()).is_err() {
+        if !snapshot_path.exists() {
             return Err(ClientError::SnapshotfileMissing(
                 snapshot_path.as_path().to_str().unwrap().to_string(),
             ));
@@ -252,6 +252,15 @@ impl Stronghold {
     /// # Example
     pub fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
         let clients = self.clients.try_read()?;
+
+        if !snapshot_path.exists() {
+            let path = snapshot_path.as_path().parent().unwrap();
+            if let Err(io_error) = std::fs::create_dir_all(path) {
+                return Err(ClientError::SnapshotfileMissing(
+                    "Could not create snapshot file".to_string(),
+                ));
+            }
+        }
 
         let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
         drop(clients);
@@ -321,23 +330,6 @@ impl Stronghold {
 }
 
 // networking functionality
-
-// macro_rules! impl_request_handler {
-//     ($name:ident, ($self:ident, $request:ident, $client_path:ident, $tx:ident),  $body:expr) => {
-//         pub(crate) fn $name<P, R>(
-//             $self,
-//             $request: R,
-//             $client_path: P,
-//             $tx: Sender<R::Response>,
-//         ) -> Result<(), ClientError>
-//         where
-//             P: AsRef<[u8]>,
-//             R: Request<Response = bool>,
-//         {
-//             $body
-//         }
-//     };
-// }
 
 /// This enum is solely used for steering the control flow
 /// of a serving [`Stronghold`] instance

@@ -392,3 +392,17 @@ fn test_load_client_from_non_existing_snapshot() {
 
     assert!(result)
 }
+
+#[test]
+fn test_create_snapshot_file_in_custom_directory() {
+    let client_path = "my-awesome-client-path";
+    let stronghold = Stronghold::default();
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir = temp_dir.join("idkfa.snapshot");
+
+    let snapshot_path = SnapshotPath::from_path(format!("{:?}", temp_dir.as_path()));
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+}
