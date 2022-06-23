@@ -8,7 +8,7 @@ use crate::Location;
 
 /// Generates a random [`Location`].
 pub fn location() -> Location {
-    Location::generic(bytestring(4096), bytestring(4096))
+    Location::generic(variable_bytestring(4096), variable_bytestring(4096))
 }
 
 /// Creates a random hd_path.

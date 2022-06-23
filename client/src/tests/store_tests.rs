@@ -61,7 +61,7 @@ fn test_keys() {
     let store = Store::default();
     let max_entries = 10;
     let generate = || -> Vec<Vec<u8>> {
-        std::iter::repeat_with(|| rand::bytestring(256))
+        std::iter::repeat_with(|| rand::variable_bytestring(256))
             .take(max_entries)
             .collect()
     };

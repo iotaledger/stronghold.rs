@@ -229,8 +229,8 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
-    let vault_path = random::bytestring(1024);
-    let seed = Location::generic(vault_path.clone(), random::bytestring(1024));
+    let vault_path = random::variable_bytestring(1024);
+    let seed = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
 
     if fresh::coinflip() {
         let size_bytes = if fresh::coinflip() {
@@ -254,7 +254,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let (_path, chain) = fresh::hd_path();
-    let key = Location::generic(vault_path, random::bytestring(1024));
+    let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
         chain,
@@ -269,7 +269,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     };
     let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = client.execute_procedure(ed25519_pk).unwrap();
 
-    let msg = fresh::bytestring(4096);
+    let msg = fresh::variable_bytestring(4096);
 
     let ed25519_sign = Ed25519Sign {
         private_key: key,
@@ -339,7 +339,7 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
-    let msg = fresh::bytestring(4096);
+    let msg = fresh::variable_bytestring(4096);
 
     let generate = Slip10Generate {
         size_bytes: None,
@@ -458,8 +458,8 @@ async fn test_aead(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crypto::ciphers::traits::*;
 
-    let test_plaintext = random::bytestring(4096);
-    let test_associated_data = random::bytestring(4096);
+    let test_plaintext = random::variable_bytestring(4096);
+    let test_associated_data = random::variable_bytestring(4096);
     let nonce_len = match cipher {
         AeadCipher::Aes256Gcm => Aes256Gcm::NONCE_LENGTH,
         AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::NONCE_LENGTH,
@@ -601,7 +601,7 @@ async fn usecase_diffie_hellman() -> Result<(), Box<dyn std::error::Error>> {
     let mut salt = vec![];
     salt.extend_from_slice(&pub_key_1);
     salt.extend_from_slice(&pub_key_2);
-    let label = random::bytestring(1024);
+    let label = random::variable_bytestring(1024);
 
     let key_1_2 = fresh::location();
     let dh_1_2 = X25519DiffieHellman {
@@ -655,7 +655,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
 
     let passphrase = random::string(4096);
     let (_path, chain) = fresh::hd_path();
-    let message = random::bytestring(4095);
+    let message = random::variable_bytestring(4095);
 
     let generate_bip39 = BIP39Generate {
         language: MnemonicLanguage::English,
@@ -715,7 +715,7 @@ async fn usecase_move_record() -> Result<(), Box<dyn std::error::Error>> {
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
-    let test_msg = random::bytestring(4096);
+    let test_msg = random::variable_bytestring(4096);
 
     let first_location = fresh::location();
     let generate_key = GenerateKey {

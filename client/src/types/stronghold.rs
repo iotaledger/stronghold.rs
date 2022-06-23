@@ -198,6 +198,12 @@ impl Stronghold {
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.try_write()?;
 
+        if std::fs::File::open(snapshot_path.as_path()).is_err() {
+            return Err(ClientError::SnapshotfileMissing(
+                snapshot_path.as_path().to_str().unwrap().to_string(),
+            ));
+        }
+
         // CRITICAL SECTION
         let buffer = keyprovider
             .try_unlock()
