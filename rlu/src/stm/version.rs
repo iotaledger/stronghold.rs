@@ -6,10 +6,23 @@
 //! of the bits for versioning.
 
 use crate::stm::error::*;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    thread::ThreadId,
 };
+
+/// This enum is for internal use only. It indicates either if
+/// it's the `Same` thread locking a [`crate::stm::TVar`], a `Foreign` thread or if
+/// `None` is actually present.
+#[derive(Debug)]
+pub(crate) enum ThreadLockState {
+    Same,
+    Foreign,
+    None,
+}
 
 /// A [`VersionLock`] is a combination of a simple bounded spin-locking mechanism, needing
 /// 1-bit of a word-sized value to lock a certain region. The rest of the value is being
@@ -18,32 +31,19 @@ use std::sync::{
 #[derive(Default, Clone, Debug)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
-}
 
-// impl Clone for VersionLock {
-//     fn clone(&self) -> Self {
-//         Self {
-//             atomic: Arc::new(AtomicUsize::new(self.version())),
-//         }
-//     }
-// }
+    #[cfg(feature = "threaded")]
+    thread_id: Arc<Mutex<Option<ThreadId>>>,
+}
 
 impl VersionLock {
     /// Creates a new [`VersionLock`] with the desired version
     pub fn new(version: usize) -> Self {
         Self {
             atomic: Arc::new(AtomicUsize::new(version)),
-        }
-    }
 
-    /// Creates a copy of the inner value.
-    ///
-    /// This function differentiates itself from the derived [`Clone`] implementation,
-    /// as the inner value will be copied in contrast to [`Clone`], that will clone the
-    /// atomic pointer.
-    pub fn copy(&self) -> Self {
-        Self {
-            atomic: Arc::new(AtomicUsize::new(self.version())),
+            #[cfg(feature = "threaded")]
+            thread_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -60,7 +60,8 @@ impl VersionLock {
         let bound = 1 << 31;
 
         // bounded spin-locking
-        for n in 0..bound {
+        // for n in 0..bound {
+        loop {
             // loop {
             if self.is_locked() {
                 // indicate spin lock to the cpu
@@ -69,22 +70,58 @@ impl VersionLock {
                 continue;
             }
 
-            if n == (bound - 1) {
-                // return an error, if lock couldn't be acquire within given bounds
-                // this avoids a dead lock, but may create thread starving on the other end
-                return Err(TxError::LockPresent);
-            }
+            // if n == (bound - 1) {
+            //     // return an error, if lock couldn't be acquire within given bounds
+            //     // this avoids a dead lock, but may create thread starving on the other end
+            //     return Err(TxError::LockPresent);
+            // }
+            break;
         }
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
+
+        #[cfg(feature = "threaded")]
+        {
+            let mut guard = self.thread_id.lock().map_err(|e| TxError::LockPresent)?;
+            *guard = Some(std::thread::current().id());
+        }
 
         Ok(())
     }
 
     /// Unlocks the [`VersionLock`] by simply clearing the lock bit
     #[inline(always)]
-    pub fn unlock(&self) {
+    pub fn unlock(&self) -> Result<(), TxError> {
         self.atomic.fetch_and(mask(), Ordering::SeqCst);
+
+        #[cfg(feature = "threaded")]
+        {
+            let mut guard = self.thread_id.lock().map_err(|e| TxError::LockPresent)?;
+            *guard = None;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "threaded")]
+    pub fn locked_by(&self) -> Result<Option<ThreadId>, TxError> {
+        Ok(*self.thread_id.lock().map_err(|e| TxError::LockPresent)?)
+    }
+
+    /// Returns a [`ThreadLockState`] indicating, if the lock is being held either `ThreadLockState::Same` us,
+    /// a `ThreadLockState::Foreign` thread or `ThreadLockState::None` holds the lock
+    #[cfg(feature = "threaded")]
+    pub(crate) fn is_locked_by(&self) -> Result<ThreadLockState, TxError> {
+        match &*self.thread_id.lock().map_err(|e| TxError::LockPresent)? {
+            Some(inner) => {
+                if std::thread::current().id().eq(inner) {
+                    return Ok(ThreadLockState::Same);
+                }
+
+                Ok(ThreadLockState::Foreign)
+            }
+            None => Ok(ThreadLockState::None),
+        }
     }
 
     /// Returns `true`, if the version lock is present
@@ -106,20 +143,24 @@ impl VersionLock {
     }
 
     /// Release the lock and increment the version
-    pub fn release(&self) {
+    pub fn release(&self) -> Result<(), TxError> {
         // clear lock bit
-        self.unlock();
+        self.unlock()?;
 
         // increment version
         self.atomic.fetch_add(1, Ordering::SeqCst);
+
+        Ok(())
     }
 
-    pub fn release_set(&self, value: usize) {
+    pub fn release_set(&self, value: usize) -> Result<(), TxError> {
         // clear the lock
-        self.unlock();
+        self.unlock()?;
 
         // set the new version
         self.atomic.store(value, Ordering::SeqCst);
+
+        Ok(())
     }
 
     /// Returns the stored version
@@ -188,7 +229,7 @@ mod tests {
         for _ in 0..runs {
             lock.try_lock()?;
             assert!(lock.is_locked());
-            lock.release();
+            lock.release()?;
         }
 
         assert_eq!(lock.version(), runs as usize);
@@ -210,7 +251,7 @@ mod tests {
             let inner = lock.clone();
             threadpool.execute(move || {
                 assert!(inner.try_lock().is_ok(), "Failed to get versioned lock");
-                inner.release();
+                let _ = inner.release();
             })
         }
 
