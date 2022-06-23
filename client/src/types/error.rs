@@ -107,7 +107,7 @@ impl From<SnapshotError> for ClientError {
             SnapshotError::CorruptedContent(inner) => ClientError::Inner(inner),
             SnapshotError::InvalidFile(inner) => ClientError::Inner(inner),
             SnapshotError::SnapshotKey(vault_id, record_id) => ClientError::Inner(format!(
-                "Missing or invalid snapshot key vaultid: {:?},  recordid{:?}",
+                "Missing or invalid snapshot key vaultid: {:?}, recordid: {:?}",
                 vault_id, record_id
             )),
             SnapshotError::Engine(inner) => ClientError::Inner(inner),
