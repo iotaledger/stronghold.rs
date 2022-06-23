@@ -90,8 +90,8 @@ impl SnapshotPath {
     where
         P: AsRef<Path>,
     {
-        assert!(name.as_ref().is_relative());
-        assert!(engine::snapshot::files::home_dir().is_ok());
+        // assert!(name.as_ref().is_relative());
+        // assert!(engine::snapshot::files::home_dir().is_ok());
 
         let path = engine::snapshot::files::home_dir().unwrap();
 
