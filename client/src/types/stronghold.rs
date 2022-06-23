@@ -254,7 +254,9 @@ impl Stronghold {
         let clients = self.clients.try_read()?;
 
         if !snapshot_path.exists() {
-            let path = snapshot_path.as_path().parent().unwrap();
+            let path = snapshot_path.as_path().parent().ok_or_else(|| {
+                ClientError::SnapshotfileMissing("Parent directory of snapshot file does not exist".to_string())
+            })?;
             if let Err(io_error) = std::fs::create_dir_all(path) {
                 return Err(ClientError::SnapshotfileMissing(
                     "Could not create snapshot file".to_string(),
