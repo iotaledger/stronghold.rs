@@ -44,7 +44,7 @@ pub enum ClientError {
     ConnectionFailure(String),
 
     #[error("Snapshot file is missing ({0})")]
-    SnapshotfileMissing(String),
+    SnapshotFileMissing(String),
 }
 
 #[cfg(feature = "p2p")]
@@ -102,7 +102,7 @@ impl From<Box<dyn Any>> for ClientError {
 impl From<SnapshotError> for ClientError {
     fn from(se: SnapshotError) -> Self {
         match se {
-            SnapshotError::MissingFile(path) => ClientError::SnapshotfileMissing(path),
+            SnapshotError::MissingFile(path) => ClientError::SnapshotFileMissing(path),
             SnapshotError::Io(inner) => ClientError::Inner(inner.to_string()),
             SnapshotError::CorruptedContent(inner) => ClientError::Inner(inner),
             SnapshotError::InvalidFile(inner) => ClientError::Inner(inner),

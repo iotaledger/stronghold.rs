@@ -385,7 +385,7 @@ fn test_load_client_from_non_existing_snapshot() {
     let result = match stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path) {
         Err(client_error) => {
             std::mem::discriminant(&client_error)
-                == std::mem::discriminant(&ClientError::SnapshotfileMissing("obo".to_string()))
+                == std::mem::discriminant(&ClientError::SnapshotFileMissing("obo".to_string()))
         }
         Ok(_) => false,
     };

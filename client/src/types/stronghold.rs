@@ -204,7 +204,7 @@ impl Stronghold {
                 .to_str()
                 .ok_or_else(|| ClientError::Inner("Cannot display path as string".to_string()))?;
 
-            return Err(ClientError::SnapshotfileMissing(path.to_string()));
+            return Err(ClientError::SnapshotFileMissing(path.to_string()));
         }
 
         // CRITICAL SECTION
@@ -258,10 +258,10 @@ impl Stronghold {
 
         if !snapshot_path.exists() {
             let path = snapshot_path.as_path().parent().ok_or_else(|| {
-                ClientError::SnapshotfileMissing("Parent directory of snapshot file does not exist".to_string())
+                ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
             })?;
             if let Err(io_error) = std::fs::create_dir_all(path) {
-                return Err(ClientError::SnapshotfileMissing(
+                return Err(ClientError::SnapshotFileMissing(
                     "Could not create snapshot file".to_string(),
                 ));
             }
