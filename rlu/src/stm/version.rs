@@ -12,6 +12,7 @@ use std::{
         Arc, Mutex,
     },
     thread::ThreadId,
+    time::Duration,
 };
 
 /// This enum is for internal use only. It indicates either if
@@ -64,6 +65,10 @@ impl VersionLock {
         loop {
             // loop {
             if self.is_locked() {
+                // safe some cpu time
+                #[cfg(feature = "threaded")]
+                std::thread::sleep(Duration::from_millis(1));
+
                 // indicate spin lock to the cpu
                 std::hint::spin_loop();
 
