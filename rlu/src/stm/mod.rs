@@ -104,44 +104,6 @@ where
     }
 }
 
-// #[cfg(feature = "threaded")]
-// impl<T> TVar<T>
-// where
-//     T: Clone,
-// {
-//     /// Returns Ok(true), if this var has been locked by this thread
-//     /// FIXME: this method has a weird logic. If some thread_id is present
-//     /// and locked and if the thread_id is the same, then return true,
-//     /// otherwise false.
-//     ///
-//     /// if NO thread id is present, then this would a thrird option
-//     /// and true is returned, but this would be semantically incorrect and creates confusion
-//     fn thread_locked(&self) -> Result<ThreadLockState, TxError> {
-//         let guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
-//         if let Some(id) = *guard {
-//             return match id.eq(&std::thread::current().id()) {
-//                 true => Ok(ThreadLockState::Same),
-//                 false => Ok(ThreadLockState::Foreign),
-//             };
-//         }
-//         Ok(ThreadLockState::None)
-//     }
-
-//     /// Sets the current thread's id as holding the lock
-//     fn set_thread_lock(&self) -> Result<(), TxError> {
-//         let mut guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
-//         *guard = Some(std::thread::current().id());
-//         Ok(())
-//     }
-
-//     /// Clears the current thread's id from holding the lock
-//     fn clear_thread_lock(&self) -> Result<(), TxError> {
-//         let mut guard = self.locked_by.lock().map_err(|_| TxError::LockPresent)?;
-//         *guard = None;
-//         Ok(())
-//     }
-// }
-
 #[derive(Clone, Default)]
 pub struct Stm {
     global: VersionClock,
@@ -208,7 +170,7 @@ impl Stm {
                 }
                 Err(e) => {
                     info!("TRANSACTION({:?}): FAILED. RETRYING", std::thread::current().id());
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // std::thread::sleep(std::time::Duration::from_millis(100));
                     continue;
                 } // this can be augmented with a strategy
             }
@@ -505,15 +467,15 @@ mod tests {
     #[test]
     #[cfg(feature = "threaded")]
     fn test_stm_threaded() {
-        #[cfg(feature = "verbose")]
-        env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Info)
-            .init();
+        // #[cfg(feature = "verbose")]
+        // env_logger::builder()
+        //     .is_test(true)
+        //     .filter_level(log::LevelFilter::Info)
+        //     .init();
 
         let mut rng = rand::thread_rng();
         let stm = Stm::default();
-        let entries: usize = rng.gen_range(2..100);
+        let entries: usize = 100;
 
         let expected: HashSet<String> = (0..entries)
             .map(|_| rng.gen_range(0..256))
@@ -521,7 +483,7 @@ mod tests {
             .collect();
 
         let set: TVar<HashSet<String>> = stm.create(HashSet::new());
-        let pool = ThreadPool::new(8);
+        let pool = ThreadPool::new(4);
 
         for value in &expected {
             let stm_a = stm.clone();

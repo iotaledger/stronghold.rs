@@ -14,7 +14,7 @@ keywords = [ "iota", "stronghold", "security" ]
 path = "src/lib.rs"
 
 [features]
-default = ["threaded"]
+default = ["threaded", "verbose"]
 async = ["futures"]
 threaded = []
 verbose = []
