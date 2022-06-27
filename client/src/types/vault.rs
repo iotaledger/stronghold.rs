@@ -94,6 +94,3 @@ impl ClientVault {
         Ok(data)
     }
 }
-
-// #[cfg(feature = "p2p")]
-// impl ClientVault {}

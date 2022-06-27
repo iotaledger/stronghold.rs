@@ -12,7 +12,8 @@ use core::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
 };
-use crypto::hashes::sha;
+// use crypto::hashes::sha;
+use crypto::hashes::{blake2b, Digest};
 use zeroize::Zeroize;
 
 use serde::{
@@ -58,10 +59,10 @@ impl LockedMemory for NonContiguousMemory {
     }
 
     /// Unlocks the memory and returns an unlocked Buffer
-    // To retrieve secret value you xor the hash contained in shard1 with value in shard2
+    /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
-        let mut data1 = [0u8; NC_DATA_SIZE];
-        sha::SHA256(&self.get_buffer_from_shard1().borrow(), &mut data1);
+        let data1 = blake2b::Blake2b256::digest(&*self.get_buffer_from_shard1().borrow());
+
         let data = match &self.shard2 {
             RamShard(ram2) => {
                 let buf = ram2.unlock()?;
@@ -85,8 +86,7 @@ impl NonContiguousMemory {
             return Err(NCSizeNotAllowed);
         };
         let random = random_vec(NC_DATA_SIZE);
-        let mut digest = [0u8; NC_DATA_SIZE];
-        sha::SHA256(&random, &mut digest);
+        let digest = blake2b::Blake2b256::digest(&random);
         let digest = xor(&digest, payload, NC_DATA_SIZE);
 
         let ram1 = RamMemory::alloc(&random, NC_DATA_SIZE)?;
@@ -128,10 +128,8 @@ impl NonContiguousMemory {
         let new_data1 = xor(data_of_old_shard1, &random, NC_DATA_SIZE);
         let new_shard1 = RamShard(RamMemory::alloc(&new_data1, NC_DATA_SIZE)?);
 
-        let mut hash_of_old_shard1 = [0u8; NC_DATA_SIZE];
-        let mut hash_of_new_shard1 = [0u8; NC_DATA_SIZE];
-        sha::SHA256(data_of_old_shard1, &mut hash_of_old_shard1);
-        sha::SHA256(&new_data1, &mut hash_of_new_shard1);
+        let hash_of_old_shard1 = blake2b::Blake2b256::digest(&*buf_of_old_shard1.borrow());
+        let hash_of_new_shard1 = blake2b::Blake2b256::digest(&new_data1);
 
         let new_shard2 = match &self.shard2 {
             RamShard(ram2) => {

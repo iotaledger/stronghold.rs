@@ -1,6 +1,0 @@
-{
-label: "Stronghold",
-to: "stronghold.rs/welcome",
-className: "icon-stronghold",
-activeBaseRegex: 'stronghold.rs/.*'
-},

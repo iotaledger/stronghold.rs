@@ -1,5 +1,10 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
+// This overrides clippy's warning to hold a non-async lock across await points
+// and should be removed as soon as possible.
+#![allow(clippy::await_holding_lock)]
+
 use super::{location, snapshot};
 
 #[cfg(feature = "p2p")]
@@ -228,7 +233,7 @@ impl Client {
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.execure_procedure_chained(vec![procedure.into()]);
+        let res = self.execute_procedure_chained(vec![procedure.into()]);
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
         Ok(mapped)
     }
@@ -236,7 +241,7 @@ impl Client {
     /// Executes a list of cryptographic [`crate::procedures::Procedure`]s sequentially and returns a collected output
     ///
     /// # Example
-    pub fn execure_procedure_chained(
+    pub fn execute_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {
