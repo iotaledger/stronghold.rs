@@ -73,12 +73,12 @@ jobs:
           bindings/native/go/dist/*.hpp
 
     # If the C header files weren't found, error out
-    - name: Fail if C bindings could not be found
-      # if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
-      if: steps.cache_bind_gen.outputs.cache-hit != 'true'
-      uses: actions/github-script@v6
-      with:
-        script: core.setFailed(`Actions failed to find the cached generated C bindings`);
+    # - name: Fail if C bindings could not be found
+    #   # if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+    #   if: steps.cache_bind_gen.outputs.cache-hit != 'true'
+    #   uses: actions/github-script@v6
+    #   with:
+    #     script: core.setFailed(`Actions failed to find the cached generated C bindings`);
 
     # Get the cached rust dependencies from a previous run
     - name: Cache Rust dependencies
@@ -99,6 +99,18 @@ jobs:
       with:
         toolchain: stable
         override: true
+
+    - name: Install cbindgen
+      # Only install cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: cargo install --force cbindgen
+
+    - name: Generate C bindings
+      # Only run cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: |
+        cd bindings/native
+        ./bindgen.sh
 
     # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
     - name: Install LLVM and Clang
