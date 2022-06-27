@@ -1,18 +1,22 @@
 {
-  "name": "documentation",
+  "name": "stronghold",
   "version": "0.0.0",
-  "private": "true",
+  "private": true,
   "scripts": {
-    "start": "iota-wiki-cli start",
-    "clean": "iota-wiki-cli clean",
-    "setup": "iota-wiki-cli setup",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "iota-wiki start",
+    "build": "iota-wiki build"
   },
   "license": "UNLICENSED",
   "engines": {
     "node": ">=14.14.0"
   },
   "dependencies": {
-    "iota-wiki-cli": "git+https://github.com/iota-community/iota-wiki-cli.git#v1.3.0"
-  }
+    "remark-code-import": "^0.3.0",
+    "remark-import-partial": "^0.0.2",
+    "remark-remove-comments": "^0.2.0"
+  },
+  "devDependencies": {
+    "@iota-community/iota-wiki-cli": "iota-community/iota-wiki-cli#v2"
+  },
+  "packageManager": "yarn@3.2.0"
 }

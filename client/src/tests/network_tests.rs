@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{future, sync::Arc, time::Duration};
+use std::{future, ptr::addr_of, sync::Arc, time::Duration};
 
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
@@ -32,7 +32,7 @@ use crate::{
 
 /// Generates a random [`Location`].
 pub fn location() -> Location {
-    Location::generic(rand::bytestring(4096), rand::bytestring(4096))
+    Location::generic(rand::variable_bytestring(4096), rand::variable_bytestring(4096))
 }
 
 /// generates a random string based on a coinflip.
@@ -506,7 +506,7 @@ async fn test_p2p_firewall_old() {
 async fn test_p2p_cycle() {
     // -- setup
     let key_pair = Keypair::generate_ed25519();
-    let remote_client_path = rand::bytestring(1024);
+    let remote_client_path = rand::variable_bytestring(1024);
     let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
 
@@ -549,7 +549,7 @@ async fn test_p2p_write_read_delete_remote_store() {
     let remote_key_pair = Keypair::generate_ed25519();
     let remote_public_key = remote_key_pair.public();
     let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
-    let remote_client_path = rand::bytestring(1024);
+    let remote_client_path = rand::variable_bytestring(1024);
     let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
 
@@ -582,7 +582,7 @@ async fn test_p2p_write_read_delete_remote_store() {
     let server = tokio::spawn(async move { remote_stronghold_server.serve(receiver_terminate_signal).await });
     // tests come here
     {
-        let local_client_path = rand::bytestring(1024);
+        let local_client_path = rand::variable_bytestring(1024);
         let local_key_pair = Keypair::generate_ed25519();
         let local_public_key = local_key_pair.public();
         let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());
@@ -615,8 +615,8 @@ async fn test_p2p_write_read_delete_remote_store() {
 
         //  run this test a couple of times
         for _ in 0..10 {
-            let key = rand::bytestring(1024);
-            let data = rand::bytestring(1024);
+            let key = rand::variable_bytestring(1024);
+            let data = rand::variable_bytestring(1024);
 
             let result = peer.remote_write_store(key.clone(), data.clone(), None).await;
             assert!(result.is_ok(), "Assertion Failed= {:?}", result);
@@ -653,7 +653,7 @@ async fn test_p2p_write_read_to_remote_store() {
     let remote_key_pair = Keypair::generate_ed25519();
     let remote_public_key = remote_key_pair.public();
     let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
-    let remote_client_path = rand::bytestring(1024);
+    let remote_client_path = rand::variable_bytestring(1024);
     let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
 
@@ -687,7 +687,7 @@ async fn test_p2p_write_read_to_remote_store() {
 
     // tests come here
     {
-        let local_client_path = rand::bytestring(1024);
+        let local_client_path = rand::variable_bytestring(1024);
         let local_key_pair = Keypair::generate_ed25519();
         let local_public_key = local_key_pair.public();
         let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());
@@ -720,8 +720,8 @@ async fn test_p2p_write_read_to_remote_store() {
 
         //  run this test a couple of times
         for _ in 0..10 {
-            let key = rand::bytestring(1024);
-            let data = rand::bytestring(1024);
+            let key = rand::variable_bytestring(1024);
+            let data = rand::variable_bytestring(1024);
 
             let result = peer.remote_write_store(key.clone(), data.clone(), None).await;
             assert!(result.is_ok(), "Assertion Failed= {:?}", result);
@@ -756,7 +756,7 @@ async fn test_write_remote_secret_export_public_key() {
     let remote_key_pair = Keypair::generate_ed25519();
     let remote_public_key = remote_key_pair.public();
     let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
-    let remote_client_path = rand::bytestring(1024);
+    let remote_client_path = rand::variable_bytestring(1024);
     let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(true);
 
@@ -790,7 +790,7 @@ async fn test_write_remote_secret_export_public_key() {
 
     // tests come here
     {
-        let local_client_path = rand::bytestring(1024);
+        let local_client_path = rand::variable_bytestring(1024);
         let local_key_pair = Keypair::generate_ed25519();
         let local_public_key = local_key_pair.public();
         let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());
@@ -822,8 +822,8 @@ async fn test_write_remote_secret_export_public_key() {
         assert!(result.is_ok(), "Assertion Failed= {:?}", result);
 
         // prepare procedure to generate key on remote side
-        let remote_vault_path = rand::bytestring(1024);
-        let remote_record_path = rand::bytestring(1024);
+        let remote_vault_path = rand::variable_bytestring(1024);
+        let remote_record_path = rand::variable_bytestring(1024);
         let output = Location::const_generic(remote_vault_path, remote_record_path);
 
         let proc = GenerateKey {
@@ -874,54 +874,11 @@ async fn test_write_remote_secret_export_public_key() {
 /// of the client, will be used to remotely execute function calls.
 #[tokio::test]
 async fn test_p2p_config() {
-    // let remote_client_path = rand::bytestring(1024);
-    // let remote = Stronghold::default();
-    // let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
-
-    // // generate a new keypair
-    // let remote_keypair = Keypair::generate_ed25519();
-    // let remote_keypair_location =
-    //     Location::const_generic(b"remote-keypair-location".to_vec(), b"remote-keypair-location".to_vec());
-    // let _ = remote.create_client_with_keys(
-    //     remote_client_path.clone(),
-    //     remote_keypair,
-    //     remote_keypair_location.clone(),
-    // );
-
-    // let result = remote.create_client(remote_client_path.clone());
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // let result = remote
-    //     .spawn_p2p(remote_client_path, config, Some(remote_keypair_location))
-    //     .await;
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // let (mut sender_terminate_signal, receiver_terminate_signal) = futures::channel::mpsc::unbounded();
-
-    // let result = remote.start_listening(None).await;
-    // assert!(result.is_ok(), "Assertion Failed= {:?}", result);
-
-    // // keep handle to server
-    // let stronghold_clone = remote.clone();
-    // let server = tokio::spawn(async move { stronghold_clone.serve(receiver_terminate_signal).await });
-
-    // // test cases here
-    // // ..
-
-    // // send termination signal
-    // assert!(sender_terminate_signal.send(()).await.is_ok());
-
-    // // await server event loop shutdown
-    // assert!(server.await.is_ok());
-
-    // // shutdown listening
-    // let result = remote.stop_listening().await;
-    // println!("stop listening: {:?}", result);
-    // assert!(result.is_ok());
+    // add test
 }
 #[tokio::test]
 async fn test_p2p_firewall() {
-    //
+    // add test
 }
 
 // FIXME: this test fails on remote_sync. Returning the StrongholdNetworkResult with
@@ -934,7 +891,7 @@ async fn test_synchronize_snapshots() {
     let remote_key_pair = Keypair::generate_ed25519();
     let remote_public_key = remote_key_pair.public();
     let remote_key_path = Location::generic(b"remote-key-path".to_vec(), b"remote-key-path".to_vec());
-    let remote_client_path = rand::bytestring(1024);
+    let remote_client_path = rand::variable_bytestring(1024);
     let remote = Stronghold::default();
     let config = NetworkConfig::new(Permissions::allow_all()).with_mdns_enabled(false);
 
@@ -978,7 +935,7 @@ async fn test_synchronize_snapshots() {
 
     // tests come here
     {
-        let local_client_path = rand::bytestring(1024);
+        let local_client_path = rand::variable_bytestring(1024);
         let local_key_pair = Keypair::generate_ed25519();
         let local_public_key = local_key_pair.public();
         let local_key_path = Location::generic(b"keypair-path".to_vec(), b"keypair-path".to_vec());

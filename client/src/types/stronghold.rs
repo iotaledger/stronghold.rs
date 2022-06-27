@@ -55,6 +55,7 @@ use crate::network_old::Network;
 
 #[cfg(feature = "p2p")]
 use self::network_old::StrongholdRequest;
+
 #[cfg(feature = "p2p")]
 use self::network_old::{ClientRequest, NetworkConfig, SnapshotRequest, StrongholdNetworkResult};
 
@@ -197,6 +198,15 @@ impl Stronghold {
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.try_write()?;
 
+        if !snapshot_path.exists() {
+            let path = snapshot_path
+                .as_path()
+                .to_str()
+                .ok_or_else(|| ClientError::Inner("Cannot display path as string".to_string()))?;
+
+            return Err(ClientError::SnapshotFileMissing(path.to_string()));
+        }
+
         // CRITICAL SECTION
         let buffer = keyprovider
             .try_unlock()
@@ -245,6 +255,17 @@ impl Stronghold {
     /// # Example
     pub fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
         let clients = self.clients.try_read()?;
+
+        if !snapshot_path.exists() {
+            let path = snapshot_path.as_path().parent().ok_or_else(|| {
+                ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
+            })?;
+            if let Err(io_error) = std::fs::create_dir_all(path) {
+                return Err(ClientError::SnapshotFileMissing(
+                    "Could not create snapshot file".to_string(),
+                ));
+            }
+        }
 
         let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
         drop(clients);
@@ -314,23 +335,6 @@ impl Stronghold {
 }
 
 // networking functionality
-
-// macro_rules! impl_request_handler {
-//     ($name:ident, ($self:ident, $request:ident, $client_path:ident, $tx:ident),  $body:expr) => {
-//         pub(crate) fn $name<P, R>(
-//             $self,
-//             $request: R,
-//             $client_path: P,
-//             $tx: Sender<R::Response>,
-//         ) -> Result<(), ClientError>
-//         where
-//             P: AsRef<[u8]>,
-//             R: Request<Response = bool>,
-//         {
-//             $body
-//         }
-//     };
-// }
 
 /// This enum is solely used for steering the control flow
 /// of a serving [`Stronghold`] instance
@@ -412,7 +416,7 @@ impl Stronghold {
             }
 
             network_old::ClientRequest::Procedures { procedures } => {
-                let result = client.execure_procedure_chained(procedures);
+                let result = client.execute_procedure_chained(procedures);
                 assert!(result.is_ok());
                 assert!(tx.send(StrongholdNetworkResult::Proc(result)).is_ok());
 
