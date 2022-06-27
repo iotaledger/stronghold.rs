@@ -17,7 +17,7 @@ name = "p2p"
 
 [dependencies]
 stronghold-derive = { path = "../derive", version = "0.3" }
-libp2p = { version = "0.43.0", default-features = false, features = [ "noise", "yamux", "mdns", "relay", "serde" ] }
+libp2p = { version = "0.45.1", default-features = false, features = [ "noise", "yamux", "mdns", "relay", "serde" ] }
 serde = { version = "1.0", default-features = false, features = [ "alloc", "derive" ] }
 serde_json = { version = "1.0", default-features = false, features = [ "alloc" ] }
 smallvec = { version = "1.6.1", features = [ "serde" ] }
@@ -37,4 +37,4 @@ regex = "1.5"
 iota_stronghold = { path = "../client", features = [ "p2p" ] }
 stronghold-utils = { version = "0.4.1", path = "../utils" }
 tokio = { version = "1.10", features = [ "time", "macros", "io-std", "io-util" ] }
-libp2p = { version = "0.43.0", default-features = false, features = [ "tcp-tokio" ] }
+libp2p = { version = "0.45.1", default-features = false, features = [ "tcp-tokio" ] }
