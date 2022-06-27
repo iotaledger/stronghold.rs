@@ -1,5 +1,13 @@
 # Changelog
 
+## \[0.6.4]
+
+- iota-stronghold bumped utils dependency
+  - [d350acfd](https://www.github.com/iotaledger/stronghold.rs/commit/d350acfd17dcee55f4aaa2ce0ccaa2e84ed1bd34) fix: bump stronghold patch version on 2022-06-27
+  - [2d08c650](https://www.github.com/iotaledger/stronghold.rs/commit/2d08c6506b63b11f45cec356284cde66bfe33ae3) fix: module name on 2022-06-27
+  - [0ddd0d4a](https://www.github.com/iotaledger/stronghold.rs/commit/0ddd0d4a77a225859c9de8ca1128eed43383e344) apply version updates on 2022-06-27
+  - [92db69ea](https://www.github.com/iotaledger/stronghold.rs/commit/92db69eaffaec1dca1468d2900904152785d2ed5) fix: bump dependency on utils to 0.4.1 on 2022-06-27
+
 ## \[0.6.3]
 
 - bump patch version
