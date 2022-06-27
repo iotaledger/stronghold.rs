@@ -7,6 +7,7 @@ mod wrapper;
 
 //#![allow(unused_imports)]
 use log::LevelFilter;
+use log::*;
 
 use std::{
     cell::RefCell,
@@ -43,7 +44,10 @@ pub extern "C" fn stronghold_set_log_level(log_level: libc::size_t) {
         _ => Some(LevelFilter::Off),
     };
 
-    log::set_max_level(filter.unwrap());
+    let _logger = env_logger::builder()
+        .is_test(false)
+        .filter_level(filter.unwrap())
+        .try_init();
 }
 
 /// # Safety
@@ -111,7 +115,7 @@ pub unsafe extern "C" fn stronghold_load(
         }
     };
 
-    log::info!("[Rust] Snapshot loaded");
+    info!("[Rust] Snapshot loaded");
 
     Box::into_raw(Box::new(stronghold_wrapper))
 }
@@ -119,34 +123,34 @@ pub unsafe extern "C" fn stronghold_load(
 /// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn stronghold_destroy_stronghold(stronghold_ptr: *mut StrongholdWrapper) {
-    log::info!("[Rust] Destroy started");
+    info!("[Rust] Destroy started");
 
     if stronghold_ptr.is_null() {
-        log::error!("[Rust] Stronghold pointer was null!");
+        error!("[Rust] Stronghold pointer was null!");
 
         return;
     }
 
     Box::from_raw(stronghold_ptr);
 
-    log::info!("[Rust] Destroyed instance");
+    info!("[Rust] Destroyed instance");
 }
 
 // TODO: Find better way to generalize destroy into one function
 /// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn stronghold_destroy_data_pointer(ptr: *mut u8) {
-    log::info!("[Rust] Destroy started");
+    info!("[Rust] Destroy started");
 
     if ptr.is_null() {
-        log::error!("[Rust] Data pointer was null!");
+        error!("[Rust] Data pointer was null!");
 
         return;
     }
 
     Box::from_raw(ptr);
 
-    log::info!("[Rust] Destroyed instance");
+    info!("[Rust] Destroyed instance");
 }
 
 /// # Safety
@@ -156,7 +160,7 @@ pub unsafe extern "C" fn stronghold_generate_ed25519_keypair(
     key_c: *const libc::c_char,
     record_path_c: *const libc::c_char,
 ) -> *mut u8 {
-    log::info!("[Rust] Generate Seed started");
+    info!("[Rust] Generate ED25519 Keypair started");
 
     let key = CStr::from_ptr(key_c);
     let key_as_hash = hash_blake2b(key.to_str().unwrap().to_string());
@@ -164,14 +168,14 @@ pub unsafe extern "C" fn stronghold_generate_ed25519_keypair(
     let record_path = CStr::from_ptr(record_path_c);
     let record_path = record_path.to_str().unwrap().to_string();
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     let chain_code = match stronghold_wrapper.generate_ed25519_keypair(key_as_hash, record_path) {
         Ok(res) => res,
@@ -193,7 +197,7 @@ pub unsafe extern "C" fn stronghold_write_vault(
     data_c: *const libc::c_uchar,
     data_length: libc::size_t,
 ) -> bool {
-    log::info!("[Rust] Generate Seed started");
+    info!("[Rust] Writing Vault started");
 
     let key = CStr::from_ptr(key_c);
     let key_as_hash = hash_blake2b(key.to_str().unwrap().to_string());
@@ -202,14 +206,14 @@ pub unsafe extern "C" fn stronghold_write_vault(
     let record_path = record_path.to_str().unwrap().to_string();
     let data = slice::from_raw_parts(data_c, data_length as usize);
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec()) {
         set_last_error(err);
@@ -225,19 +229,19 @@ pub unsafe extern "C" fn stronghold_generate_seed(
     stronghold_ptr: *mut StrongholdWrapper,
     key_c: *const libc::c_char,
 ) -> bool {
-    log::info!("[Rust] Generate Seed started");
+    info!("[Rust] Generate Seed started");
 
     let key = CStr::from_ptr(key_c);
     let key_as_hash = hash_blake2b(key.to_str().unwrap().to_string());
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.generate_seed(key_as_hash) {
         set_last_error(err);
@@ -254,19 +258,19 @@ pub unsafe extern "C" fn stronghold_derive_seed(
     key_c: *const libc::c_char,
     address_index: u32,
 ) -> bool {
-    log::info!("[Rust] Generate Seed started");
+    info!("[Rust] Derive Seed started");
 
     let key = CStr::from_ptr(key_c);
     let key_as_hash = hash_blake2b(key.to_str().unwrap().to_string());
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     if let Err(err) = stronghold_wrapper.derive_seed(key_as_hash, address_index) {
         set_last_error(err);
@@ -282,19 +286,19 @@ pub unsafe extern "C" fn stronghold_get_public_key(
     stronghold_ptr: *mut StrongholdWrapper,
     record_path_c: *const libc::c_char,
 ) -> *mut u8 {
-    log::info!("[Rust] Get public key started");
+    info!("[Rust] Get public key started");
 
     let record_path = CStr::from_ptr(record_path_c);
     let record_path = record_path.to_str().unwrap().to_string();
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     let public_key = match stronghold_wrapper.get_public_key(record_path) {
         Ok(res) => res,
@@ -319,14 +323,14 @@ pub unsafe extern "C" fn stronghold_sign(
     let record_path = record_path.to_str().unwrap().to_string();
     let data = slice::from_raw_parts(data_c, data_length as usize);
 
-    log::info!("[Rust] Getting Stronghold instance from Box");
+    info!("[Rust] Getting Stronghold instance from Box");
 
     let stronghold_wrapper = {
         assert!(!stronghold_ptr.is_null());
         &mut *stronghold_ptr
     };
 
-    log::info!("[Rust] Got Stronghold instance from Box");
+    info!("[Rust] Got Stronghold instance from Box");
 
     let signature = match stronghold_wrapper.sign(record_path, data.to_vec()) {
         Ok(res) => res,
