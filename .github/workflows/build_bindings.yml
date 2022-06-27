@@ -20,7 +20,7 @@ jobs:
     - uses: actions/checkout@v3
     
     - id: rust_headers_hash
-      run: echo "::set-output name=rust_hash::${{ hashFiles('bindings/native/*.toml', 'bindings/native/src/*.rs') }}"
+      run: echo "::set-output name=rust_hash::${{ hashFiles('bindings/native/*.toml', 'bindings/native/src/*.rs', 'bindings/native/go/*.go') }}"
 
     - name: Cache bindings
       id: cache_bind_gen
