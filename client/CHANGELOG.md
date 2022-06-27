@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.6.3]
+
+- bump patch version
+  - [d350acfd](https://www.github.com/iotaledger/stronghold.rs/commit/d350acfd17dcee55f4aaa2ce0ccaa2e84ed1bd34) fix: bump stronghold patch version on 2022-06-27
+  - [2d08c650](https://www.github.com/iotaledger/stronghold.rs/commit/2d08c6506b63b11f45cec356284cde66bfe33ae3) fix: module name on 2022-06-27
+
 ## \[0.6.2]
 
 - split random byte string into fixed and variable sized
