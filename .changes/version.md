@@ -1,5 +1,5 @@
 ---
-"iota_stronghold": patch
+"iota-stronghold": patch
 ---
 
 bump patch version
