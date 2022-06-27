@@ -9,21 +9,10 @@ use crate::stm::error::*;
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
-    thread::ThreadId,
     time::Duration,
 };
-
-/// This enum is for internal use only. It indicates either if
-/// it's the `Same` thread locking a [`crate::stm::TVar`], a `Foreign` thread or if
-/// `None` is actually present.
-#[derive(Debug)]
-pub(crate) enum ThreadLockState {
-    Same,
-    Foreign,
-    None,
-}
 
 /// A [`VersionLock`] is a combination of a simple bounded spin-locking mechanism, needing
 /// 1-bit of a word-sized value to lock a certain region. The rest of the value is being
@@ -32,9 +21,6 @@ pub(crate) enum ThreadLockState {
 #[derive(Default, Clone, Debug)]
 pub struct VersionLock {
     atomic: Arc<AtomicUsize>,
-
-    #[cfg(feature = "threaded")]
-    thread_id: Arc<Mutex<Option<ThreadId>>>,
 }
 
 impl VersionLock {
@@ -42,9 +28,6 @@ impl VersionLock {
     pub fn new(version: usize) -> Self {
         Self {
             atomic: Arc::new(AtomicUsize::new(version)),
-
-            #[cfg(feature = "threaded")]
-            thread_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -85,12 +68,6 @@ impl VersionLock {
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
 
-        #[cfg(feature = "threaded")]
-        {
-            let mut guard = self.thread_id.lock().map_err(|e| TxError::LockPresent)?;
-            *guard = Some(std::thread::current().id());
-        }
-
         Ok(())
     }
 
@@ -99,34 +76,7 @@ impl VersionLock {
     pub fn unlock(&self) -> Result<(), TxError> {
         self.atomic.fetch_and(mask(), Ordering::SeqCst);
 
-        #[cfg(feature = "threaded")]
-        {
-            let mut guard = self.thread_id.lock().map_err(|e| TxError::LockPresent)?;
-            *guard = None;
-        }
-
         Ok(())
-    }
-
-    #[cfg(feature = "threaded")]
-    pub fn locked_by(&self) -> Result<Option<ThreadId>, TxError> {
-        Ok(*self.thread_id.lock().map_err(|e| TxError::LockPresent)?)
-    }
-
-    /// Returns a [`ThreadLockState`] indicating, if the lock is being held either `ThreadLockState::Same` us,
-    /// a `ThreadLockState::Foreign` thread or `ThreadLockState::None` holds the lock
-    #[cfg(feature = "threaded")]
-    pub(crate) fn is_locked_by(&self) -> Result<ThreadLockState, TxError> {
-        match &*self.thread_id.lock().map_err(|e| TxError::LockPresent)? {
-            Some(inner) => {
-                if std::thread::current().id().eq(inner) {
-                    return Ok(ThreadLockState::Same);
-                }
-
-                Ok(ThreadLockState::Foreign)
-            }
-            None => Ok(ThreadLockState::None),
-        }
     }
 
     /// Returns `true`, if the version lock is present

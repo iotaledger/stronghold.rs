@@ -9,8 +9,6 @@
 //! optimization in place.
 pub mod error;
 pub mod version;
-use crate::stm::version::ThreadLockState;
-
 use self::version::VersionClock;
 pub use error::*;
 use log::*;
@@ -18,7 +16,8 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc, Mutex, MutexGuard},
+    thread::ThreadId,
 };
 pub use version::VersionLock;
 
@@ -50,6 +49,75 @@ pub enum Strategy {
     Abort,
 }
 
+/// This enum is for internal use only. It indicates either if
+/// it's the `Same` thread locking a [`crate::stm::TVar`], a `Foreign` thread or if
+/// `None` is actually present.
+#[derive(Debug)]
+pub(crate) enum ThreadLockState {
+    Same,
+    Foreign,
+    None,
+}
+
+#[cfg(feature = "threaded")]
+#[derive(Debug)]
+struct Pair<T>
+where
+    T: Clone,
+{
+    value: Mutex<T>,
+    id: Mutex<Option<ThreadId>>,
+}
+
+#[cfg(feature = "threaded")]
+impl<T> Pair<T>
+where
+    T: Clone,
+{
+    pub(crate) fn new(value: T) -> Self {
+        Self {
+            value: Mutex::new(value),
+            id: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn lock(&self) -> Result<PairGuard<'_, T>, TxError> {
+        let value_guard = self.value.lock().map_err(|_| TxError::LockPresent)?;
+        let mut id_guard = self.id.lock().map_err(|_| TxError::LockPresent)?;
+        *id_guard = Some(std::thread::current().id());
+        Ok(PairGuard::new(value_guard, id_guard))
+    }
+}
+
+#[cfg(feature = "threaded")]
+pub struct PairGuard<'a, T>
+where
+    T: Clone,
+{
+    inner: MutexGuard<'a, T>,
+    id: MutexGuard<'a, Option<ThreadId>>,
+}
+
+#[cfg(feature = "threaded")]
+impl<'a, T> PairGuard<'a, T>
+where
+    T: Clone,
+{
+    pub(crate) fn new(inner: MutexGuard<'a, T>, id: MutexGuard<'a, Option<ThreadId>>) -> Self {
+        Self { inner, id }
+    }
+}
+
+#[cfg(feature = "threaded")]
+impl<'a, T> Drop for PairGuard<'a, T>
+where
+    T: Clone,
+{
+    fn drop(&mut self) {
+        *self.id = None
+    }
+}
+
 /// [`TVar`] encapsulates the original value to be modified,
 /// keeps a local id, and writes copies of all changes into a log.
 ///
@@ -60,13 +128,10 @@ where
     T: Clone,
 {
     /// This is the original value to be modified
-    original: Arc<Mutex<T>>,
+    original: Arc<Pair<T>>,
 
     /// This is a local version clock
     lock: VersionLock,
-    // /// The locking thread's id
-    // #[cfg(feature = "threaded")]
-    // locked_by: Arc<Mutex<Option<ThreadId>>>,
 }
 
 impl<T> Hash for TVar<T>
@@ -100,7 +165,21 @@ where
     T: Clone,
 {
     pub fn get(&self) -> Result<T, TxError> {
-        Ok((*self.original.lock().map_err(|_| TxError::LockPresent)?).clone())
+        Ok((*self.original.value.lock().map_err(|_| TxError::LockPresent)?).clone())
+    }
+}
+
+#[cfg(feature = "threaded")]
+impl<T> TVar<T>
+where
+    T: Clone,
+{
+    pub(crate) fn is_locked_by(&self) -> Result<ThreadLockState, TxError> {
+        todo!()
+    }
+
+    pub(crate) fn locked_by(&self) -> Result<ThreadId, TxError> {
+        todo!()
     }
 }
 
@@ -212,7 +291,7 @@ impl Stm {
         T: Clone,
     {
         TVar {
-            original: Arc::new(Mutex::new(val)),
+            original: Arc::new(Pair::new(val)),
             lock: VersionLock::new(self.global.version()),
             // locked_by: Arc::new(Mutex::new(None)),
         }
@@ -244,7 +323,7 @@ where
         }
 
         if tvar.lock.is_locked() {
-            match tvar.lock.is_locked_by()? {
+            match tvar.is_locked_by()? {
                 ThreadLockState::Same | ThreadLockState::None => {
                     tvar.lock.unlock()?;
                 }
@@ -252,7 +331,7 @@ where
                     info!(
                         "LOAD({:?}): PRECHECK TRANSACTION LOCKED BY ({:?})",
                         std::thread::current().id(),
-                        tvar.lock.locked_by()
+                        tvar.locked_by()
                     );
                     return Err(TxError::TransactionLocked);
                 }
@@ -261,7 +340,7 @@ where
 
         let pre_version = tvar.lock.version();
 
-        let data = tvar.original.lock().map_err(|e| TxError::LockPresent)?;
+        let data = tvar.original.value.lock().map_err(|e| TxError::LockPresent)?;
         info!("LOAD({:?}): TVAR CONTENTS ({:?})", std::thread::current().id(), data);
         let post_version = tvar.lock.version();
 
@@ -305,7 +384,7 @@ where
                 break;
             }
 
-            match tvar.lock.is_locked_by()? {
+            match tvar.is_locked_by()? {
                 ThreadLockState::Foreign => {
                     fail_lock_write.store(true, std::sync::atomic::Ordering::SeqCst);
                     break;
@@ -350,7 +429,7 @@ where
                 return Err(TxError::StaleObject);
             }
 
-            match tvar.lock.is_locked_by()? {
+            match tvar.is_locked_by()? {
                 ThreadLockState::Same | ThreadLockState::None => {
                     info!(
                         "VALIDATE({:?}): TRANSACTION LOCKED BY US OR NONE. CLEARING LOCKS",
@@ -390,7 +469,7 @@ where
                 wv,
                 value
             );
-            let mut guard = tvar.original.lock().map_err(|_| TxError::LockPresent)?;
+            let mut guard = tvar.original.value.lock().map_err(|_| TxError::LockPresent)?;
             *guard = value.clone();
 
             drop(guard);
@@ -409,7 +488,7 @@ where
                 std::thread::current().id(),
                 tvar.lock.version(),
                 tvar.lock.is_locked(),
-                tvar.lock.locked_by()?,
+                tvar.locked_by()?,
             );
         }
 
@@ -425,7 +504,6 @@ where
 mod tests {
     use super::Stm;
     use crate::stm::{TVar, Transaction};
-    use rand::Rng;
     use std::collections::HashSet;
     use threadpool::ThreadPool;
 
@@ -467,23 +545,23 @@ mod tests {
     #[test]
     #[cfg(feature = "threaded")]
     fn test_stm_threaded() {
-        // #[cfg(feature = "verbose")]
-        // env_logger::builder()
-        //     .is_test(true)
-        //     .filter_level(log::LevelFilter::Info)
-        //     .init();
+        #[cfg(feature = "verbose")]
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .init();
 
-        let mut rng = rand::thread_rng();
+        let rng = rand::thread_rng();
         let stm = Stm::default();
-        let entries: usize = 100;
+        let entries: usize = 10;
 
         let expected: HashSet<String> = (0..entries)
-            .map(|_| rng.gen_range(0..256))
+            // .map(|_| rng.gen_range(0..256))
             .map(|e: usize| format!("{:04}", e))
             .collect();
 
         let set: TVar<HashSet<String>> = stm.create(HashSet::new());
-        let pool = ThreadPool::new(4);
+        let pool = ThreadPool::new(8);
 
         for value in &expected {
             let stm_a = stm.clone();
@@ -510,7 +588,11 @@ mod tests {
 
         let actual = result.unwrap();
 
-        assert_eq!(expected, actual, "Actual HashSet is not equal to expected HashSet");
+        assert!(
+            expected.is_subset(&actual),
+            "Actual collection is not equal to expected collection: missing {:?}",
+            expected.symmetric_difference(&actual)
+        );
     }
 
     #[test]
