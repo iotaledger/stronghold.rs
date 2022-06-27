@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.6.1]
+
+- Loading a snapshot file will now return a new `ClientError` variant `SnapshotFileMissing`, if the snapshot file is not present
+  Committing `Client` state into a snapshotfile will now check if all paths to the snapshot file are correct and will create the snapshot file, if it doesn't exist.
+  - [2dddda13](https://www.github.com/iotaledger/stronghold.rs/commit/2dddda1310b1676ee36b20adebd09e9607417923) fix: refactored naming of 'SnapshotfileMissing' to 'SnapshotFileMissing' on 2022-06-24
+
 ## \[0.6.0]
 
 - - update to crypto.rs `0.12.1`
