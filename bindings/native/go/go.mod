@@ -1,4 +1,4 @@
-module stronghold
+module github.com/iotaledger/stronghold.rs/bindings/native/go
 
 go 1.18
 

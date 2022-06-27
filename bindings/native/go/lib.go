@@ -36,6 +36,12 @@ func NewStrongholdUnsafe(key []byte) *StrongholdNative {
 	return stronghold
 }
 
+func NewStrongholdWithEnclave(enclave *memguard.Enclave) *StrongholdNative {
+	stronghold := &StrongholdNative{}
+	stronghold.enclave = enclave
+	return stronghold
+}
+
 type LogLevel int
 
 const (
