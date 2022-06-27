@@ -25,6 +25,19 @@ iota_stronghold         = { package = "iota_stronghold",   path = "../../client/
 engine                  = { package = "stronghold_engine",  path = "../../engine", version = "0.5.3" }
 tokio                   = { version = "1.15.0", features = ["full"] }
 base64                  = { version = "0.13.0" }
-iota-crypto             = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519" ] }
+iota-crypto = { version = "0.12.1", features = [
+  "aes-gcm",
+  "aes-kw",
+  "random",
+  "ed25519",
+  "sha",
+  "hmac",
+  "bip39-en",
+  "bip39-jp",
+  "slip10",
+  "chacha",
+  "x25519"
+] }
 lazy_static = "1.4.0"
-log                     = { version = "0.4.14" }
+env_logger = { version = "0.9.0" }
+log = { version = "0.4.14" }

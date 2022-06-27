@@ -3,12 +3,12 @@
 
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
-use iota_stronghold_new as stronghold;
-use iota_stronghold_new::procedures::WriteVault;
-use stronghold::{
+use iota_stronghold::procedures::WriteVault;
+use iota_stronghold::{
     procedures::{Chain, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate},
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
 };
+use log::*;
 use thiserror::Error as DeriveError;
 
 const CLIENT_PATH: &str = "wasp";
@@ -38,8 +38,8 @@ pub enum WrapperError {
     #[error("Failed to write client")]
     WriteClient,
 
-    #[error("Failed to execute procedure")]
-    ExecuteProcedure,
+    #[error("Failed to execute procedure: ({0})")]
+    ExecuteProcedure(String),
 }
 
 impl StrongholdWrapper {
@@ -128,7 +128,7 @@ impl StrongholdWrapper {
 
         let procedure_result = match self.client.execute_procedure(public_key_procedure) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::ExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err))),
         };
 
         let output: Vec<u8> = procedure_result.into();
@@ -148,7 +148,7 @@ impl StrongholdWrapper {
         let sign_procedure = WriteVault { data, location };
 
         if let Err(_err) = self.client.execute_procedure(sign_procedure) {
-            return Err(WrapperError::ExecuteProcedure);
+            return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err)));
         }
 
         self.commit(key_as_hash)
@@ -164,7 +164,7 @@ impl StrongholdWrapper {
 
         let procedure_result = match self.client.execute_procedure(sign_procedure) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::ExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err))),
         };
 
         let signature: Vec<u8> = procedure_result.into();
@@ -200,13 +200,13 @@ impl StrongholdWrapper {
 
         let slip10_derive = Slip10Derive {
             chain,
-            input: iota_stronghold_new::procedures::Slip10DeriveInput::Seed(seed_location),
+            input: iota_stronghold::procedures::Slip10DeriveInput::Seed(seed_location),
             output: seed_derived_location,
         };
 
         let chain_code = match self.client.execute_procedure(slip10_derive) {
             Ok(res) => res,
-            Err(_err) => return Err(WrapperError::ExecuteProcedure),
+            Err(_err) => return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err))),
         };
 
         log::info!("[Rust] Derive generated");
@@ -241,7 +241,7 @@ impl StrongholdWrapper {
         };
 
         if let Err(_err) = self.client.execute_procedure(slip10_generate) {
-            return Err(WrapperError::ExecuteProcedure);
+            return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err)));
         }
 
         log::info!("[Rust] Key generated");
@@ -270,7 +270,7 @@ impl StrongholdWrapper {
         log::info!("[Rust] Generating Key procedure started");
 
         if let Err(_err) = self.client.execute_procedure(generate_key_procedure) {
-            return Err(WrapperError::ExecuteProcedure);
+            return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err)));
         }
 
         log::info!("[Rust] Key generated");
