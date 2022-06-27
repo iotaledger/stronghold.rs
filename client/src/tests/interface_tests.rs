@@ -373,3 +373,60 @@ fn test_load_multiple_clients_from_snapshot() {
         assert!(result.is_ok(), "Failed to load client from snapshot path {:?}", result);
     });
 }
+
+#[test]
+fn test_load_client_from_non_existing_snapshot() {
+    let client_path = "my-awesome-client-path";
+    let stronghold = Stronghold::default();
+    let snapshot_path = SnapshotPath::named("idkfa.snapshot");
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    let result = match stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path) {
+        Err(client_error) => {
+            std::mem::discriminant(&client_error)
+                == std::mem::discriminant(&ClientError::SnapshotFileMissing("obo".to_string()))
+        }
+        Ok(_) => false,
+    };
+
+    assert!(result)
+}
+
+#[test]
+fn test_create_snapshot_file_in_custom_directory() {
+    let client_path = "my-awesome-client-path";
+    let vault_path = b"vault_path".to_vec();
+    let record_path = b"record_path".to_vec();
+    let payload = b"payload".to_vec();
+    let location = Location::const_generic(vault_path.clone(), record_path.clone());
+    let stronghold = Stronghold::default();
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir = temp_dir.join("idkfa.snapshot");
+
+    let snapshot_path = SnapshotPath::from_path(temp_dir.as_path());
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    let result = stronghold.create_client(client_path);
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    assert!(vault.write_secret(location, payload.clone()).is_ok());
+
+    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+
+    let client2 = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path);
+    assert!(client2.is_ok());
+
+    let client2 = client2.unwrap();
+
+    let vault2 = client2.vault(vault_path);
+    let secret = vault2.read_secret(record_path);
+    assert!(secret.is_ok());
+
+    let secret = secret.unwrap();
+    assert!(secret.eq(&payload));
+}

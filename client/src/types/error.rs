@@ -42,6 +42,9 @@ pub enum ClientError {
 
     #[error("Connection failure ({0})")]
     ConnectionFailure(String),
+
+    #[error("Snapshot file is missing ({0})")]
+    SnapshotFileMissing(String),
 }
 
 #[cfg(feature = "p2p")]
@@ -96,6 +99,24 @@ impl From<Box<dyn Any>> for ClientError {
     }
 }
 
+impl From<SnapshotError> for ClientError {
+    fn from(se: SnapshotError) -> Self {
+        match se {
+            SnapshotError::MissingFile(path) => ClientError::SnapshotFileMissing(path),
+            SnapshotError::Io(inner) => ClientError::Inner(inner.to_string()),
+            SnapshotError::CorruptedContent(inner) => ClientError::Inner(inner),
+            SnapshotError::InvalidFile(inner) => ClientError::Inner(inner),
+            SnapshotError::SnapshotKey(vault_id, record_id) => ClientError::Inner(format!(
+                "Missing or invalid snapshot key vaultid: {:?}, recordid: {:?}",
+                vault_id, record_id
+            )),
+            SnapshotError::Engine(inner) => ClientError::Inner(inner),
+            SnapshotError::Provider(inner) => ClientError::Inner(inner),
+            SnapshotError::Inner(inner) => ClientError::Inner(inner),
+        }
+    }
+}
+
 pub type VaultError<E> = EngineVaultError<<Provider as BoxProvider>::Error, E>;
 pub type RecordError = EngineRecordError<<Provider as BoxProvider>::Error>;
 
@@ -134,6 +155,9 @@ pub enum SnapshotError {
 
     #[error("BoxProvider error: {0}")]
     Provider(String),
+
+    #[error("Snapshot file is missing ({0})")]
+    MissingFile(String),
 
     #[error("Inner error: ({0})")]
     Inner(String),

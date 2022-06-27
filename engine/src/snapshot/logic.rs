@@ -246,7 +246,7 @@ mod test {
     };
 
     fn random_bytestring() -> Vec<u8> {
-        random::bytestring(4096)
+        random::variable_bytestring(4096)
     }
 
     fn random_key() -> Key {

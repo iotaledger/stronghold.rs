@@ -15,13 +15,19 @@ where
 }
 
 // Random Bytestring with random length in range 1..max_len.
-pub fn bytestring(max_len: usize) -> Vec<u8> {
+pub fn variable_bytestring(max_len: usize) -> Vec<u8> {
     let s = (random::<usize>() % (max_len - 1)) + 1;
     let mut bs = Vec::with_capacity(s);
     for _ in 0..s {
         bs.push(random());
     }
     bs
+}
+
+/// Returns a fixed sized byte string
+pub fn fixed_bytestring(len: usize) -> Vec<u8> {
+    let mut rmut = rand::thread_rng();
+    std::iter::repeat_with(|| rmut.gen()).take(len).collect()
 }
 
 // Random string with random length in range 1..max_len.

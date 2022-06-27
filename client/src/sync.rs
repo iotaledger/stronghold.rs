@@ -409,12 +409,12 @@ mod test {
     }
 
     fn test_value() -> Vec<u8> {
-        random::bytestring(4096)
+        random::variable_bytestring(4096)
     }
 
     fn test_location() -> Location {
-        let v_path = random::bytestring(4096);
-        let r_path = random::bytestring(4096);
+        let v_path = random::variable_bytestring(4096);
+        let r_path = random::variable_bytestring(4096);
         Location::generic(v_path, r_path)
     }
 
@@ -436,14 +436,14 @@ mod test {
         let (vid1, rid1) = location_1.resolve();
         client.write_to_vault(&location_1, test_value())?;
 
-        let v_path_2 = random::bytestring(4096);
-        let r_path_2 = random::bytestring(4096);
+        let v_path_2 = random::variable_bytestring(4096);
+        let r_path_2 = random::variable_bytestring(4096);
         let location_2 = Location::generic(v_path_2.clone(), r_path_2);
         let (vid2, rid2) = location_2.resolve();
         client.write_to_vault(&location_2, test_value())?;
 
         // Same vault as value nr 2.
-        let r_path_3 = random::bytestring(4096);
+        let r_path_3 = random::variable_bytestring(4096);
         let location_3 = Location::generic(v_path_2, r_path_3);
         let (vid23, rid3) = location_3.resolve();
         assert_eq!(vid2, vid23);
@@ -488,10 +488,10 @@ mod test {
             ..Default::default()
         };
 
-        let v_path_1 = random::bytestring(1024);
+        let v_path_1 = random::variable_bytestring(1024);
         let vid1 = derive_vault_id(v_path_1.clone());
 
-        let v_path_2 = random::bytestring(1024);
+        let v_path_2 = random::variable_bytestring(1024);
         let vid2 = derive_vault_id(v_path_2);
 
         // Include vault-1 in the sync.
@@ -504,7 +504,7 @@ mod test {
             source.write_to_vault(&location, test_value())?;
         }
 
-        let v_path_3 = random::bytestring(1024);
+        let v_path_3 = random::variable_bytestring(1024);
         let vid3 = derive_vault_id(v_path_3.clone());
         // Include vault-3 in the sync, but only selected records.
         config.select_vaults.as_mut().unwrap().push(vid3);
@@ -522,10 +522,10 @@ mod test {
         config.select_records.insert(vid3, select_records_v3);
 
         // Vault-4 is not included in the sync.
-        let v_path_4 = random::bytestring(1024);
+        let v_path_4 = random::variable_bytestring(1024);
         let vid4 = derive_vault_id(v_path_4.clone());
 
-        let v_path_5 = random::bytestring(1024);
+        let v_path_5 = random::variable_bytestring(1024);
         let vid5 = derive_vault_id(v_path_5);
         // Irrelevant mapping of vault-4 to vault-5.
         config.map_vaults.insert(vid4, vid5);
