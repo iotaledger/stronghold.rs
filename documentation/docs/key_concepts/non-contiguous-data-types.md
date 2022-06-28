@@ -19,66 +19,73 @@ This comment shall be deleted and shall give an overview on the structure:
 - the boojum scheme is being explored with password handling as an example  
 -->
 
-# Non-Contigouos Data Types and Handling secrets at Runtime
+# Non-Contiguous Data Types and Handling secrets at runtime
 
-#### Authors: Matthias Kandora - \<matthias.kandora@iota.org>
+Running processes store objects in allocated memory contiguously, meaning the stream of bytes is consecutive. This is not always desirable, as an attacker could easily read sensitive information from parts of the memory. This section will describe non-contiguous memory data structures and how they work.
 
-***Abstract:***
+## Memory Management
 
+Whenever a computer program requires memory to store data (e.g., some text, an image, etc. ), it must allocate memory. Allocating memory is the mechanism by which the operating system grants some of its storage and processing power to a running program to ensure that the problem can run properly.
 
-Running processes store objects in allocated memory contiguously, meaning the stream of bytes is consecutive. This is not always desirable, as sensitive information can be easily read out from parts of the memory. Here we describe what non-contigouos memory data structures are and how they work. 
+In this context, there is also what is commonly known as "virtual memory space". Every program (process) running does not need to know the actual address in the memory but only an abstracted version.
 
-***On Memory Management*** 
+The Stronghold runtime provides memory (speak managed allocation) types to protect sensitive data.
 
-Whenever a computer program requires memory to store data (eg. some text, an image, etc. ) it needs to allocate memory. By "allocating memory" we refer to a mechanism, which is given by the operating system to the running program to ensure, that some of the memory is given to the program for some purpose. In this context we also speak of "virtual memory space", as each program running ( or in computer science parlance "processs" ) does not need to know the "real" address in "real" memory, but only an abstracted / virtualized version of it.
+### Boxed Memory
 
-The Stronghold runtime provides memory ( speak managed allocation ) types for handling sensitive data. One such type is `Boxed`. This type locks allocated memory and prevents it from being recorded in a memory dump. Since locking memory is dependent on the operating system, the `Boxed` type relies on libsodium `sodium_mlock` function, which calls the `mlock` function on linux or equivalent functions on other operating systems. `mlock` prevents the current virtual address space of the process to be paged into a swap area, thus preventing the leakage of sensitive data. This in turn will be used by guarded heap allocations of memory.
+`Boxed` memory locks allocated memory and prevents it from being recorded in a memory dump. Since locking memory is dependent on the operating system, the `Boxed` type relies on [Libsodium’s](https://libsodium.gitbook.io/doc/) `sodium_mlock` function. This function calls the `mlock` function on Linux (or equivalent functions on other operating systems). `mlock` prevents the current virtual address space of the process from being paged into a swap area, preventing the leakage of sensitive data. This, in turn, will be used by guarded heap allocations of memory.
 
-Guarded heap allocations work by placing a guard page in front and at the end of the locked memory, as well as a canary value at the front. The schematic view visualizes it. 
+Guarded heap allocations work by placing a guard page in front and at the end of the locked memory and a canary value at the front. The schematic view visualizes it.
 
-![](https://i.imgur.com/oy0Ri1Z.png)
+![Guarded Heap Memory Allocations](https://i.imgur.com/oy0Ri1Z.png)
 
 Libsodium provides three types to guard memory:
 
-| function                  | description                                                                                         |
-|:--------------------------|:----------------------------------------------------------------------------------------------------|
-| sodium_mprotect_noaccess  | This makes the protected memory inaccessible. It can neither be read from nor can it be written to. |
-| sodium_mprotect_readonly  | This makes the protected memory read-only. Memory can be read, but not written to.                  |
-| sodium_mprotect_readwrite | This enables reading from and writing to protected memory.                                          |
+| function                    | description                                                                           |
+|:----------------------------|:--------------------------------------------------------------------------------------|
+| `sodium_mprotect_noaccess`  | Makes the protected memory inaccessible. It can neither be read from nor written to. |
+| `sodium_mprotect_readonly`  | Makes the protected memory read-only. Memory can be read from but not written to.     |
+| `sodium_mprotect_readwrite` | Enables reading from and writing to protected memory.                                 |
 
 
 Stronghold exposes locked memory via the `LockedMemory` trait, that exposes two functions that need to be implemented:
+
 ```rust
- /// Modifies the value and potentially reallocates the data. 
- fn update(self, payload: Buffer<u8>, size: usize) -> Result<Self, MemoryError>;
- 
- /// Unlocks the memory and returns a Buffer
- fn unlock(&self) -> Result<Buffer<u8>, MemoryError>;
+/// Modifies the value and potentially reallocates the data.
+fn update(self, payload: Buffer<u8>, size: usize) -> Result<Self, MemoryError>;
+
+/// Unlocks the memory and returns a Buffer
+fn unlock(&self) -> Result<Buffer<u8>, MemoryError>;
 ```
 
-Currently, the trait is implemented by three types of memory:
+Currently, three types of memory implement this trait:
 
-| Type                  | Description                                                                                                   |
-|:----------------------|:--------------------------------------------------------------------------------------------------------------|
-| `RamMemory`           | The allocated value resides inside the system's ram.                                                          |
-| `FileMemory`          | The allocated value resides on file system                                                                    |
-| `NonContiguousMemory` | Allocated memory is being fragmented either across the system's ram or file system, or a combination of both. |
-
-***On Non-Contiguous Data Types:***
-
-Under normal circumstances the allocated memory is continuous and page-aligned, by that we are referring to the minimim sized block of memory the (operating) system is providing us. Data types,  that may not have a multiple of some minimum number in bytes will be "padded" with zeroes. The actual fields are then described in some metadata. This is being done out of performance reasons, as loading some larger chunks of 2^n bytes is larger than loading the exact number of bytes. 
-
-Non-contiguous (NC) data types store their inner referenced data in multiple locations either in memory, on the file system or a mixture of both. NC data types are useful, if the memory is partitioned into multiple segments, and storing a continous stream of bytes might be not be possible. The disdvantage is to always keep track of the referenced memory segments. 
+| Type                  | Description                                                                                      |
+|:----------------------|:-------------------------------------------------------------------------------------------------|
+| `RamMemory`           | Allocated values reside inside the system's ram.                                                 |
+| `FileMemory`          | Allocated values reside on the file system                                                       |
+| `NonContiguousMemory` | Allocated memory is fragmented across the system's ram or file system, or a combination of both. |
 
 
-***Boojum Scheme***
+## Non-Contiguous Data Types
 
-Non-contiguous memory types split protected memory into multiple fragments, mitigating any memory dumps and making it virtually impossible for attackers to retrieve stored data. The following section describes non-contiguous memory types in more detail with a use case we often came across and solved with a pretty decent method. 
+Under normal circumstances, the allocated memory is continuous and page-aligned. The operating system provides memory blocks of a minimum predetermined size. Data types that do not have a multiple of some minimum number in bytes are padded with zeroes. Metadata describes the actual fields. Operating systems take this approach to improve performance as loading some larger chunks of 2^n bytes is faster than loading the exact number of bytes.
 
-Use Case: Passphrase Management
+Non-contiguous (NC) data types store their inner referenced data in multiple locations, either in memory, on the file system, or a mixture of both. NC data types are useful if the memory is partitioned into multiple segments, and storing a continuous stream of bytes might not be possible. The disadvantage is that the operating system must constantly keep track of the referenced memory segments.
 
-One of the major headaches we faced in the development of Stronghold was proper passphrase management. Whenever you need to load a persistent state from a snapshot file, you require a password. If you were a single user of Stronghold, and reading and writing would be interactive – providing the password each time – it wouldn’t be so much of a problem. The time window in which the passphrase would be used to decrypt and later encrypt to persist a state would be very small and almost non-predictable. Now consider an application that requires constant writing into a snapshot: the passphrase to  successfully encrypt the snapshot needs to be around in memory somewhere. This could be a huge problem: given that the attacker has access to the machine, they could simply dump the memory of the running process and read out the passphrase in plaintext! Horrible! Luckily there is a solution to that: It’s called the Boojum Scheme as described by Bruce Schneier et al in “Cryptography Engineering”.
 
-*** Conclusion ***
+### Boojum Scheme
 
-With the new runtime we now have quite a few options to ensure sensitive data in memory is protected. Non-contiguous types are fairly new to Stronghold and we have to figure out what is a good balance between performance ( everything is in RAM ) and security ( fragmented across RAM and file system). There is another limit put by the operating system, when it comes to the maximum number of protected memory regions. On some Linux machines we encountered empirically that the limit was about ~8000 guarded pages. In order to fix that, we decided to not store guarded pages inside a vault, but guard it on demand. The number of sensitive data at rest is presumably higher compared to sensitive data being present for cryptographic procedures. Sensitive entries inside the vault at rest are encrypted with XChaCha20-Poly1305, which gives us some decent security.
+Non-contiguous memory types split protected memory into multiple fragments, mitigating any memory dumps and making it virtually impossible for attackers to retrieve stored data. The following section describes non-contiguous memory types in more detail with a use case we often encountered and solved when we were developing Stronghold.
+
+#### Use Case: Passphrase Management
+
+Proper passphrase management was one of the most challenging tasks during the development of Stronghold. You need a password whenever you want to load a persistent state from a snapshot file. If you were the only user of Stronghold, and reading and writing would be interactive, providing the password each time would not be a problem. The time window in which you would use the passphrase to decrypt and later encrypt to persist a state would be small and almost non-predictable.
+
+However, consider an application that requires constant writing into a snapshot, meaning the passphrase to encrypt the snapshot must be stored in memory. If an attacker gains access to the machine, they could dump the memory of the running process and read out the passphrase in plaintext, which of course, would be a significant security problem. Luckily, there is a solution to that called the Boojum Scheme, as described by Bruce Schneier et al. in “Cryptography Engineering”.
+
+## Conclusion
+
+With the new runtime, Stronghold has several options to protect sensitive data in memory. Non-contiguous types are fairly new to Stronghold. We have to figure out a good balance between performance (everything is stored in RAM) and security (fragmented across RAM and file system).
+
+There is another limiting factor. Regarding the maximum number of protected memory regions, we empirically encountered the limit of about 8000 guarded pages on some Linux machines. To fix that, we decided to avoid storing pages inside a vault and guard them on demand instead. The amount of sensitive data at rest is presumably higher compared to sensitive data present for cryptographic procedures. Sensitive entries inside the vault at rest are encrypted with XChaCha20-Poly1305, which provides security while circumventing this limitation.
