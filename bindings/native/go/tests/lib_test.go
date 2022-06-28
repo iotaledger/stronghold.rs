@@ -9,8 +9,9 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	stronghold_go "stronghold"
 	"testing"
+
+	stronghold_go "github.com/iotaledger/stronghold.rs/bindings/native/go"
 )
 
 const testPassword = "qawsedrf"
