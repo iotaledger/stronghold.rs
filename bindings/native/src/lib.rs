@@ -5,9 +5,7 @@ extern crate core;
 mod shared;
 mod wrapper;
 
-//#![allow(unused_imports)]
-use log::LevelFilter;
-use log::*;
+use log::{LevelFilter, *};
 
 use std::{
     cell::RefCell,

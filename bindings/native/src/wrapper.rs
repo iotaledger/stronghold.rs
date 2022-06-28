@@ -3,9 +3,8 @@
 
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
-use iota_stronghold::procedures::WriteVault;
 use iota_stronghold::{
-    procedures::{Chain, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate},
+    procedures::{Chain, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault},
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
 };
 use log::*;
