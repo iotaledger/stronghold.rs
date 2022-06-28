@@ -1,8 +1,8 @@
 name: Build Bindings
 
-#on:
-#  push:
-#    branches: [ add_native_bindings ]
+on:
+  push:
+    branches: [ add_native_bindings ]
 #  pull_request:
 #    branches: [ dev-refactoring ]
 
@@ -12,6 +12,7 @@ env:
 jobs:
   # Generate C bindings from public rust headers for use with Go
   bind_gen:
+    if: ${{ false }} # Disabled for now
     name: C Bindings
     runs-on: ubuntu-latest
     outputs:
@@ -51,6 +52,7 @@ jobs:
         ./bindgen.sh
 
   build:
+    if: ${{ false }} # Disabled for now
     # Build the lib for each desired OS
     name: Build bindings on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -154,6 +156,7 @@ jobs:
 
   # Take the output from each OS build job and combine them into a single Go module
   release:
+    if: ${{ false }} # Disabled for now
     name: Create universal Go module
     runs-on: ubuntu-latest
     needs: build
