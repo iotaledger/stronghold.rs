@@ -44,11 +44,11 @@ module.exports = {
         },
         {
             type: "category",
-            label: "Explanations",
+            label: "Concepts",
             items: [
                 {
                     type: 'doc',
-                    id: 'key_concepts/retrospective',
+                    id: 'concepts/retrospective',
                     label: 'Retrospective'
                 },]
         },
