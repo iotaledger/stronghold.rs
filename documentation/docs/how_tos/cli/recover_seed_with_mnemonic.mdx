@@ -1,0 +1,43 @@
+---
+description: Create a new BIP39 seed with an associated mnemonic phrase in the available languages.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- example
+- cli
+- client crate
+- BIP39
+- generate seed
+- mnemonic
+- passphrase
+---
+import CodeBlock from '@theme/CodeBlock';
+import clientExamples from '!!raw-loader!./../../../../client/examples/cli/main.rs';
+const currentFunctionName = 'async fn command_bip39_recover', indexStart = clientExamples.indexOf(currentFunctionName);
+const nextFunctionName = '#[tokio::main]', indexEnd = clientExamples.indexOf(nextFunctionName);
+const currentExample = clientExamples.substring(indexStart, indexEnd);
+
+# Recover a BIP39 Seed with a Mnemonic and Optional Passphrase
+
+## Run the Example
+
+You can recover a BIP39 seed with provided mnemonic and optional passphrase by running the following command from within
+the [client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). Stronghold will store the recovered
+seed at the provided `path`.
+
+```bash
+cargo run --example cli bip39-recover --path "/path/to/snapshot.file" --client-path "client-path-0" --key "passphrase-for-snapshot" --mnemonic "けさき　にんか　せっさたくま　よかん　たいまつばな　ちんもく　そだてる　ふっこく　せっさたくま　しゃおん　そがい　つうはん　まなぶ　りくぐん　さのう" --passphrase "mnemonic-passphrase-if-present" --vault-path "vault-path" --record-path "record-path"
+```
+
+## Expected Output
+
+```plaintext
+[2022-03-28T08:35:13Z INFO  cli] Loading snapshot
+[2022-03-28T08:35:13Z INFO  cli] Recovering BIP39
+[2022-03-28T08:35:13Z INFO  cli] BIP39 Recovery successful? true
+```
+
+## Example Code
+
+<CodeBlock language={'rust'}>
+    {currentExample}
+</CodeBlock>

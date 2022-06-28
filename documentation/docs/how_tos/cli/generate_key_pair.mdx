@@ -1,0 +1,44 @@
+---
+description: Generate an example ED25519 Key Pair inside an ephemeral vault
+image: /img/logo/Stronghold_icon.png
+keywords:
+- example
+- cli
+- client crate
+- ED25519
+- key pair
+- read
+- vault
+---
+import CodeBlock from '@theme/CodeBlock';
+import clientExamples from '!!raw-loader!./../../../../client/examples/cli/main.rs';
+const currentFunctionName = 'async fn command_generate_key', indexStart = clientExamples.indexOf(currentFunctionName);
+const nextFunctionName = 'async fn command_generate_bip39', indexEnd = clientExamples.indexOf(nextFunctionName);
+const currentExample = clientExamples.substring(indexStart, indexEnd);
+
+# Generate an Ed25519 Key Pair
+
+## Run the Example
+
+You can generate an example ED25519 Key Pair inside an ephemeral vault by running the following command from the
+[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client).
+
+```bash
+cargo run --example cli generate-key --key-type Ed25519 --vault-path "vault_path" --record-path "record_path"
+```
+
+## Expected Output
+
+```plaintext
+[2022-06-28T12:52:22Z INFO  cli] Generating keys with type Ed25519
+[2022-06-28T12:52:22Z INFO  cli] Using output location: vault_path=vault_path, record_path=record_path
+[2022-06-28T12:52:22Z INFO  cli] Key generation successful? true
+[2022-06-28T12:52:22Z INFO  cli] Creating public key
+[2022-06-28T12:52:22Z INFO  cli] Public key is "JziUUMhit2Nvds3TXbtzOlJpDEfpbYiTC9qI+8Pp1x0=" (Base64)
+```
+
+## Example Code
+
+<CodeBlock language={'rust'}>
+    {currentExample}
+</CodeBlock>

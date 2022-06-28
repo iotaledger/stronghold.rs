@@ -1,0 +1,42 @@
+---
+description: Write a value associated to a key to the vault store, and read it afterwards.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- example
+- cli
+- client crate
+- read
+- write
+- key pair
+---
+import CodeBlock from '@theme/CodeBlock';
+import clientExamples from '!!raw-loader!./../../../../client/examples/cli/main.rs';
+const currentFunctionName = 'async fn command_write_and_read_from_store', indexStart = clientExamples.indexOf(currentFunctionName);
+const nextFunctionName = 'async fn command_generate_key', indexEnd = clientExamples.indexOf(nextFunctionName);
+const currentExample = clientExamples.substring(indexStart, indexEnd);
+
+# Write To and Read From the Vault
+
+## Run the Example
+
+You can write a `value` associated to a `key` by running the following command from the
+[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). The example will also read from the
+vault to retrieve the key pair you have created. Feel free to replace the parameter values as you see fit.
+
+```bash
+cargo run --example cli store-read-write  --key "yourKey" --value "yourValue"
+```
+
+## Expected Output
+
+```plaintext
+[2022-06-28T13:36:12Z INFO  cli] Insert value into store "yourValue" with key "yourKey"
+[2022-06-28T13:36:12Z INFO  cli] Store contains key "yourKey" ? true
+[2022-06-28T13:36:12Z INFO  cli] Value for key "yourKey" ? "yourValue"
+```
+
+## Example Code
+
+<CodeBlock language={'rust'}>
+    {currentExample}
+</CodeBlock>

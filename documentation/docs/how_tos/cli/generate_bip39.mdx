@@ -1,0 +1,42 @@
+---
+description: Create a new BIP39 seed with an associated mnemonic phrase in the available languages.
+image: /img/logo/Stronghold_icon.png
+keywords:
+- example
+- cli
+- client crate
+- BIP39
+- generate seed
+- mnemonic
+- passphrase
+---
+import CodeBlock from '@theme/CodeBlock';
+import clientExamples from '!!raw-loader!./../../../../client/examples/cli/main.rs';
+const currentFunctionName = 'async fn command_generate_bip39', indexStart = clientExamples.indexOf(currentFunctionName);
+const nextFunctionName = 'async fn command_slip10_generate', indexEnd = clientExamples.indexOf(nextFunctionName);
+const currentExample = clientExamples.substring(indexStart, indexEnd);
+
+# Generate a BIP39 Seed and Mnemonic
+
+## Run the Example
+
+You can create a new [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) seed with an associated
+mnemonic phrase in the available languages by running the following command from within the
+[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). You can also provide a passphrase to
+protect the seed.
+
+```bash
+cargo run --example cli bip39-generate  --passphrase "optional-passphrase" --lang "english" --vault-path "vault-path-0" --record-path "record-path-0"
+```
+
+## Expected Output
+
+```plaintext
+[2022-06-28T14:01:49Z INFO  cli] BIP39 Mnemonic: canyon situate farm wedding cluster budget truck bag goose obtain surround soda cable galaxy spoil utility tip remember scan danger cat lawsuit staff riot
+```
+
+## Example Code
+
+<CodeBlock language={'rust'}>
+    {currentExample}
+</CodeBlock>
