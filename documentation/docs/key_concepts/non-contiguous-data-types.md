@@ -3,7 +3,7 @@ description: Handling secrets at runtime with non-contigouos data types.
 image: /img/logo/Stronghold_icon.png
 keywords:
 - bojum scheme
-- non-contigouos data types
+- non-contiguous data types
 - security
 - runtime
 ---
