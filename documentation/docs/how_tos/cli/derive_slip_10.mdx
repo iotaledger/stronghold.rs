@@ -21,7 +21,7 @@ const currentExample = clientExamples.substring(indexStart, indexEnd);
 
 You can derive a new [SLIP10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md) master key with optional
 size and derive a private/public key pair from it by running the following command from within the
-[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client). The public key will be returned.
+[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client).
 
 ```bash
 cargo run --example cli slip10-derive  --chain "/1234567/1234567" --input-vault-path "input-vault-path" --input-record-path "input-record-path" --output-vault-path "output-vault-path" --output-record-path "output-record-path"
