@@ -4,6 +4,7 @@ database for working with cryptography, which ensures that secrets are never rev
 best practices.'
 image: /img/Banner/banner_stronghold.png
 keywords:
+
 - welcome
 - open-source
 - secure
@@ -48,15 +49,7 @@ If you want to get involved in discussions about this library, or you're looking
 
 ## Software Bill of Materials
 
-We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version
-with the following link:
+We maintain a [bill of materials](https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf) for the upstream
+libraries that Stronghold consumes. 
 
-https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
 
-## Tutorials (Coming Soon)
-
-We will be adding video and textual tutorials for introducing the concepts behind Stronghold.
-
-## How To's (Coming Soon)
-
-We will be adding a number of specific How To examples that will cover common use cases, like integrations, backups etc.
