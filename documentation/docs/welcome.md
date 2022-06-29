@@ -1,5 +1,5 @@
 ---
-description: 'Stronghold is an open-source software library can be used to protect any digital secret. It is a secure
+description: 'Stronghold is an open-source software library which can be used to protect any digital secret. It is a secure
 database for working with cryptography, which ensures that secrets are never revealed - but can be used according to
 best practices.'
 image: /img/Banner/banner_stronghold.png

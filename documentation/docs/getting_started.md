@@ -41,7 +41,7 @@ cargo build --release
 
 ## Use The Library
 
-You can get acquainted with Stronghold is by checking out the [How Tos section](how_tos/cli/running_examples).
+You can get acquainted with Stronghold by checking out the [How Tos section](how_tos/cli/running_examples).
 
 You can run the examples from the command line interface. Stronghold comes with a simple CLI example that briefly
 showcases all its features. To run the example, change into the `client` directory, and run the following
