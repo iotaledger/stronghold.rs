@@ -175,15 +175,15 @@ jobs:
         path: bindings/native/
 
     - name: Create checksums for shared libraries (Linux)
-      run: shasum -a 256 bindings/native/libstronghold_native.so > bindings/native/libstronghold_native.so.sha256
+      run: shasum -a 256 bindings/native/libstronghold_native.so > bindings/native/libstronghold_native.so.sha256 && shasum -a 512 bindings/native/libstronghold_native.so > bindings/native/libstronghold_native.so.sha512
       shell: bash
 
     - name: Create checksums for shared libraries (Mac)
-      run: shasum -a 256 bindings/native/libstronghold_native.dylib > bindings/native/libstronghold_native.dylib.sha256
+      run: shasum -a 256 bindings/native/libstronghold_native.dylib > bindings/native/libstronghold_native.dylib.sha256 && shasum -a 512 bindings/native/libstronghold_native.dylib > bindings/native/libstronghold_native.dylib.sha512
       shell: bash
 
     - name: Create checksums for shared libraries (Win)
-      run: shasum -a 256 bindings/native/stronghold_native.dll > bindings/native/stronghold_native.dll.sha256
+      run: shasum -a 256 bindings/native/stronghold_native.dll > bindings/native/stronghold_native.dll.sha256 && shasum -a 512 bindings/native/stronghold_native.dll > bindings/native/stronghold_native.dll.sha512
       shell: bash
 
     # Create the module artifact
@@ -198,3 +198,4 @@ jobs:
           !bindings/native/tests/**
           !bindings/native/*/build/**
           !bindings/native/*/deps/**
+          !bindings/.gitignore
