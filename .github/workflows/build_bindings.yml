@@ -128,7 +128,7 @@ jobs:
         args: --release --manifest-path=bindings/native/Cargo.toml
 
     - name: Create checksums for shared libraries (Linux)
-      if: ${{ startsWith(matrix.os, 'linux') }}
+      if: ${{ startsWith(matrix.os, 'ubuntu') }}
       run: shasum -a 256 target/release/libstronghold_native.so > target/release/libstronghold_native.so.sha256
       shell: bash
 
