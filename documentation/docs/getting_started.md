@@ -29,7 +29,7 @@ following instructions to build the library:
 
 1. Clone the repo:
 
- ```sh
+```sh
 git clone https://github.com/iotaledger/stronghold.rs.git
 ```
 
