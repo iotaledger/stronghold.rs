@@ -3,7 +3,7 @@ name: Build Bindings
 on:
   push:
     branches: [ add_native_bindings ]
-    
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -128,14 +128,17 @@ jobs:
         args: --release --manifest-path=bindings/native/Cargo.toml
 
     - name: Create checksums for shared libraries (Linux)
+      if: ${{ startsWith(matrix.os, 'linux') }}
       run: shasum -a 256 target/release/libstronghold_native.so > target/release/libstronghold_native.so.sha256
       shell: bash
 
     - name: Create checksums for shared libraries (Mac)
+      if: ${{ startsWith(matrix.os, 'macOs') }}
       run: shasum -a 256 target/release/libstronghold_native.dylib > target/release/libstronghold_native.dylib.sha256
       shell: bash
 
     - name: Create checksums for shared libraries (Win)
+      if: ${{ startsWith(matrix.os, 'windows') }}
       run: shasum -a 256 target/release/stronghold_native.dll > target/release/stronghold_native.dll.sha256
       shell: bash
 
