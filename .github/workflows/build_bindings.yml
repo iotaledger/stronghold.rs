@@ -3,16 +3,13 @@ name: Build Bindings
 on:
   push:
     branches: [ add_native_bindings ]
-#  pull_request:
-#    branches: [ dev-refactoring ]
-
+    
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   # Generate C bindings from public rust headers for use with Go
   bind_gen:
-    if: ${{ false }} # Disabled for now
     name: C Bindings
     runs-on: ubuntu-latest
     outputs:
@@ -52,7 +49,6 @@ jobs:
         ./bindgen.sh
 
   build:
-    if: ${{ false }} # Disabled for now
     # Build the lib for each desired OS
     name: Build bindings on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -131,6 +127,18 @@ jobs:
         command: build
         args: --release --manifest-path=bindings/native/Cargo.toml
 
+    - name: Create checksums for shared libraries (Linux)
+      run: shasum -a 256 target/release/libstronghold_native.so > target/release/libstronghold_native.so.sha256
+      shell: bash
+
+    - name: Create checksums for shared libraries (Mac)
+      run: shasum -a 256 target/release/libstronghold_native.dylib > target/release/libstronghold_native.dylib.sha256
+      shell: bash
+
+    - name: Create checksums for shared libraries (Win)
+      run: shasum -a 256 target/release/stronghold_native.dll > target/release/stronghold_native.dll.sha256
+      shell: bash
+
     # Create an OS specific artifact
     - name: Archive lib artifact
       uses: actions/upload-artifact@v3
@@ -139,8 +147,11 @@ jobs:
         if-no-files-found: error
         path: |
           target/release/*stronghold_native.dll
+          target/release/*stronghold_native.dll.sha256
           target/release/*stronghold_native.so
+          target/release/*stronghold_native.so.sha256
           target/release/*stronghold_native.dylib
+          target/release/*stronghold_native.dylib.sha256
     
     # Create an artifact that contains ALL of the binaries for easy distribution
     - name: Aggregate binaries
@@ -151,8 +162,11 @@ jobs:
         retention-days: 1
         path: |
           target/release/*stronghold_native.dll
+          target/release/*stronghold_native.dll.sha256
           target/release/*stronghold_native.so
+          target/release/*stronghold_native.so.sha256
           target/release/*stronghold_native.dylib
+          target/release/*stronghold_native.dylib.sha256
 
   # Take the output from each OS build job and combine them into a single Go module
   release:
