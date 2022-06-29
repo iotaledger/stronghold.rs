@@ -7,17 +7,6 @@ keywords:
 - vault
 ---
 
-
-<!-- 
-    this note can and should be deleted. 
-    it's purpose is to highlight the structure of this document. 
-
-    - the abstracts highlights the reason for the procedures framework to access secrets
-    - in-depth 
-
---->
-
-
 # Cryptographic Procedures
 
 Stronghold ensures that sensitive data cannot easily escape from memory. This requires a mechanism to work with secrets stored inside Stronghold's vault. While parts of Stronghold are primarily concerned with writing secrets, the question arises: "What can you do with a secret that is never exposed? Why even store it?”.
