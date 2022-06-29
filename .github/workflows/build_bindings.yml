@@ -2,7 +2,7 @@ name: Build Bindings
 
 on:
   push:
-    branches: [ add_native_bindings ]
+    branches: [ dev ]
 
 env:
   CARGO_TERM_COLOR: always
