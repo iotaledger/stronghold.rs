@@ -8,16 +8,6 @@ keywords:
 - runtime
 ---
 
-<!--
-This comment shall be deleted and shall give an overview on the structure:
-
-- abstract gives an overview on memory and especially NC data types
-- memory management will be explained in general, guarded types are being specifically mentioned.
-   - libsodium is mentioned as low-level driving force
-   - the current interface for guarded memory types is presented
-- nc data types are being explained in greater detail,
-- the boojum scheme is being explored with password handling as an example  
--->
 
 # Non-Contiguous Data Types and Handling secrets at runtime
 

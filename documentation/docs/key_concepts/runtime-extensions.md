@@ -10,8 +10,6 @@ keywords:
 
 # Runtime extensions 
 
-#### Authors: Matthias Kandora - \<matthias.kandora@iota.org>
-
 
 ## Memory Management
 
