@@ -175,11 +175,32 @@ where
     T: Clone,
 {
     pub(crate) fn is_locked_by(&self) -> Result<ThreadLockState, TxError> {
-        todo!()
+        if let Some(id) = &*self.original.id.lock().map_err(|e| TxError::LockPresent)? {
+            return match id.eq(&std::thread::current().id()) {
+                true => Ok(ThreadLockState::Same),
+                false => Ok(ThreadLockState::Foreign),
+            };
+        }
+
+        Ok(ThreadLockState::None)
     }
 
-    pub(crate) fn locked_by(&self) -> Result<ThreadId, TxError> {
-        todo!()
+    pub(crate) fn locked_by(&self) -> Result<Option<ThreadId>, TxError> {
+        Ok(*self.original.id.lock().map_err(|e| TxError::LockPresent)?)
+    }
+
+    pub(crate) fn lock(&self) -> Result<(), TxError> {
+        let mut guard = self.original.id.lock().map_err(|e| TxError::LockPresent)?;
+        *guard = Some(std::thread::current().id());
+
+        Ok(())
+    }
+
+    pub(crate) fn unlock(&self) -> Result<(), TxError> {
+        let mut guard = self.original.id.lock().map_err(|e| TxError::LockPresent)?;
+        *guard = None;
+
+        Ok(())
     }
 }
 
@@ -203,7 +224,7 @@ impl Stm {
     /// 3. Lock the write-set
     /// 4. Validate the read-set
     /// 6. Commit changes to memory
-    pub fn read_write<T, F>(&self, transaction: F) -> Result<(), TxError>
+    pub fn read_write<T, F>(&self, transaction: F, strategy: Strategy) -> Result<(), TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
         T: Clone + Send + Sync + Debug,
@@ -249,8 +270,11 @@ impl Stm {
                 }
                 Err(e) => {
                     info!("TRANSACTION({:?}): FAILED. RETRYING", std::thread::current().id());
-                    // std::thread::sleep(std::time::Duration::from_millis(100));
-                    continue;
+
+                    match strategy {
+                        Strategy::Abort => return Err(TxError::Failed),
+                        Strategy::Retry => continue,
+                    }
                 } // this can be augmented with a strategy
             }
         }
@@ -390,9 +414,16 @@ where
                     break;
                 }
                 _ => {
-                    info!("TRANSACTION({:?}): LOCK HELD BY US", std::thread::current().id());
+                    info!(
+                        "TRANSACTION({:?}): LOCK HELD BY US OR NONE ({:?})",
+                        std::thread::current().id(),
+                        tvar.is_locked_by()?
+                    );
                 }
             }
+
+            // lock to thread id
+            tvar.lock()?;
         }
 
         if fail_lock_write.load(std::sync::atomic::Ordering::SeqCst) {
@@ -441,19 +472,6 @@ where
                 }
                 _ => return Err(TxError::TransactionLocked),
             }
-
-            // there is a bug here.
-            //
-            // the algorithm locks the write set, which could be locked by another thread, but
-            // if the same thread locks the transactional variable, then the validation will
-            // fail when the object is stale, but the lock of the same thread is still present
-            // if tvar.lock.is_locked() {
-            //     info!(
-            //         "VALIDATE({:?}): READ SET VALIDATION: TRANSACTION LOCKED",
-            //         std::thread::current().id()
-            //     );
-            //     return Err(TxError::TransactionLocked);
-            // }
         }
 
         Ok(())
@@ -492,13 +510,16 @@ where
             );
         }
 
+        // unlock all tvars
+        for tvar in self.write.keys() {
+            if let Err(e) = tvar.unlock() {
+                info!("ERROR UNLOCKING TVAR AFTER COMMIT. ({:?})", e)
+            }
+        }
+
         Ok(())
     }
 }
-
-// unsafe impl<T> Send for TVar<T> where T: Clone + Send + Sync {}
-
-// unsafe impl<T> Sync for TVar<T> where T: Clone + Send + Sync {}
 
 #[cfg(test)]
 mod tests {
@@ -524,17 +545,20 @@ mod tests {
         let ba = bank_alice.clone();
         let bb = bank_bob.clone();
 
-        let result = stm.read_write(move |tx: &mut Transaction<_>| {
-            let mut amt_bob = tx.load(&bb)?;
+        let result = stm.read_write(
+            move |tx: &mut Transaction<_>| {
+                let mut amt_bob = tx.load(&bb)?;
 
-            let amt_alice = amt_bob - 20;
-            amt_bob -= 20;
+                let amt_alice = amt_bob - 20;
+                amt_bob -= 20;
 
-            tx.store(&ba, amt_alice)?;
-            tx.store(&bb, amt_bob)?;
+                tx.store(&ba, amt_alice)?;
+                tx.store(&bb, amt_bob)?;
 
-            Ok(())
-        });
+                Ok(())
+            },
+            crate::stm::Strategy::Retry,
+        );
 
         assert!(result.is_ok(), "Transaction failed");
 
@@ -545,20 +569,19 @@ mod tests {
     #[test]
     #[cfg(feature = "threaded")]
     fn test_stm_threaded() {
-        #[cfg(feature = "verbose")]
-        env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Info)
-            .init();
+        use rand::Rng;
 
-        let rng = rand::thread_rng();
+        // #[cfg(feature = "verbose")]
+        // env_logger::builder()
+        //     .is_test(true)
+        //     .filter_level(log::LevelFilter::Info)
+        //     .init();
+
+        let mut rng = rand::thread_rng();
         let stm = Stm::default();
-        let entries: usize = 10;
+        let entries: usize = rng.gen_range(0..100);
 
-        let expected: HashSet<String> = (0..entries)
-            // .map(|_| rng.gen_range(0..256))
-            .map(|e: usize| format!("{:04}", e))
-            .collect();
+        let expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
 
         let set: TVar<HashSet<String>> = stm.create(HashSet::new());
         let pool = ThreadPool::new(8);
@@ -568,14 +591,17 @@ mod tests {
             let set_a = set.clone();
             let value = value.clone();
             pool.execute(move || {
-                let result = stm_a.read_write(move |tx: &mut Transaction<_>| {
-                    let mut inner = tx.load(&set_a)?;
+                let result = stm_a.read_write(
+                    move |tx: &mut Transaction<_>| {
+                        let mut inner = tx.load(&set_a)?;
 
-                    inner.insert(value.clone());
-                    tx.store(&set_a, inner)?;
+                        inner.insert(value.clone());
+                        tx.store(&set_a, inner)?;
 
-                    Ok(())
-                });
+                        Ok(())
+                    },
+                    crate::stm::Strategy::Retry,
+                );
                 assert!(result.is_ok(), "Failed to run transaction");
             });
         }
