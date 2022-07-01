@@ -16,8 +16,10 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::{atomic::AtomicBool, Arc, Mutex, MutexGuard},
-    thread::ThreadId,
+    sync::{
+        atomic::{AtomicBool, AtomicIsize},
+        Arc, Mutex, MutexGuard,
+    },
 };
 pub use version::VersionLock;
 
@@ -25,6 +27,9 @@ pub struct Transaction<T>
 where
     T: Clone,
 {
+    /// Transaction id
+    id: usize,
+
     /// A snapshot of the global version counter
     version: usize,
 
@@ -66,7 +71,7 @@ where
     T: Clone,
 {
     value: Mutex<T>,
-    id: Mutex<Option<ThreadId>>,
+    id: Arc<AtomicIsize>,
 }
 
 #[cfg(feature = "threaded")]
@@ -77,15 +82,17 @@ where
     pub(crate) fn new(value: T) -> Self {
         Self {
             value: Mutex::new(value),
-            id: Mutex::new(None),
+            id: Arc::new(AtomicIsize::new(-1)),
         }
     }
 
-    pub(crate) fn lock(&self) -> Result<PairGuard<'_, T>, TxError> {
+    pub(crate) fn lock(&self, transaction_id: usize) -> Result<PairGuard<'_, T>, TxError> {
         let value_guard = self.value.lock().map_err(|_| TxError::LockPresent)?;
-        let mut id_guard = self.id.lock().map_err(|_| TxError::LockPresent)?;
-        *id_guard = Some(std::thread::current().id());
-        Ok(PairGuard::new(value_guard, id_guard))
+
+        self.id
+            .store(transaction_id as isize, std::sync::atomic::Ordering::SeqCst);
+
+        Ok(PairGuard::new(value_guard, self.id.clone()))
     }
 }
 
@@ -95,7 +102,7 @@ where
     T: Clone,
 {
     inner: MutexGuard<'a, T>,
-    id: MutexGuard<'a, Option<ThreadId>>,
+    id: Arc<AtomicIsize>,
 }
 
 #[cfg(feature = "threaded")]
@@ -103,7 +110,7 @@ impl<'a, T> PairGuard<'a, T>
 where
     T: Clone,
 {
-    pub(crate) fn new(inner: MutexGuard<'a, T>, id: MutexGuard<'a, Option<ThreadId>>) -> Self {
+    pub(crate) fn new(inner: MutexGuard<'a, T>, id: Arc<AtomicIsize>) -> Self {
         Self { inner, id }
     }
 }
@@ -114,7 +121,7 @@ where
     T: Clone,
 {
     fn drop(&mut self) {
-        *self.id = None
+        self.id.store(-1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -174,31 +181,33 @@ impl<T> TVar<T>
 where
     T: Clone,
 {
-    pub(crate) fn is_locked_by(&self) -> Result<ThreadLockState, TxError> {
-        if let Some(id) = &*self.original.id.lock().map_err(|e| TxError::LockPresent)? {
-            return match id.eq(&std::thread::current().id()) {
-                true => Ok(ThreadLockState::Same),
-                false => Ok(ThreadLockState::Foreign),
-            };
+    pub(crate) fn is_locked_by(&self, transaction_id: usize) -> ThreadLockState {
+        let id = self.original.id.load(std::sync::atomic::Ordering::SeqCst);
+
+        if id == -1 {
+            return ThreadLockState::None;
+        }
+        if id == transaction_id as isize {
+            return ThreadLockState::Same;
         }
 
-        Ok(ThreadLockState::None)
+        ThreadLockState::Foreign
     }
 
-    pub(crate) fn locked_by(&self) -> Result<Option<ThreadId>, TxError> {
-        Ok(*self.original.id.lock().map_err(|e| TxError::LockPresent)?)
+    pub(crate) fn locked_by(&self) -> Result<isize, TxError> {
+        Ok(self.original.id.load(std::sync::atomic::Ordering::SeqCst))
     }
 
-    pub(crate) fn lock(&self) -> Result<(), TxError> {
-        let mut guard = self.original.id.lock().map_err(|e| TxError::LockPresent)?;
-        *guard = Some(std::thread::current().id());
+    pub(crate) fn lock(&self, transaction_id: usize) -> Result<(), TxError> {
+        self.original
+            .id
+            .store(transaction_id as isize, std::sync::atomic::Ordering::SeqCst);
 
         Ok(())
     }
 
     pub(crate) fn unlock(&self) -> Result<(), TxError> {
-        let mut guard = self.original.id.lock().map_err(|e| TxError::LockPresent)?;
-        *guard = None;
+        self.original.id.store(-1, std::sync::atomic::Ordering::SeqCst);
 
         Ok(())
     }
@@ -207,6 +216,8 @@ where
 #[derive(Clone, Default)]
 pub struct Stm {
     global: VersionClock,
+
+    transaction_ids: VersionClock,
 }
 
 impl Stm {
@@ -229,48 +240,41 @@ impl Stm {
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
         T: Clone + Send + Sync + Debug,
     {
+        // increment per thread
+        let id = self.transaction_ids.increment()?;
+
         // we require the latest global version to check for version consistency of writes
         loop {
-            let mut tx = Transaction::<T>::new(self.global.version());
+            let mut tx = Transaction::<T>::new(self.global.version(), id);
             info!(
                 "TRANSACTION({:?}): START. GLOBAL VERSION ({:04})",
-                std::thread::current().id(),
+                tx.id,
                 self.global.version()
             );
             match transaction(&mut tx) {
                 Ok(_) => {
                     if tx.lock_write_set().is_err() {
-                        info!("TRANSACTION({:?}): LOCK WRITE SET FAILED", std::thread::current().id());
+                        info!("TRANSACTION({:?}): LOCK WRITE SET FAILED", tx.id);
                         continue;
                     }
                     let wv = self.global.increment()?;
-                    info!(
-                        "TRANSACTION({:?}): INCREMENT GLOBAL VERSION: ({})",
-                        std::thread::current().id(),
-                        wv
-                    );
+                    info!("TRANSACTION({:?}): INCREMENT GLOBAL VERSION: ({})", id, wv);
 
                     if tx.validate(wv).is_err() {
-                        info!(
-                            "TRANSACTION({:?}): VALIDATING READ SET FAILED",
-                            std::thread::current().id()
-                        );
+                        info!("TRANSACTION({:?}): VALIDATING READ SET FAILED", tx.id);
                         continue;
                     }
 
                     if tx.commit(wv).is_err() {
-                        info!(
-                            "TRANSACTION({:?}): COMMITTING VALUE FAILED",
-                            std::thread::current().id()
-                        );
+                        info!("TRANSACTION({:?}): COMMITTING VALUE FAILED", tx.id);
                         continue;
                     };
 
                     break;
                 }
                 Err(e) => {
-                    info!("TRANSACTION({:?}): FAILED. RETRYING", std::thread::current().id());
-
+                    info!("TRANSACTION({:?}): FAILED. RETRYING", tx.id);
+                    // std::thread::sleep(Duration::from_millis(1000));
                     match strategy {
                         Strategy::Abort => return Err(TxError::Failed),
                         Strategy::Retry => continue,
@@ -298,7 +302,7 @@ impl Stm {
         T: Clone + Send + Sync + Debug,
     {
         loop {
-            let mut tx = Transaction::<T>::new(self.global.version());
+            let mut tx = Transaction::<T>::new(self.global.version(), self.transaction_ids.increment()?);
             match transaction(&mut tx) {
                 Ok(_) => {
                     break;
@@ -317,7 +321,6 @@ impl Stm {
         TVar {
             original: Arc::new(Pair::new(val)),
             lock: VersionLock::new(self.global.version()),
-            // locked_by: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -327,11 +330,12 @@ impl<T> Transaction<T>
 where
     T: Clone + Debug,
 {
-    pub fn new(version: usize) -> Self {
+    pub fn new(version: usize, id: usize) -> Self {
         Self {
             version,
             read: HashSet::new(),
             write: HashMap::new(),
+            id,
         }
     }
 
@@ -347,14 +351,14 @@ where
         }
 
         if tvar.lock.is_locked() {
-            match tvar.is_locked_by()? {
+            match tvar.is_locked_by(self.id) {
                 ThreadLockState::Same | ThreadLockState::None => {
                     tvar.lock.unlock()?;
                 }
                 ThreadLockState::Foreign => {
                     info!(
                         "LOAD({:?}): PRECHECK TRANSACTION LOCKED BY ({:?})",
-                        std::thread::current().id(),
+                        self.id,
                         tvar.locked_by()
                     );
                     return Err(TxError::TransactionLocked);
@@ -365,22 +369,18 @@ where
         let pre_version = tvar.lock.version();
 
         let data = tvar.original.value.lock().map_err(|e| TxError::LockPresent)?;
-        info!("LOAD({:?}): TVAR CONTENTS ({:?})", std::thread::current().id(), data);
+        info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, data);
         let post_version = tvar.lock.version();
 
-        // let is_locked = tvar.lock.is_locked();
+        let is_locked = tvar.lock.is_locked();
         let version_mismatch = pre_version != post_version;
         let stale_object = pre_version > self.version;
 
-        match version_mismatch || stale_object {
+        match is_locked || version_mismatch || stale_object {
             true => {
                 info!(
                     "LOAD({:?}): VERSION MISMATCH ({}), STALE OBJECT ({}), PRE_VERSION ({}), TRANSACTION_VERSION ({})",
-                    std::thread::current().id(),
-                    version_mismatch,
-                    stale_object,
-                    pre_version,
-                    self.version
+                    self.id, version_mismatch, stale_object, pre_version, self.version
                 );
                 Err(TxError::VersionMismatch)
             }
@@ -400,15 +400,15 @@ where
         let fail_lock_write = AtomicBool::new(false);
 
         for tvar in self.write.keys() {
-            info!("TRANSACTION({:?}): WRITE LOCK", std::thread::current().id());
+            info!("TRANSACTION({:?}): WRITE LOCK", self.id);
 
             if tvar.lock.try_lock().is_err() {
-                info!("LOCK WRITE SET({:?}): TRANSACTION LOCKED.", std::thread::current().id());
+                info!("LOCK WRITE SET({:?}): TRANSACTION LOCKED.", self.id);
                 fail_lock_write.store(true, std::sync::atomic::Ordering::SeqCst);
                 break;
             }
 
-            match tvar.is_locked_by()? {
+            match tvar.is_locked_by(self.id) {
                 ThreadLockState::Foreign => {
                     fail_lock_write.store(true, std::sync::atomic::Ordering::SeqCst);
                     break;
@@ -416,14 +416,14 @@ where
                 _ => {
                     info!(
                         "TRANSACTION({:?}): LOCK HELD BY US OR NONE ({:?})",
-                        std::thread::current().id(),
-                        tvar.is_locked_by()?
+                        self.id,
+                        tvar.is_locked_by(self.id)
                     );
                 }
             }
 
             // lock to thread id
-            tvar.lock()?;
+            tvar.lock(self.id)?;
         }
 
         if fail_lock_write.load(std::sync::atomic::Ordering::SeqCst) {
@@ -431,11 +431,11 @@ where
                 tvar.lock.unlock()?;
             }
 
-            info!("LOCK WRITE SET({:?}):  RESETTING LOCKS", std::thread::current().id());
+            info!("LOCK WRITE SET({:?}):  RESETTING LOCKS", self.id);
             return Err(TxError::Failed);
         }
 
-        info!("TRANSACTION({:?}): WRITE LOCK SUCCESS", std::thread::current().id());
+        info!("TRANSACTION({:?}): WRITE LOCK SUCCESS", self.id);
 
         Ok(())
     }
@@ -452,7 +452,7 @@ where
             if tvar.lock.version() >= rv {
                 info!(
                     "VALIDATE({:?}): OBJECT STALE. READ_VERSION ({}), OBJECT VERSION ({})",
-                    std::thread::current().id(),
+                    self.id,
                     rv,
                     tvar.lock.version()
                 );
@@ -460,11 +460,11 @@ where
                 return Err(TxError::StaleObject);
             }
 
-            match tvar.is_locked_by()? {
+            match tvar.is_locked_by(self.id) {
                 ThreadLockState::Same | ThreadLockState::None => {
                     info!(
                         "VALIDATE({:?}): TRANSACTION LOCKED BY US OR NONE. CLEARING LOCKS",
-                        std::thread::current().id()
+                        self.id
                     );
                     tvar.lock.unlock()?;
 
@@ -481,29 +481,22 @@ where
     #[inline(always)]
     fn commit(&self, wv: usize) -> Result<(), TxError> {
         for (tvar, value) in &self.write {
-            info!(
-                "COMMIT({:?}): BEGIN VERSION ({:04}) FOR VALUE ({:?})",
-                std::thread::current().id(),
-                wv,
-                value
-            );
+            info!("COMMIT({:?}): BEGIN VERSION ({:04})", self.id, wv);
             let mut guard = tvar.original.value.lock().map_err(|_| TxError::LockPresent)?;
             *guard = value.clone();
 
             drop(guard);
 
             info!(
-                "COMMIT({:?}): UPDATED TRANSACTIONAL VARIABLE({:?}) TO VERSION VERSION ({}) ",
-                std::thread::current().id(),
-                value,
-                wv
+                "COMMIT({:?}): UPDATED TRANSACTIONAL VARIABLE TO VERSION VERSION ({}) ",
+                self.id, wv
             );
             tvar.lock.release_set(wv)?;
-            info!("COMMIT({:?}): VARIABLE UNLOCKED", std::thread::current().id());
+            info!("COMMIT({:?}): VARIABLE UNLOCKED", self.id);
 
             info!(
                 "COMMIT({:?}): END UNLOCKED VERSION ({:04}). IS LOCKED? ({}). THREAD_LOCK ({:?})",
-                std::thread::current().id(),
+                self.id,
                 tvar.lock.version(),
                 tvar.lock.is_locked(),
                 tvar.locked_by()?,
@@ -525,14 +518,27 @@ where
 mod tests {
     use super::Stm;
     use crate::stm::{TVar, Transaction};
-    use std::collections::HashSet;
+    use std::{
+        collections::HashSet,
+        process::{ExitCode, Termination},
+    };
     use threadpool::ThreadPool;
 
-    /// Some testing struct
-    #[derive(Default, Clone, PartialEq, Eq, Debug)]
-    struct Complex {
-        id: usize,
-        reference: String,
+    #[repr(transparent)]
+    struct TestResult(bool);
+    impl Termination for TestResult {
+        fn report(self) -> std::process::ExitCode {
+            match self.0 {
+                true => ExitCode::from(0),
+                false => ExitCode::from(1),
+            }
+        }
+    }
+
+    impl From<bool> for TestResult {
+        fn from(b: bool) -> Self {
+            Self(b)
+        }
     }
 
     #[test]
@@ -568,46 +574,71 @@ mod tests {
 
     #[test]
     #[cfg(feature = "threaded")]
-    fn test_stm_threaded() {
-        use rand::Rng;
+    fn run_stm_threaded() {
+        use rand::{distributions::Bernoulli, prelude::Distribution};
 
-        // #[cfg(feature = "verbose")]
-        // env_logger::builder()
-        //     .is_test(true)
-        //     .filter_level(log::LevelFilter::Info)
-        //     .init();
+        #[cfg(feature = "verbose")]
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .init();
 
-        let mut rng = rand::thread_rng();
         let stm = Stm::default();
-        let entries: usize = rng.gen_range(0..100);
+        let entries: usize = 1000;
 
-        let expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
+        // bernoulli distribution over reads vs read/write transactions
+        let distribution = Bernoulli::new(0.7).unwrap();
+
+        let mut expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
 
         let set: TVar<HashSet<String>> = stm.create(HashSet::new());
         let pool = ThreadPool::new(8);
 
-        for value in &expected {
+        let mut removal = HashSet::new();
+
+        for value in expected.iter() {
             let stm_a = stm.clone();
             let set_a = set.clone();
             let value = value.clone();
+
+            let do_read = distribution.sample(&mut rand::thread_rng());
+
+            if do_read {
+                removal.insert(value.clone());
+            }
+
             pool.execute(move || {
-                let result = stm_a.read_write(
-                    move |tx: &mut Transaction<_>| {
-                        let mut inner = tx.load(&set_a)?;
+                let result = {
+                    match do_read {
+                        false => stm_a.read_write(
+                            move |tx: &mut Transaction<_>| {
+                                let mut inner = tx.load(&set_a)?;
 
-                        inner.insert(value.clone());
-                        tx.store(&set_a, inner)?;
+                                inner.insert(value.clone());
+                                tx.store(&set_a, inner)?;
 
-                        Ok(())
-                    },
-                    crate::stm::Strategy::Retry,
-                );
-                assert!(result.is_ok(), "Failed to run transaction");
+                                Ok(())
+                            },
+                            crate::stm::Strategy::Retry,
+                        ),
+
+                        true => stm_a.read_only(move |tx: &mut Transaction<_>| {
+                            let inner = tx.load(&set_a);
+                            Ok(())
+                        }),
+                    }
+                };
+
+                // assert!(result.is_ok(), "Failed to run transaction");
             });
         }
 
         // synchronized all running worker threads
         pool.join();
+
+        for value in removal.iter() {
+            expected.remove(value);
+        }
 
         let result = set.get();
         assert!(result.is_ok());

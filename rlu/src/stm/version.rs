@@ -149,7 +149,6 @@ impl VersionClock {
         self.atomic.load(Ordering::SeqCst)
     }
 }
-
 /// Returns the word size in number of bits
 const fn word_size_bits() -> usize {
     std::mem::size_of::<usize>() * 8
