@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{future, ptr::addr_of, sync::Arc, time::Duration};
+use std::{fmt::Write, future, ptr::addr_of, sync::Arc, time::Duration};
 
 use stronghold_p2p::{
     identity::{Keypair, PublicKey},
@@ -50,7 +50,7 @@ pub fn hd_path() -> (String, Chain) {
     let mut is = vec![];
     while rand::coinflip() {
         let i = rand::random::<u32>() & 0x7fffff;
-        s.push_str(&format!("/{}'", i));
+        write!(&mut s, "/{}", i).expect("");
         is.push(i);
     }
     (s, Chain::from_u32_hardened(is))
