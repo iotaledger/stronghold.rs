@@ -5,6 +5,7 @@ keywords:
 - stm
 - concurrency
 - lockless
+- explanation
 ---
 
 # Software Transactional Memory and Transactional Concurrency
