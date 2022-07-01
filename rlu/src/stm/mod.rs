@@ -134,6 +134,7 @@ pub struct TVar<T>
 where
     T: Clone,
 {
+    #[cfg(feature = "threaded")]
     /// This is the original value to be modified
     original: Arc<Pair<T>>,
 
@@ -577,11 +578,11 @@ mod tests {
     fn run_stm_threaded() {
         use rand::{distributions::Bernoulli, prelude::Distribution};
 
-        #[cfg(feature = "verbose")]
-        env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Info)
-            .init();
+        // #[cfg(feature = "verbose")]
+        // env_logger::builder()
+        //     .is_test(true)
+        //     .filter_level(log::LevelFilter::Info)
+        //     .init();
 
         let stm = Stm::default();
         let entries: usize = 1000;
