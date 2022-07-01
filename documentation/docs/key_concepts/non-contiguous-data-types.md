@@ -6,7 +6,8 @@ keywords:
 - non-contiguous data types
 - security
 - runtime
----
+- explanation
+---```
 
 
 # Non-Contiguous Data Types and Handling secrets at runtime
