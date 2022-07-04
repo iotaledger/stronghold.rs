@@ -332,6 +332,20 @@ impl Stronghold {
 
         Ok(())
     }
+
+    /// Calling this function clears the runtime state of all [`Client`]s and the in-memory
+    /// [`Snapshot`] state. This does not affect the persisted [`Client`] state inside a
+    /// snapshot file. Use [`Self::load_client_from_snapshot`] to reload any [`Client`] and
+    /// [`Snapshot`] state
+    pub fn clear(&self) -> Result<(), ClientError> {
+        for (_, c) in self.clients.try_write()?.iter() {
+            c.clear()?;
+        }
+        self.snapshot.try_write()?.clear()?;
+        self.store.clear()?;
+
+        Ok(())
+    }
 }
 
 // networking functionality
@@ -489,6 +503,21 @@ impl Stronghold {
                 Ok(())
             }
         }
+    }
+
+    /// Clears the currently available network
+    pub async fn clear_network(&self) -> Result<(), ClientError> {
+        let mut network = self.network.lock().await;
+
+        if let Some(inner) = &*network {
+            inner.stop_listening().await?;
+        }
+
+        *network = None;
+
+        self.peers.lock().await.clear();
+
+        Ok(())
     }
 
     /// Serve requests to remote Stronghold clients. This call is blocking.
