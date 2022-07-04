@@ -385,6 +385,16 @@ impl Snapshot {
         engine::snapshot::write(&compressed_plain, &mut buffer, shared_key.as_bytes(), &[])?;
         Ok((pk, buffer))
     }
+
+    /// Clears the state from the [`Snapshot`]. This function shouldn't be called directly,
+    /// but from [`crate::Stronghold::clear()`]
+    pub(crate) fn clear(&mut self) -> Result<(), SnapshotError> {
+        self.keystore.clear_keys();
+        self.db.clear();
+        self.states.clear();
+
+        Ok(())
+    }
 }
 
 impl SyncSnapshots for Snapshot {
