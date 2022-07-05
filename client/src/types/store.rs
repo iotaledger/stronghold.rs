@@ -156,6 +156,12 @@ impl Store {
         let inner = self.cache.try_read()?;
         Ok(inner.keys())
     }
+
+    /// Clear the [`Store`]
+    pub fn clear(&self) -> Result<(), ClientError> {
+        self.cache.try_write()?.clear();
+        Ok(())
+    }
 }
 
 // compatibility implementation

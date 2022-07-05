@@ -225,6 +225,21 @@ impl Client {
         Ok(())
     }
 
+    /// Clears the inner [`Client`] state. This functions should not be called directly
+    /// but by calling the function of same name on [`Stronghold`]
+    pub(crate) fn clear(&self) -> Result<(), ClientError> {
+        let mut view = self.db.try_write()?;
+        view.clear();
+
+        let mut store = self.store.cache.try_write()?;
+        store.clear();
+
+        let mut ks = self.keystore.try_write()?;
+        ks.clear_keys();
+
+        Ok(())
+    }
+
     /// Executes a cryptographic [`Procedure`] and returns its output.
     /// A cryptographic [`Procedure`] is the main operation on secrets.
     ///

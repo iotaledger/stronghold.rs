@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.7.0]
+
+- add clear() function to Stronghold, Client and Snapshot
+  - [b71f75ed](https://www.github.com/iotaledger/stronghold.rs/commit/b71f75edff3f95722633a5e29b83b11fd3f6827a) fix: add changes file on 2022-07-04
+  - [8c2f9ebb](https://www.github.com/iotaledger/stronghold.rs/commit/8c2f9ebb09fadffe75e3c35b93f49c5012d09648) fix: changes file on 2022-07-04
+
 ## \[0.6.4]
 
 - iota-stronghold bumped utils dependency
