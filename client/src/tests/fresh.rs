@@ -18,7 +18,7 @@ pub fn hd_path() -> (String, Chain) {
     let mut is = vec![];
     while coinflip() {
         let i = random::<u32>() & 0x7fffff;
-        write!(&mut s, "/{}'", i).expect("Failed to write path into string");
+        write!(&mut s, "/{}'", i).expect("Failed appending path segment");
         is.push(i);
     }
     (s, Chain::from_u32_hardened(is))
