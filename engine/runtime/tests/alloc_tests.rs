@@ -26,31 +26,32 @@ impl Default for TestStruct {
 
 #[test]
 fn test_allocate_direct() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter(None, log::LevelFilter::Info)
-        .try_init();
-
-    info!("Test Fixed Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Direct)).is_ok());
-
-    info!("Test Arbitrary Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Direct, 0xFFFF)).is_ok());
+    test_allocate_strategy(FragStrategy::Direct)
 }
 
 #[test]
 fn test_allocate_map() {
+    test_allocate_strategy(FragStrategy::Map)
+}
+
+#[test]
+fn test_allocate_hybrid() {
+    test_allocate_strategy(FragStrategy::Hybrid)
+}
+
+fn test_allocate_strategy(strat: FragStrategy) {
     let _ = env_logger::builder()
         .is_test(true)
         .filter(None, log::LevelFilter::Info)
         .try_init();
 
     info!("Test Fixed Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(FragStrategy::Map)).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(strat)).is_ok());
 
     info!("Test Arbitrary Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(FragStrategy::Map, 0xFFFF)).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(strat, 0xFFFF)).is_ok());
 }
+
 
 fn test_allocate<T, F>(allocator: F) -> Result<(), MemoryError>
 where
@@ -75,6 +76,7 @@ where
 
     Ok(())
 }
+
 
 // ----------------------------------------------------------------------------
 

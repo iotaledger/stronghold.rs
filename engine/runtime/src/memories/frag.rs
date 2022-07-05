@@ -25,20 +25,22 @@ use std::{
 };
 
 /// Fragmenting strategy to allocate memory at random addresses.
-#[derive(Debug, Clone, Copy)]
-#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FragStrategy {
     /// Anonymously maps a region of memory
     Map,
 
     /// Using system allocator (`malloc` on linux/bsd/macos and `VirtualAlloc` on windows)
     Direct,
+
+    /// Allocate using both strategy
+    Hybrid,
 }
 
 // -----------------------------------------------------------------------------
 
 /// Custom allocator trait
-pub trait Alloc<T: Default> {
+pub trait Alloc<T: Default + Clone> {
     type Error;
 
     /// Allocates `T`, returns an error if something wrong happened. Takes an
@@ -53,7 +55,8 @@ pub trait Alloc<T: Default> {
 
 /// Frag is being used as control object to load different allocators
 /// according to their strategy
-pub struct Frag<T: Default> {
+#[derive(Clone)]
+pub struct Frag<T: Default + Clone> {
     ptr: NonNull<T>,
     strategy: FragStrategy,
 
@@ -64,7 +67,7 @@ pub struct Frag<T: Default> {
     info: Option<(windows::Win32::Foundation::HANDLE, *const libc::c_void)>,
 }
 
-impl<T: Default> Deref for Frag<T> {
+impl<T: Default + Clone> Deref for Frag<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -72,7 +75,7 @@ impl<T: Default> Deref for Frag<T> {
     }
 }
 
-impl<T: Default> DerefMut for Frag<T> {
+impl<T: Default + Clone> DerefMut for Frag<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { self.ptr.as_mut() }
     }
@@ -99,7 +102,7 @@ impl FragConfig {
     }
 }
 
-impl<T: Default> Frag<T> {
+impl<T: Default + Clone> Frag<T> {
     /// Returns a fragmenting allocator by strategy
     ///
     /// # Example
@@ -110,17 +113,20 @@ impl<T: Default> Frag<T> {
     /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
 
-    pub fn alloc_single(strategy: FragStrategy, config: Option<FragConfig>) -> Result<Frag<T>, MemoryError> {
-        match strategy {
-            FragStrategy::Direct => DirectAlloc::alloc(config),
-            FragStrategy::Map => MemoryMapAlloc::alloc(config),
-        }
-    }
-
     /// Tries to allocate two objects of the same type with a minimum distance in memory space.
     pub fn alloc2(strategy: FragStrategy, distance: usize) -> Result<(Frag<T>, Frag<T>), MemoryError> {
-        let a = Self::alloc_single(strategy, None)?;
-        let b = Self::alloc_single(strategy, Some(FragConfig::new(a.ptr.as_ptr() as usize, distance)))?;
+        let a = match strategy {
+            FragStrategy::Direct => DirectAlloc::alloc(None),
+            FragStrategy::Map => MemoryMapAlloc::alloc(None),
+            FragStrategy::Hybrid => DirectAlloc::alloc(None),
+        }?;
+
+        let config = Some(FragConfig::new(a.ptr.as_ptr() as usize, distance));
+        let b = match strategy {
+            FragStrategy::Direct => DirectAlloc::alloc(config),
+            FragStrategy::Map => MemoryMapAlloc::alloc(config),
+            FragStrategy::Hybrid => MemoryMapAlloc::alloc(config),
+        }?;
 
         let actual_distance = calc_distance(&*a, &*b);
         if actual_distance < distance {
@@ -153,6 +159,7 @@ impl<T: Default> Frag<T> {
         match ptr.strategy {
             FragStrategy::Direct => DirectAlloc::dealloc(ptr),
             FragStrategy::Map => MemoryMapAlloc::dealloc(ptr),
+            FragStrategy::Hybrid => unreachable!("Frag are allocated only using map or direct allocation"),
         }
     }
 }
@@ -176,7 +183,7 @@ struct MemoryMapAlloc;
 
 impl<T> Alloc<T> for MemoryMapAlloc
 where
-    T: Default,
+    T: Default + Clone,
 {
     type Error = MemoryError;
 
@@ -228,11 +235,11 @@ where
                     continue;
                 }
 
+                // Check that new memory is far enough
                 if let Some(ref cfg) = config {
                     let actual_distance = (c_ptr as usize).abs_diff(cfg.last_address);
                     if actual_distance < cfg.min_distance {
                         warn!("New allocation distance to previous allocation is below threshold.");
-
                         dealloc_map(c_ptr, desired_alloc_size)?;
                         continue;
                     }
@@ -282,56 +289,6 @@ where
         let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
         loop {
             unsafe {
-                // allocation prelude
-                // {
-                //     let r_addr = rng.gen::<u32>() >> 4;
-
-                //     let random_mapping = windows::Win32::System::Memory::CreateFileMappingW(
-                //         handle,
-                //         std::ptr::null_mut(),
-                //         windows::Win32::System::Memory::PAGE_READWRITE,
-                //         0,
-                //         r_addr,
-                //         windows::core::PCWSTR(std::ptr::null_mut()),
-                //     )
-                //     .map_err(|e| MemoryError::Allocation(e.to_string()))?;
-
-                //     if let Err(e) = last_error() {
-                //         return Err(e);
-                //     }
-
-                //     let ptr = windows::Win32::System::Memory::MapViewOfFile(
-                //         random_mapping,
-                //         windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
-                //         0,
-                //         0,
-                //         r_addr as usize,
-                //     );
-
-                //     if let Err(e) = last_error() {
-                //         return Err(e);
-                //     }
-
-                //     if let Some(ref cfg) = config {
-                //         let actual_distance = (ptr as *const _ as usize).abs_diff(cfg.last_address);
-                //         if actual_distance < cfg.min_distance {
-                //             warn!(
-                //                 "New allocation distance to previous allocation is below threshold: {}",
-                //                 actual_distance
-                //             );
-
-                //             // remove previous file mapping
-                //             if !windows::Win32::System::Memory::UnmapViewOfFile(ptr).as_bool() {
-                //                 if let Err(e) = last_error() {
-                //                     return Err(e);
-                //                 }
-                //             }
-
-                //             continue;
-                //         }
-                //     }
-                // }
-
                 // actual memory mapping
                 {
                     let actual_size = std::mem::size_of::<T>() as u32;
@@ -403,7 +360,7 @@ struct DirectAlloc;
 
 impl<T> Alloc<T> for DirectAlloc
 where
-    T: Default,
+    T: Default + Clone,
 {
     type Error = MemoryError;
 

@@ -27,3 +27,4 @@ nix                     = { version = "0.24.1" }
 [dev-dependencies]
 serde_json              = { version = "1.0" }
 env_logger              = { version = "0.9" }
+dhat                    = { version = "0.3" }
