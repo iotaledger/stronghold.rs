@@ -191,7 +191,7 @@ impl Client {
     }
 
     /// Applies `f` to the buffer from the given `location`.
-    pub fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    pub(crate) fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
     {
