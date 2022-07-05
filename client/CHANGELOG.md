@@ -1,5 +1,10 @@
 # Changelog
 
+## \[0.7.1]
+
+- reduce visibility of Client runners `get_guard` function
+  - [13b7ebb8](https://www.github.com/iotaledger/stronghold.rs/commit/13b7ebb877634aadfbb8f4610b44660141ab43ed) doc: add changes doc on 2022-07-05
+
 ## \[0.7.0]
 
 - add clear() function to Stronghold, Client and Snapshot
