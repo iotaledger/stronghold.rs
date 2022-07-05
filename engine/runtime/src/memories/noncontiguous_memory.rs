@@ -61,7 +61,7 @@ impl LockedMemory for NonContiguousMemory {
     /// Unlocks the memory and returns an unlocked Buffer
     /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
-        let data1 = blake2b::Blake2b256::digest(&self.get_buffer_from_shard1().borrow());
+        let data1 = blake2b::Blake2b256::digest(&*self.get_buffer_from_shard1().borrow());
 
         let data = match &self.shard2 {
             RamShard(ram2) => {
@@ -128,7 +128,7 @@ impl NonContiguousMemory {
         let new_data1 = xor(data_of_old_shard1, &random, NC_DATA_SIZE);
         let new_shard1 = RamShard(RamMemory::alloc(&new_data1, NC_DATA_SIZE)?);
 
-        let hash_of_old_shard1 = blake2b::Blake2b256::digest(data_of_old_shard1);
+        let hash_of_old_shard1 = blake2b::Blake2b256::digest(&*buf_of_old_shard1.borrow());
         let hash_of_new_shard1 = blake2b::Blake2b256::digest(&new_data1);
 
         let new_shard2 = match &self.shard2 {

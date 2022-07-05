@@ -1,5 +1,52 @@
 # Changelog
 
+## \[0.7.1]
+
+- reduce visibility of Client runners `get_guard` function
+  - [13b7ebb8](https://www.github.com/iotaledger/stronghold.rs/commit/13b7ebb877634aadfbb8f4610b44660141ab43ed) doc: add changes doc on 2022-07-05
+
+## \[0.7.0]
+
+- add clear() function to Stronghold, Client and Snapshot
+  - [b71f75ed](https://www.github.com/iotaledger/stronghold.rs/commit/b71f75edff3f95722633a5e29b83b11fd3f6827a) fix: add changes file on 2022-07-04
+  - [8c2f9ebb](https://www.github.com/iotaledger/stronghold.rs/commit/8c2f9ebb09fadffe75e3c35b93f49c5012d09648) fix: changes file on 2022-07-04
+
+## \[0.6.4]
+
+- iota-stronghold bumped utils dependency
+  - [d350acfd](https://www.github.com/iotaledger/stronghold.rs/commit/d350acfd17dcee55f4aaa2ce0ccaa2e84ed1bd34) fix: bump stronghold patch version on 2022-06-27
+  - [2d08c650](https://www.github.com/iotaledger/stronghold.rs/commit/2d08c6506b63b11f45cec356284cde66bfe33ae3) fix: module name on 2022-06-27
+  - [0ddd0d4a](https://www.github.com/iotaledger/stronghold.rs/commit/0ddd0d4a77a225859c9de8ca1128eed43383e344) apply version updates on 2022-06-27
+  - [92db69ea](https://www.github.com/iotaledger/stronghold.rs/commit/92db69eaffaec1dca1468d2900904152785d2ed5) fix: bump dependency on utils to 0.4.1 on 2022-06-27
+
+## \[0.6.3]
+
+- bump patch version
+  - [d350acfd](https://www.github.com/iotaledger/stronghold.rs/commit/d350acfd17dcee55f4aaa2ce0ccaa2e84ed1bd34) fix: bump stronghold patch version on 2022-06-27
+  - [2d08c650](https://www.github.com/iotaledger/stronghold.rs/commit/2d08c6506b63b11f45cec356284cde66bfe33ae3) fix: module name on 2022-06-27
+
+## \[0.6.2]
+
+- split random byte string into fixed and variable sized
+  - Bumped due to a bump in stronghold-utils.
+  - [34af5797](https://www.github.com/iotaledger/stronghold.rs/commit/34af5797df675912d9a78ea6a673b8a535ce1f91) Fix/remove riker from utils ([#252](https://www.github.com/iotaledger/stronghold.rs/pull/252)) on 2021-08-27
+  - [3816aef5](https://www.github.com/iotaledger/stronghold.rs/commit/3816aef5111684ffbdbd12ed7f93b887e43e7a02) chore(release-doc): clean up outdated release notes, merge existing into one on 2022-05-31
+  - [cc655878](https://www.github.com/iotaledger/stronghold.rs/commit/cc6558782928162f70614f6274a2ec87bd1a68d0) fix: utils version on 2022-06-27
+
+## \[0.6.1]
+
+- Loading a snapshot file will now return a new `ClientError` variant `SnapshotFileMissing`, if the snapshot file is not present
+  Committing `Client` state into a snapshotfile will now check if all paths to the snapshot file are correct and will create the snapshot file, if it doesn't exist.
+  - [2dddda13](https://www.github.com/iotaledger/stronghold.rs/commit/2dddda1310b1676ee36b20adebd09e9607417923) fix: refactored naming of 'SnapshotfileMissing' to 'SnapshotFileMissing' on 2022-06-24
+
+## \[0.6.0]
+
+- - update to crypto.rs `0.12.1`
+- update to hkdf `0.12`
+- [a340c6e2](https://www.github.com/iotaledger/stronghold.rs/commit/a340c6e23ef81ca5c3581e48ee81eccc76c214e9) add changes file on 2022-06-17
+- Inserting a value into the `Store` will return an optional previous value
+  - [1455038c](https://www.github.com/iotaledger/stronghold.rs/commit/1455038cc0a250df4d69fc36615826a0ba1b58b4) feat: add changes doc on 2022-06-17
+
 ## \[0.5.1]
 
 - bump all crate versions to update to new utils modules

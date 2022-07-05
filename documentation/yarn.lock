@@ -1997,6 +1997,38 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@iota-community/iota-wiki-cli@iota-community/iota-wiki-cli#v2":
+  version: 1.7.0
+  resolution: "@iota-community/iota-wiki-cli@https://github.com/iota-community/iota-wiki-cli.git#commit=ee983421e6029e4802c69c9adf812c8ab80b0c42"
+  dependencies:
+    "@babel/generator": ^7.17.9
+    "@babel/parser": ^7.17.9
+    "@babel/types": ^7.17.0
+    "@docusaurus/core": ^2.0.0-beta.20
+    "@docusaurus/plugin-content-blog": ^2.0.0-beta.20
+    "@docusaurus/plugin-content-docs": ^2.0.0-beta.20
+    "@docusaurus/plugin-content-pages": ^2.0.0-beta.20
+    "@docusaurus/theme-classic": ^2.0.0-beta.20
+    "@iota-wiki/plugin-tutorial": ^1.0.4
+    "@yarnpkg/shell": ^3.2.0
+    axios: ^0.26.1
+    clipanion: ^3.2.0-rc.10
+    ink: ^3.2.0
+    ink-multi-select: ^2.0.0
+    ink-select-input: ^4.2.1
+    ink-spinner: ^4.0.3
+    ink-text-input: ^4.0.3
+    isomorphic-git: ^1.17.2
+    plugin-image-zoom: flexanalytics/plugin-image-zoom
+    prettier: 2.6.0
+    react: ^17.0.2
+    react-dom: ^17.0.2
+  bin:
+    iota-wiki: dist/index.js
+  checksum: 2c87920005f6cb4985398cd10b1c1f6e7eeb431b00855d785e71f7dd51524a367675060a1416af5d405d93412b251e73c2ca5f6a8fa82e32c9a4bddbef4eaeb5
+  languageName: node
+  linkType: hard
+
 "@iota-wiki/plugin-tutorial@npm:^1.0.4":
   version: 1.0.4
   resolution: "@iota-wiki/plugin-tutorial@npm:1.0.4"
@@ -6493,38 +6525,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"iota-wiki-cli@iota-community/iota-wiki-cli#v2":
-  version: 1.7.0
-  resolution: "iota-wiki-cli@https://github.com/iota-community/iota-wiki-cli.git#commit=ee983421e6029e4802c69c9adf812c8ab80b0c42"
-  dependencies:
-    "@babel/generator": ^7.17.9
-    "@babel/parser": ^7.17.9
-    "@babel/types": ^7.17.0
-    "@docusaurus/core": ^2.0.0-beta.20
-    "@docusaurus/plugin-content-blog": ^2.0.0-beta.20
-    "@docusaurus/plugin-content-docs": ^2.0.0-beta.20
-    "@docusaurus/plugin-content-pages": ^2.0.0-beta.20
-    "@docusaurus/theme-classic": ^2.0.0-beta.20
-    "@iota-wiki/plugin-tutorial": ^1.0.4
-    "@yarnpkg/shell": ^3.2.0
-    axios: ^0.26.1
-    clipanion: ^3.2.0-rc.10
-    ink: ^3.2.0
-    ink-multi-select: ^2.0.0
-    ink-select-input: ^4.2.1
-    ink-spinner: ^4.0.3
-    ink-text-input: ^4.0.3
-    isomorphic-git: ^1.17.2
-    plugin-image-zoom: flexanalytics/plugin-image-zoom
-    prettier: 2.6.0
-    react: ^17.0.2
-    react-dom: ^17.0.2
-  bin:
-    iota-wiki: dist/index.js
-  checksum: dae3c9d1ec7389ba670b45e577b2b09ef944463a47ac43b62755873b66d9bbc6a99a0fedc464bad87085360eb101ba4de2474ddcf2bcf69222c12e1692400f68
-  languageName: node
-  linkType: hard
-
 "ip@npm:^1.1.5":
   version: 1.1.8
   resolution: "ip@npm:1.1.8"
@@ -10428,7 +10428,7 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   version: 0.0.0-use.local
   resolution: "stronghold@workspace:."
   dependencies:
-    iota-wiki-cli: "iota-community/iota-wiki-cli#v2"
+    "@iota-community/iota-wiki-cli": "iota-community/iota-wiki-cli#v2"
     remark-code-import: ^0.3.0
     remark-import-partial: ^0.0.2
     remark-remove-comments: ^0.2.0

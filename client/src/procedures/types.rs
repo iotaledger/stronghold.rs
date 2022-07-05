@@ -218,7 +218,7 @@ mod test {
 
     #[test]
     fn proc_io_vec() {
-        let vec = random::bytestring(2048);
+        let vec = random::variable_bytestring(2048);
         let proc_io: ProcedureOutput = vec.clone().into();
         let converted = Vec::try_from(proc_io).unwrap();
         assert_eq!(vec.len(), converted.len());

@@ -10,7 +10,13 @@ fn test_insert_into_store() {
     let key = b"some key";
     let data = b"some data".to_vec();
 
-    assert!(store.insert(key.to_vec(), data, None).is_ok());
+    assert!(store.insert(key.to_vec(), data.clone(), None).is_ok());
+
+    let new_data = b"some_other_data".to_vec();
+
+    let previous = store.insert(key.to_vec(), new_data, None).unwrap();
+    assert!(previous.is_some());
+    assert_eq!(previous.unwrap(), data);
 }
 
 #[test]
@@ -55,7 +61,7 @@ fn test_keys() {
     let store = Store::default();
     let max_entries = 10;
     let generate = || -> Vec<Vec<u8>> {
-        std::iter::repeat_with(|| rand::bytestring(256))
+        std::iter::repeat_with(|| rand::variable_bytestring(256))
             .take(max_entries)
             .collect()
     };

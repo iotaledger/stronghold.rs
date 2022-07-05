@@ -90,9 +90,6 @@ impl SnapshotPath {
     where
         P: AsRef<Path>,
     {
-        assert!(name.as_ref().is_relative());
-        assert!(engine::snapshot::files::home_dir().is_ok());
-
         let path = engine::snapshot::files::home_dir().unwrap();
 
         Self { path: path.join(name) }
@@ -113,6 +110,12 @@ impl SnapshotPath {
     /// Returns [`Self`] as Path
     pub fn as_path(&self) -> &Path {
         &self.path
+    }
+
+    /// Returns `true`, if the provided path to the snapshot file exists,
+    /// `false` otherwise
+    pub fn exists(&self) -> bool {
+        self.as_path().exists()
     }
 }
 
@@ -381,6 +384,16 @@ impl Snapshot {
         let pk = sk.public_key();
         engine::snapshot::write(&compressed_plain, &mut buffer, shared_key.as_bytes(), &[])?;
         Ok((pk, buffer))
+    }
+
+    /// Clears the state from the [`Snapshot`]. This function shouldn't be called directly,
+    /// but from [`crate::Stronghold::clear()`]
+    pub(crate) fn clear(&mut self) -> Result<(), SnapshotError> {
+        self.keystore.clear_keys();
+        self.db.clear();
+        self.states.clear();
+
+        Ok(())
     }
 }
 

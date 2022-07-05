@@ -70,7 +70,7 @@ impl Runner for Client {
             Ok(secret)
         };
 
-        let random_hint = RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
+        let random_hint = RecordHint::new(rand::variable_bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
 
         // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
         let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
@@ -118,7 +118,7 @@ impl Runner for Client {
             let key = keystore.create_key(vault_id).map_err(|_| RecordError::InvalidKey)?;
             db.init_vault(&key, vault_id);
         }
-        let random_hint = RecordHint::new(rand::bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
+        let random_hint = RecordHint::new(rand::variable_bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
         let key = keystore.take_key(vault_id).unwrap();
         let res = db.write(&key, vault_id, record_id, &value, random_hint);
 
@@ -191,7 +191,7 @@ impl Client {
     }
 
     /// Applies `f` to the buffer from the given `location`.
-    pub fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
+    pub(crate) fn get_guard<F, T>(&self, location: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
     where
         F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>,
     {

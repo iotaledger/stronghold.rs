@@ -1,5 +1,13 @@
 # Changelog
 
+## \[0.4.2]
+
+- split random byte string into fixed and variable sized
+  - Bumped due to a bump in stronghold-utils.
+  - [34af5797](https://www.github.com/iotaledger/stronghold.rs/commit/34af5797df675912d9a78ea6a673b8a535ce1f91) Fix/remove riker from utils ([#252](https://www.github.com/iotaledger/stronghold.rs/pull/252)) on 2021-08-27
+  - [3816aef5](https://www.github.com/iotaledger/stronghold.rs/commit/3816aef5111684ffbdbd12ed7f93b887e43e7a02) chore(release-doc): clean up outdated release notes, merge existing into one on 2022-05-31
+  - [cc655878](https://www.github.com/iotaledger/stronghold.rs/commit/cc6558782928162f70614f6274a2ec87bd1a68d0) fix: utils version on 2022-06-27
+
 ## \[0.4.1]
 
 - bump all crate versions to update to new utils modules

@@ -2,6 +2,7 @@
 description: History behind the development of the Stronghold Engine library that reflects upon previous revisions and the lessons learnt.
 image: /img/logo/Stronghold_icon.png
 keywords:
+- key concepts
 - development
 - history
 - crate

@@ -51,11 +51,14 @@ impl Store {
     /// let data = b"some data".to_vec();
     /// assert!(store.insert(key.clone(), data, None).is_ok());
     /// ```
-    pub fn insert(&self, key: Vec<u8>, value: Vec<u8>, lifetime: Option<Duration>) -> Result<(), ClientError> {
+    pub fn insert(
+        &self,
+        key: Vec<u8>,
+        value: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write()?;
-        guard.insert(key.to_vec(), value, lifetime);
-
-        Ok(())
+        Ok(guard.insert(key.to_vec(), value, lifetime))
     }
 
     /// Tries to get the stored value via `key`
@@ -152,6 +155,12 @@ impl Store {
     pub fn keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
         let inner = self.cache.try_read()?;
         Ok(inner.keys())
+    }
+
+    /// Clear the [`Store`]
+    pub fn clear(&self) -> Result<(), ClientError> {
+        self.cache.try_write()?.clear();
+        Ok(())
     }
 }
 

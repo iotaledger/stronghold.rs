@@ -373,3 +373,140 @@ fn test_load_multiple_clients_from_snapshot() {
         assert!(result.is_ok(), "Failed to load client from snapshot path {:?}", result);
     });
 }
+
+#[test]
+fn test_load_client_from_non_existing_snapshot() {
+    let client_path = "my-awesome-client-path";
+    let stronghold = Stronghold::default();
+    let snapshot_path = SnapshotPath::named("idkfa.snapshot");
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    let result = match stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path) {
+        Err(client_error) => {
+            std::mem::discriminant(&client_error)
+                == std::mem::discriminant(&ClientError::SnapshotFileMissing("obo".to_string()))
+        }
+        Ok(_) => false,
+    };
+
+    assert!(result)
+}
+
+#[test]
+fn test_create_snapshot_file_in_custom_directory() {
+    let client_path = "my-awesome-client-path";
+    let vault_path = b"vault_path".to_vec();
+    let record_path = b"record_path".to_vec();
+    let payload = b"payload".to_vec();
+    let location = Location::const_generic(vault_path.clone(), record_path.clone());
+    let stronghold = Stronghold::default();
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir = temp_dir.join("idkfa.snapshot");
+
+    let snapshot_path = SnapshotPath::from_path(temp_dir.as_path());
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    let result = stronghold.create_client(client_path);
+    assert!(result.is_ok());
+
+    let client = result.unwrap();
+    let vault = client.vault(vault_path.clone());
+
+    assert!(vault.write_secret(location, payload.clone()).is_ok());
+
+    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+
+    let client2 = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path);
+    assert!(client2.is_ok());
+
+    let client2 = client2.unwrap();
+
+    let vault2 = client2.vault(vault_path);
+    let secret = vault2.read_secret(record_path);
+    assert!(secret.is_ok());
+
+    let secret = secret.unwrap();
+    assert!(secret.eq(&payload));
+}
+
+#[test]
+fn test_clear_stronghold_state() {
+    // pre-requisites
+    let client_path = "my-awesome-client-path";
+    let vault_path = b"vault_path".to_vec();
+    let record_path = b"record_path".to_vec();
+    let payload = b"payload".to_vec();
+    let location = Location::const_generic(vault_path.clone(), record_path);
+
+    let store_key = rand::fixed_bytestring(32);
+    let store_data = rand::fixed_bytestring(1024);
+
+    let mut temp_dir = std::env::temp_dir();
+    temp_dir = temp_dir.join("idkfa.snapshot");
+    let defer = Defer::from((temp_dir, |path: &'_ PathBuf| {
+        println!("Delete temporary snapshot file");
+        let _ = std::fs::remove_file(path);
+    }));
+
+    let snapshot_path = SnapshotPath::from_path(defer.as_path());
+    let password = rand::fixed_bytestring(32);
+    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+
+    // init stronghold
+    let stronghold = Stronghold::default();
+
+    let result = stronghold.create_client(client_path);
+    assert!(result.is_ok(), "Could not load client {:?}", result);
+
+    let client = result.unwrap();
+    let client_store = client.store();
+    assert!(client_store.insert(store_key.clone(), store_data, None).is_ok());
+
+    // generate a key
+    assert!(client
+        .execute_procedure(crate::procedures::GenerateKey {
+            output: location.clone(),
+            ty: KeyType::Ed25519
+        })
+        .is_ok());
+
+    // and export its public part
+    let result = client.execute_procedure(crate::procedures::PublicKey {
+        private_key: location,
+        ty: KeyType::Ed25519,
+    });
+
+    // assert the public key export succeeded
+    assert!(result.is_ok());
+
+    // store the state
+    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+
+    // --
+    // clear internal state
+    // --
+    assert!(stronghold.clear().is_ok());
+
+    // check that vault does not exist. This is actually an odd case, but the reference
+    // to client is still present, but the inner state is not  since it is managed by stronghold.
+    // it would be safer to drop this reference
+    let result = client.vault_exists(vault_path);
+    assert!(result.is_ok());
+
+    // check for `false`
+    assert!(!result.unwrap());
+
+    let result = client_store.contains_key(&store_key);
+    assert!(result.is_ok());
+
+    // check for `false`
+    assert!(!result.unwrap());
+
+    // check, that loading a non-exisiting client should fail
+    let result = stronghold.load_client(client_path);
+    assert!(result.is_err());
+
+    assert!(matches!(result, Err(ClientError::ClientDataNotPresent)));
+}
