@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.8.0]
+
+- add insecure feature gated procedure to check values stored inside vault
+  - [a30fc8ea](https://www.github.com/iotaledger/stronghold.rs/commit/a30fc8eace0ab6af92a44c8848ee848162db9652) doc: add changes doc on 2022-07-06
+  - [aeb13540](https://www.github.com/iotaledger/stronghold.rs/commit/aeb1354034111335b67244de3e5eaf0af5a595df) doc: fix typo on 2022-07-06
+
 ## \[0.7.1]
 
 - reduce visibility of Client runners `get_guard` function

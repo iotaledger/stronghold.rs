@@ -1,6 +1,6 @@
 [package]
 name = "iota_stronghold"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -15,10 +15,7 @@ categories = [ "security" ]
 default = [ "std" ]
 p2p = [ "std", "futures", "pin-project", "stronghold-p2p" ]
 std = [ ]
-
-# use this feature flag to enable insecure testing functions. This feature flag is disabled by default, and
-# MUST NOT be used in production setups
-insecure = []
+insecure = [ ]
 
 [dependencies]
 thiserror = { version = "1.0.30" }
