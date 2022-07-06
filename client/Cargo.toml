@@ -16,6 +16,10 @@ default = [ "std" ]
 p2p = [ "std", "futures", "pin-project", "stronghold-p2p" ]
 std = [ ]
 
+# use this feature flag to enable insecure testing functions. This feature flag is disabled by default, and
+# MUST NOT be used in production setups
+insecure = []
+
 [dependencies]
 thiserror = { version = "1.0.30" }
 zeroize = { version = "1.4.3", features = [ "zeroize_derive" ] }
