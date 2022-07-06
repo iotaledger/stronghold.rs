@@ -141,10 +141,6 @@ impl<T: Default + Clone> Frag<T> {
         let actual_distance = calc_distance(a.get()?, b.get()?);
         if actual_distance < distance {
             error!(
-                "Distance between parts below threshold: \nthreshold: 0x{:016X} \nactual_distance: 0x{:016X}",
-                distance, actual_distance
-            );
-            error!(
                 "Distance between parts below threshold: \na: 0x{:016x} \nb: 0x{:016x} \ngiven_value: 0x{:016x}",
                 a.ptr.as_ptr() as usize,
                 b.ptr.as_ptr() as usize,
@@ -163,7 +159,7 @@ impl<T: Default + Clone> Frag<T> {
     /// Tries to allocate two objects of the same type with a default minimum distance in memory space of
     /// `FRAG_MIN_DISTANCE`.
     pub fn alloc(strategy: FragStrategy, data1: T, data2: T) -> Result<(Frag<T>, Frag<T>), MemoryError> {
-        let (mut f1, mut f2) = Self::alloc2(strategy, 100 * FRAG_MIN_DISTANCE)?;
+        let (mut f1, mut f2) = Self::alloc2(strategy, FRAG_MIN_DISTANCE)?;
         f1.set(data1)?;
         f2.set(data2)?;
         Ok((f1, f2))
@@ -363,7 +359,7 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+    fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
         if let Some((handle, view)) = frag.info {
             dealloc_map(handle, view)
         } else {
@@ -502,7 +498,7 @@ where
     }
 
     #[cfg(target_os = "windows")]
-    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+    fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
         dealloc_direct(NonNull::as_ptr(frag.ptr) as *mut libc::c_void)
     }
 }

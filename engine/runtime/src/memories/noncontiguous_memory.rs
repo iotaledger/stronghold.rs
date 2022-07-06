@@ -405,11 +405,9 @@ mod tests {
         let data = random_vec(NC_DATA_SIZE);
 
         for config in configs {
-            let ncm = NonContiguousMemory::alloc(&data, NC_DATA_SIZE, config);
-            assert!(ncm.is_ok(), "Failed to allocated nc memory");
-            let ptrs = ncm.unwrap().get_ptr_addresses();
-            assert!(ptrs.is_ok());
-            let (a, b) = ptrs.unwrap();
+            let ncm = NonContiguousMemory::alloc(&data, NC_DATA_SIZE, config).expect(ERR);
+            let ptrs = ncm.get_ptr_addresses().expect(ERR);
+            let (a, b) = ptrs;
             let distance = a.abs_diff(b);
             assert!(
                 distance >= crate::memories::frag::FRAG_MIN_DISTANCE,
