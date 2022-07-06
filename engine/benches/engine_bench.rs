@@ -11,7 +11,6 @@ use engine::{
     store::Cache,
     vault::{DbView, Key, RecordHint, RecordId, VaultId},
 };
-use runtime::memories::frag::{Frag, FragStrategy};
 
 use crate::provider::Provider;
 
@@ -108,53 +107,6 @@ fn bench_store_decompress(c: &mut Criterion) {
     });
 }
 
-#[allow(dead_code)]
-struct TestStruct {
-    id: usize,
-    name: String,
-}
-
-impl Default for TestStruct {
-    fn default() -> Self {
-        Self {
-            id: 0xFFFF_FFFF_FFFF_FFFF,
-            name: "Some TestingStruct".to_owned(),
-        }
-    }
-}
-
-fn bench_allocate_direct(c: &mut Criterion) {
-    bench_allocate_strat(c, FragStrategy::Direct);
-}
-
-fn bench_allocate_mapped(c: &mut Criterion) {
-    bench_allocate_strat(c, FragStrategy::Map);
-}
-
-fn bench_allocate_hybrid(c: &mut Criterion) {
-    bench_allocate_strat(c, FragStrategy::Hybrid);
-}
-
-fn bench_allocate_strat(c: &mut Criterion, strat: FragStrategy) {
-    let bench_name = match strat {
-        FragStrategy::Direct => "Direct allocations",
-        FragStrategy::Map => "Map allocations",
-        FragStrategy::Hybrid => "Hybrid allocations",
-        _ => unreachable!(),
-    };
-
-    c.bench_function(bench_name, |b| {
-        b.iter(|| {
-            if let Ok((m1, m2)) = Frag::<TestStruct>::alloc(strat) {
-                Frag::dealloc(m1).expect("error while deallocating");
-                Frag::dealloc(m2).expect("error while deallocating");
-            } else {
-                panic!("error while allocating memory");
-            }
-        });
-    });
-}
-
 criterion_group!(
     benches,
     bench_snapshot_compression,
@@ -164,8 +116,5 @@ criterion_group!(
     bench_store_compression,
     bench_store_decompress,
     bench_vault_write,
-    bench_allocate_direct,
-    bench_allocate_mapped,
-    bench_allocate_hybrid
 );
 criterion_main!(benches);
