@@ -32,13 +32,13 @@ fn test_memory_leak_without_dealloc() {
 
 #[test]
 fn test_memory_no_leak() {
-    let frags = alloc_frags(FragStrategy::Direct, NB_ALLOC);
-    dealloc_frags(frags);
+    alloc_frags(FragStrategy::Direct, NB_ALLOC);
 }
 
 
 // Test to check the dhat tool
 // TODO: Not working yet
+#[allow(dead_code)]
 fn test_dhat() {
     
     let _profiler = dhat::Profiler::builder().testing().build();
@@ -80,17 +80,11 @@ fn test_dhat() {
 fn alloc_frags(strat: FragStrategy, nb_alloc: usize) -> Vec<Frag<TestStruct>> {
     let mut v = vec![];
     for _ in 0..nb_alloc {
-        let frags = Frag::<TestStruct>::alloc(strat);
+        let frags = Frag::<TestStruct>::alloc(strat, TestStruct::default(), TestStruct::default());
         assert!(frags.is_ok());
         let (f1, f2) = frags.unwrap();
         v.push(f1);
         v.push(f2);
     }
     v
-}
-
-fn dealloc_frags(vec: Vec<Frag<TestStruct>>) {
-    for frag in vec.into_iter() {
-        assert!(Frag::dealloc(frag).is_ok());
-    }
 }

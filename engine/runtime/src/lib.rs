@@ -45,6 +45,9 @@ pub enum MemoryError {
 
     #[error("Intended operation failed: ({0})")]
     Operation(String),
+
+    #[error("Illegal tentative of using zeroized memory")]
+    IllegalZeroizedUsage,
 }
 
 /// A simple trait to force the types to call `zeroize()` when dropping

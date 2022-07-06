@@ -20,9 +20,13 @@ use crate::MemoryError;
 use log::*;
 use std::{
     fmt::Debug,
-    ops::{Deref, DerefMut},
     ptr::NonNull,
 };
+use zeroize::Zeroize;
+
+// The minimum distance we consider between 2 fragments
+// This is the page size for most linux systems
+pub const FRAG_MIN_DISTANCE: usize = 0x1000;
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -48,7 +52,7 @@ pub trait Alloc<T: Default + Clone> {
     fn alloc(config: Option<FragConfig>) -> Result<Frag<T>, Self::Error>;
 
     /// Deallocate `T`, returns an error if something wrong happened.
-    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error>;
+    fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error>;
 }
 
 // -----------------------------------------------------------------------------
@@ -60,6 +64,9 @@ pub struct Frag<T: Default + Clone> {
     ptr: NonNull<T>,
     strategy: FragStrategy,
 
+    // If the fragment is still valid/alive
+    live: bool,
+
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     info: (*mut libc::c_void, usize),
 
@@ -67,17 +74,20 @@ pub struct Frag<T: Default + Clone> {
     info: Option<(windows::Win32::Foundation::HANDLE, *const libc::c_void)>,
 }
 
-impl<T: Default + Clone> Deref for Frag<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.ptr.as_ref() }
+impl<T: Default + Clone> Zeroize for Frag<T> {
+    fn zeroize(&mut self) {
+        self.live = false;
+        unsafe {
+            let ptr: *mut T = self.ptr.as_mut();
+            *ptr = T::default();
+        }
     }
 }
 
-impl<T: Default + Clone> DerefMut for Frag<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.ptr.as_mut() }
+impl<T: Default + Clone> Drop for Frag<T> {
+    fn drop(&mut self) {
+        self.zeroize();
+        Frag::dealloc(self).expect("Error while deallocating fragment memory");
     }
 }
 
@@ -128,7 +138,7 @@ impl<T: Default + Clone> Frag<T> {
             FragStrategy::Hybrid => MemoryMapAlloc::alloc(config),
         }?;
 
-        let actual_distance = calc_distance(&*a, &*b);
+        let actual_distance = calc_distance(a.get()?, b.get()?);
         if actual_distance < distance {
             error!(
                 "Distance between parts below threshold: \nthreshold: 0x{:016X} \nactual_distance: 0x{:016X}",
@@ -150,17 +160,44 @@ impl<T: Default + Clone> Frag<T> {
         Ok((a, b))
     }
 
-    /// Tries to allocate two objects of the same type with a default minimum distance in memory space of `0xFFFF`.
-    pub fn alloc(strategy: FragStrategy) -> Result<(Frag<T>, Frag<T>), MemoryError> {
-        Self::alloc2(strategy, 0xFFFF)
+    /// Tries to allocate two objects of the same type with a default minimum distance in memory space of `FRAG_MIN_DISTANCE`.
+    pub fn alloc(strategy: FragStrategy, data1: T, data2: T) -> Result<(Frag<T>, Frag<T>), MemoryError> {
+        let (mut f1, mut f2) = Self::alloc2(strategy, 100 * FRAG_MIN_DISTANCE)?;
+        f1.set(data1)?;
+        f2.set(data2)?;
+        Ok((f1, f2))
     }
 
-    pub fn dealloc(ptr: Frag<T>) -> Result<(), MemoryError> {
+    pub fn dealloc(ptr: &mut Frag<T>) -> Result<(), MemoryError> {
         match ptr.strategy {
             FragStrategy::Direct => DirectAlloc::dealloc(ptr),
             FragStrategy::Map => MemoryMapAlloc::dealloc(ptr),
             FragStrategy::Hybrid => unreachable!("Frag are allocated only using map or direct allocation"),
         }
+    }
+
+    pub fn is_live(&self) -> bool {
+        self.live
+    }
+
+    pub fn get(&self) -> Result<&T, MemoryError>{
+        if !self.live {
+            return Err(MemoryError::IllegalZeroizedUsage)
+        }
+        unsafe {
+            Ok(self.ptr.as_ref())
+        }
+    }
+
+    pub fn set(&mut self, data: T) -> Result<(), MemoryError>{
+        if !self.live {
+            return Err(MemoryError::IllegalZeroizedUsage)
+        }
+        unsafe {
+            let ptr: *mut T = self.ptr.as_mut();
+            *ptr = data;
+        }
+        Ok(())
     }
 }
 
@@ -170,13 +207,6 @@ impl<T: Default + Clone> Frag<T> {
 /// of this memory will be randomly seeded.
 ///
 /// The actual implementation is system dependent and might vary.
-///
-/// # Example
-/// ```
-/// use runtime::memories::frag::{Frag, FragStrategy};
-///
-/// // allocates the object at a random address
-/// let object = Frag::<usize>::alloc(FragStrategy::Map).unwrap();
 /// ```
 #[derive(Default, Clone)]
 struct MemoryMapAlloc;
@@ -269,6 +299,7 @@ where
                     return Ok(Frag {
                         ptr: NonNull::new_unchecked(ptr),
                         strategy: FragStrategy::Map,
+                        live: true,
                         info: (c_ptr, desired_alloc_size),
                     });
                 }
@@ -277,7 +308,7 @@ where
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+    fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
         dealloc_map(frag.info.0, frag.info.1 as libc::size_t)
     }
 
@@ -324,6 +355,7 @@ where
                     return Ok(Frag {
                         ptr: NonNull::new_unchecked(actual_mem),
                         strategy: FragStrategy::Map,
+                        live: true,
                         info: Some((actual_mapping, mem_view)),
                     });
                 }
@@ -347,14 +379,6 @@ where
 /// resizing the chunk to the desired size of the to be allocated object.
 ///
 /// The actual implementation is system dependent and might vary.
-///
-/// # Example
-/// ```
-/// use runtime::memories::frag::{Frag, FragStrategy};
-///
-/// // allocates the object at a random address
-/// let object = Frag::<usize>::alloc(FragStrategy::Direct).unwrap();
-/// ```
 #[derive(Default, Clone)]
 struct DirectAlloc;
 
@@ -424,6 +448,7 @@ where
                 return Ok(Frag {
                     ptr: NonNull::new_unchecked(actual_mem),
                     strategy: FragStrategy::Direct,
+                    live: true,
                     info: (mem_ptr, alloc_size),
                 });
             }
@@ -431,7 +456,7 @@ where
     }
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn dealloc(frag: Frag<T>) -> Result<(), Self::Error> {
+    fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
         dealloc_direct(frag.info.0 as *mut libc::c_void)
     }
 
@@ -470,6 +495,7 @@ where
                 return Ok(Frag {
                     ptr: NonNull::new_unchecked(actual_mem),
                     strategy: FragStrategy::Direct,
+                    live: true,
                     info: None,
                 });
             }
