@@ -91,6 +91,9 @@ impl<T: Default + Clone> Drop for Frag<T> {
     }
 }
 
+unsafe impl<T: Default + Clone + Send> Send for Frag<T> {}
+unsafe impl<T: Default + Clone + Sync> Sync for Frag<T> {}
+
 /// Configuration for the fragmenting allocator
 pub struct FragConfig {
     /// The last address of a previous allocation. This

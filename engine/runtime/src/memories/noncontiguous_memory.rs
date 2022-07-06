@@ -40,7 +40,7 @@ static POISONED_LOCK: &str = "NonContiguousMemory potentially in an unsafe state
 pub const NC_DATA_SIZE: usize = 32;
 
 // For serialization/deserialization we choose this fullram config
-pub const NC_CONFIGURATION_SERIALIZATION: NCConfig = FullRam;
+pub const NC_CONFIGURATION: NCConfig = FullRam;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NCConfig {
@@ -311,7 +311,7 @@ impl<'de> Visitor<'de> for NonContiguousMemoryVisitor {
             seq.push(e);
         }
 
-        let seq = NonContiguousMemory::alloc(seq.as_slice(), seq.len(), NC_CONFIGURATION_SERIALIZATION)
+        let seq = NonContiguousMemory::alloc(seq.as_slice(), seq.len(), NC_CONFIGURATION)
             .expect("Failed to allocate NonContiguousMemory during deserialization");
 
         Ok(seq)
@@ -326,6 +326,7 @@ impl<'de> Deserialize<'de> for NonContiguousMemory {
         deserializer.deserialize_seq(NonContiguousMemoryVisitor::new())
     }
 }
+
 
 #[cfg(test)]
 mod tests {
