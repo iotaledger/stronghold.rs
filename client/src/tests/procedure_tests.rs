@@ -3,6 +3,9 @@
 
 use crypto::ciphers::aes_kw::AesKeyWrap;
 
+#[cfg(feature = "insecure")]
+use crate::procedures::CheckingProcedure;
+
 use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,

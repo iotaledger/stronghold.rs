@@ -7,6 +7,9 @@ mod types;
 
 pub use clientrunner::*;
 
+#[cfg(feature = "insecure")]
+pub use primitives::CheckingProcedure;
+
 pub use primitives::{
     AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
     BIP39Recover, Chain, ChainCode, ConcatKdf, CopyRecord, Ed25519Sign, GarbageCollect, GenerateKey, Hkdf, Hmac,

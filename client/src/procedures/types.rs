@@ -115,6 +115,12 @@ pub trait UseSecret<const N: usize>: Sized {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcedureOutput(Vec<u8>);
 
+impl From<bool> for ProcedureOutput {
+    fn from(b: bool) -> Self {
+        ProcedureOutput(vec![0]) // don't think thats a good idea
+    }
+}
+
 impl From<()> for ProcedureOutput {
     fn from(_: ()) -> Self {
         ProcedureOutput(Vec::new())
