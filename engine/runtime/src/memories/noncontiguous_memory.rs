@@ -327,7 +327,6 @@ impl<'de> Deserialize<'de> for NonContiguousMemory {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 

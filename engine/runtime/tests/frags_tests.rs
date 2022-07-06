@@ -31,7 +31,6 @@ fn test_fragments_allocate() {
     test_allocate_strategy(FragStrategy::Hybrid);
 }
 
-
 fn test_allocate_strategy(strat: FragStrategy) {
     let _ = env_logger::builder()
         .is_test(true)
@@ -39,7 +38,9 @@ fn test_allocate_strategy(strat: FragStrategy) {
         .try_init();
 
     info!("Test Fixed Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc(strat, TestStruct::default(), TestStruct::default())).is_ok());
+    assert!(
+        test_allocate::<TestStruct, _>(|| Frag::alloc(strat, TestStruct::default(), TestStruct::default())).is_ok()
+    );
 
     info!("Test Arbitrary Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(strat, 0xFFFF)).is_ok());
@@ -90,7 +91,6 @@ where
 
     Ok(())
 }
-
 
 // ----------------------------------------------------------------------------
 

@@ -1,13 +1,18 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-
 use criterion::{criterion_group, criterion_main, Criterion};
-use runtime::memories::frag::FragStrategy;
-use runtime::memories::noncontiguous_memory::NCConfig::{self, *};
-use runtime::memories::noncontiguous_memory::*;
-use runtime::utils::random_vec;
-use runtime::locked_memory::LockedMemory;
+use runtime::{
+    locked_memory::LockedMemory,
+    memories::{
+        frag::FragStrategy,
+        noncontiguous_memory::{
+            NCConfig::{self, *},
+            *,
+        },
+    },
+    utils::random_vec,
+};
 
 #[allow(dead_code)]
 struct TestStruct {
@@ -57,7 +62,7 @@ fn bench_ncm(c: &mut Criterion, config: NCConfig) {
             FragStrategy::Direct => "NCM fragment direct",
             FragStrategy::Map => "NCM fragment map",
             FragStrategy::Hybrid => "NCM fragment hybrid",
-        }
+        },
     };
 
     let data = random_vec(NC_DATA_SIZE);

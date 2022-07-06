@@ -18,10 +18,7 @@
 
 use crate::MemoryError;
 use log::*;
-use std::{
-    fmt::Debug,
-    ptr::NonNull,
-};
+use std::{fmt::Debug, ptr::NonNull};
 use zeroize::Zeroize;
 
 // The minimum distance we consider between 2 fragments
@@ -163,7 +160,8 @@ impl<T: Default + Clone> Frag<T> {
         Ok((a, b))
     }
 
-    /// Tries to allocate two objects of the same type with a default minimum distance in memory space of `FRAG_MIN_DISTANCE`.
+    /// Tries to allocate two objects of the same type with a default minimum distance in memory space of
+    /// `FRAG_MIN_DISTANCE`.
     pub fn alloc(strategy: FragStrategy, data1: T, data2: T) -> Result<(Frag<T>, Frag<T>), MemoryError> {
         let (mut f1, mut f2) = Self::alloc2(strategy, 100 * FRAG_MIN_DISTANCE)?;
         f1.set(data1)?;
@@ -183,18 +181,16 @@ impl<T: Default + Clone> Frag<T> {
         self.live
     }
 
-    pub fn get(&self) -> Result<&T, MemoryError>{
+    pub fn get(&self) -> Result<&T, MemoryError> {
         if !self.live {
-            return Err(MemoryError::IllegalZeroizedUsage)
+            return Err(MemoryError::IllegalZeroizedUsage);
         }
-        unsafe {
-            Ok(self.ptr.as_ref())
-        }
+        unsafe { Ok(self.ptr.as_ref()) }
     }
 
-    pub fn set(&mut self, data: T) -> Result<(), MemoryError>{
+    pub fn set(&mut self, data: T) -> Result<(), MemoryError> {
         if !self.live {
-            return Err(MemoryError::IllegalZeroizedUsage)
+            return Err(MemoryError::IllegalZeroizedUsage);
         }
         unsafe {
             let ptr: *mut T = self.ptr.as_mut();

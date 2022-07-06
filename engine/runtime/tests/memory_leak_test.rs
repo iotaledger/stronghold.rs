@@ -1,12 +1,12 @@
-use runtime::{
-    memories::frag::{Frag, FragStrategy},
-};
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
+use runtime::memories::frag::{Frag, FragStrategy};
 
 use std::fmt::Debug;
 
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
-
 
 #[derive(PartialEq, Debug, Clone)]
 struct TestStruct {
@@ -35,23 +35,27 @@ fn test_memory_no_leak() {
     alloc_frags(FragStrategy::Direct, NB_ALLOC);
 }
 
-
 // Test to check the dhat tool
 // TODO: Not working yet
 #[allow(dead_code)]
 fn test_dhat() {
-    
     let _profiler = dhat::Profiler::builder().testing().build();
 
     let stats = dhat::HeapStats::get();
     dhat::assert_eq!(stats.curr_blocks, 0);
-    println!("0 - Blocks allocated: {}, bytes allocated: {}", stats.curr_blocks, stats.curr_bytes);
+    println!(
+        "0 - Blocks allocated: {}, bytes allocated: {}",
+        stats.curr_blocks, stats.curr_bytes
+    );
 
     const SIZE: usize = 1000;
     let b = [5i32; SIZE];
 
     let mut vec = Vec::with_capacity(10);
-    println!("0.5 - Blocks allocated: {}, bytes allocated: {}", stats.curr_blocks, stats.curr_bytes);
+    println!(
+        "0.5 - Blocks allocated: {}, bytes allocated: {}",
+        stats.curr_blocks, stats.curr_bytes
+    );
     unsafe {
         for i in 0..10 {
             let ptr = libc::malloc(SIZE * 4) as *mut i32;
@@ -60,13 +64,18 @@ fn test_dhat() {
             vec.push(ptr);
 
             let stats = dhat::HeapStats::get();
-            println!("{} - Blocks allocated: {}, bytes allocated: {}", i, stats.curr_blocks, stats.curr_bytes);
-
+            println!(
+                "{} - Blocks allocated: {}, bytes allocated: {}",
+                i, stats.curr_blocks, stats.curr_bytes
+            );
         }
 
         let stats = dhat::HeapStats::get();
         dhat::assert_eq!(stats.curr_blocks, 1);
-        println!("final - Blocks allocated: {}, bytes allocated: {}", stats.curr_blocks, stats.curr_bytes);
+        println!(
+            "final - Blocks allocated: {}, bytes allocated: {}",
+            stats.curr_blocks, stats.curr_bytes
+        );
         dhat::assert_eq!(stats.curr_blocks, 0);
 
         // libc::free(ptr);
@@ -74,7 +83,6 @@ fn test_dhat() {
         // dhat::assert_eq!(stats.curr_blocks, 0);
     }
 }
-
 
 // Goal
 fn alloc_frags(strat: FragStrategy, nb_alloc: usize) -> Vec<Frag<TestStruct>> {
