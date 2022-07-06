@@ -59,7 +59,7 @@ pub enum StrongholdProcedure {
     AeadDecrypt(AeadDecrypt),
 
     #[cfg(feature = "insecure")]
-    CheckingProcedure(CheckingProcedure),
+    CompareSecret(CompareSecret),
 }
 
 impl Procedure for StrongholdProcedure {
@@ -90,7 +90,7 @@ impl Procedure for StrongholdProcedure {
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
 
             #[cfg(feature = "insecure")]
-            CheckingProcedure(proc) => proc.exec(runner).map(|o| o.into()),
+            CompareSecret(proc) => proc.exec(runner).map(|o| o.into()),
         }
     }
 }
@@ -193,7 +193,7 @@ macro_rules! generic_procedures {
 
 #[cfg(feature = "insecure")]
 generic_procedures! {
-    UseSecret<1> => { CheckingProcedure }
+    UseSecret<1> => { CompareSecret }
 }
 
 generic_procedures! {
@@ -1037,11 +1037,12 @@ impl AesKeyWrapDecrypt {
 }
 
 /// This procedure is to be used to check for values inside the vault.
-/// By it's very nature, this procedure is not secure to use and is by default
+/// By its very nature, this procedure is not secure to use and is by default
 /// inactive. it MUST NOT be used in production setups.
+/// Returns `vec![1]` if `expected` matches the secret at `location`, `vec![0]` otherwise.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "insecure")]
-pub struct CheckingProcedure {
+pub struct CompareSecret {
     /// The location to look for the specified value
     pub location: Location,
 
@@ -1050,7 +1051,7 @@ pub struct CheckingProcedure {
 }
 
 #[cfg(feature = "insecure")]
-impl UseSecret<1> for CheckingProcedure {
+impl UseSecret<1> for CompareSecret {
     type Output = Vec<u8>; // this is a hack, since Procedure::Output only allows Vec output types
                            // we assume a value of `1` as `true`, while a `0` is considered `false`
 

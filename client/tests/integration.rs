@@ -11,7 +11,7 @@ mod stronghold_test_std {
     use stronghold_utils::random::{self, variable_bytestring};
 
     #[cfg(feature = "insecure")]
-    use iota_stronghold::procedures::CheckingProcedure;
+    use iota_stronghold::procedures::CompareSecret;
 
     /// Generates a random [`Location`].
     pub fn location() -> Location {
@@ -32,7 +32,7 @@ mod stronghold_test_std {
             location: location.clone(),
         };
 
-        let checking_procedure = CheckingProcedure { location, expected };
+        let checking_procedure = CompareSecret { location, expected };
 
         client.execute_procedure(write_procedure)?;
 
