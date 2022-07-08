@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::types::*;
-use random::Rng;
 use zeroize::Zeroize;
 
 use core::{
@@ -14,8 +13,8 @@ use core::{
 };
 
 use libsodium_sys::{
-    sodium_allocarray, sodium_free, sodium_init, sodium_memzero, sodium_mlock, sodium_mprotect_noaccess,
-    sodium_mprotect_readonly, sodium_mprotect_readwrite,
+    sodium_allocarray, sodium_free, sodium_init, sodium_mlock, sodium_mprotect_noaccess, sodium_mprotect_readonly,
+    sodium_mprotect_readwrite,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,39 +145,9 @@ impl<T: Bytes> Boxed<T> {
         if unsafe { sodium_init() == -1 } {
             panic!("Failed to initialize libsodium")
         }
-        let mut rng = random::thread_rng();
-
-        // TESTING
-        let chunk_a = unsafe {
-            let size = rng.gen_range(0x1000..0xFFFFFF);
-            let random_length = 1;
-            let ptr = sodium_allocarray(random_length, size);
-            sodium_memzero(ptr, size);
-            ptr
-        };
-
-        // END TESTING
 
         let ptr = NonNull::new(unsafe { sodium_allocarray(len, mem::size_of::<T>()) as *mut _ })
             .expect("Failed to allocate memory");
-
-        // TESTING
-        unsafe {
-            sodium_free(chunk_a);
-        }
-
-        let chunk_a = unsafe {
-            let size = rng.gen_range(0x1000..0xFFFFFF);
-            let random_length = 1;
-            let ptr = sodium_allocarray(random_length, size);
-            sodium_memzero(ptr, size);
-            ptr
-        };
-
-        unsafe {
-            sodium_free(chunk_a);
-        }
-        // END TESTING
 
         Self {
             ptr,

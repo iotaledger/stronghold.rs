@@ -38,9 +38,12 @@ fn test_allocate_strategy(strat: FragStrategy) {
         .try_init();
 
     info!("Test Fixed Distance");
-    assert!(
-        test_allocate::<TestStruct, _>(|| Frag::alloc_initialized(strat, TestStruct::default(), TestStruct::default())).is_ok()
-    );
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc_initialized(
+        strat,
+        TestStruct::default(),
+        TestStruct::default()
+    ))
+    .is_ok());
 
     info!("Test Arbitrary Distance");
     assert!(test_allocate::<TestStruct, _>(|| Frag::alloc_default(strat, 0xFFFF)).is_ok());
