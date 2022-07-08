@@ -26,11 +26,13 @@ impl Default for TestStruct {
 const NB_ALLOC: usize = 20;
 // We run this the test binary with valgrind to check for potential leak
 #[test]
+#[ignore = "dhat tool not working"]
 fn test_memory_leak_without_dealloc() {
     let _ = alloc_frags(FragStrategy::Direct, NB_ALLOC);
 }
 
 #[test]
+#[ignore = "dhat tool not working"]
 fn test_memory_no_leak() {
     alloc_frags(FragStrategy::Direct, NB_ALLOC);
 }
@@ -88,7 +90,7 @@ fn test_dhat() {
 fn alloc_frags(strat: FragStrategy, nb_alloc: usize) -> Vec<Frag<TestStruct>> {
     let mut v = vec![];
     for _ in 0..nb_alloc {
-        let frags = Frag::<TestStruct>::alloc(strat, TestStruct::default(), TestStruct::default());
+        let frags = Frag::<TestStruct>::alloc_initialized(strat, TestStruct::default(), TestStruct::default());
         assert!(frags.is_ok());
         let (f1, f2) = frags.unwrap();
         v.push(f1);

@@ -163,4 +163,14 @@ mod tests {
         assert!((*ram.buf.borrow()).is_empty());
         assert!(ram.unlock().is_err());
     }
+
+    #[test]
+    fn toto() {
+        let ram = RamMemory::alloc(&[1, 2, 3, 4, 5, 6][..], 6).unwrap();
+        let a1: usize = ram.get_ptr_address();
+        println!("a1: {:?}", a1);
+        let a2: usize = std::ptr::addr_of!(ram.buf.boxed.ptr) as *const _ as usize;
+        println!("a2: {:?}", a2);
+        assert!(a1 == a2);
+    }
 }

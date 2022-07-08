@@ -34,7 +34,7 @@ pub enum FragStrategy {
     /// Using system allocator (`malloc` on linux/bsd/macos and `VirtualAlloc` on windows)
     Direct,
 
-    /// Allocate using both strategy
+    /// Allocate using both strategies
     Hybrid,
 }
 
@@ -122,9 +122,8 @@ impl<T: Default + Clone> Frag<T> {
     ///
     /// let object  = Frag::by_strategy(FragStrategy::Default).unwrap();
     /// ```
-
     /// Tries to allocate two objects of the same type with a minimum distance in memory space.
-    pub fn alloc2(strategy: FragStrategy, distance: usize) -> Result<(Frag<T>, Frag<T>), MemoryError> {
+    pub fn alloc_default(strategy: FragStrategy, distance: usize) -> Result<(Frag<T>, Frag<T>), MemoryError> {
         let a = match strategy {
             FragStrategy::Direct => DirectAlloc::alloc(None),
             FragStrategy::Map => MemoryMapAlloc::alloc(None),
@@ -158,8 +157,8 @@ impl<T: Default + Clone> Frag<T> {
 
     /// Tries to allocate two objects of the same type with a default minimum distance in memory space of
     /// `FRAG_MIN_DISTANCE`.
-    pub fn alloc(strategy: FragStrategy, data1: T, data2: T) -> Result<(Frag<T>, Frag<T>), MemoryError> {
-        let (mut f1, mut f2) = Self::alloc2(strategy, FRAG_MIN_DISTANCE)?;
+    pub fn alloc_initialized(strategy: FragStrategy, data1: T, data2: T) -> Result<(Frag<T>, Frag<T>), MemoryError> {
+        let (mut f1, mut f2) = Self::alloc_default(strategy, FRAG_MIN_DISTANCE)?;
         f1.set(data1)?;
         f2.set(data2)?;
         Ok((f1, f2))
@@ -309,9 +308,6 @@ where
 
     #[cfg(target_os = "windows")]
     fn alloc(_config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
-        // use random::thread_rng;
-        // let mut rng = thread_rng();
-
         let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
         loop {
             unsafe {

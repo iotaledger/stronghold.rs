@@ -204,7 +204,7 @@ impl MemoryShard {
             }
 
             FragAllocation(strat) => {
-                let (frag1, frag2) = Frag::alloc(
+                let (frag1, frag2) = Frag::alloc_initialized(
                     *strat,
                     data1.try_into().map_err(|_| MemoryError::NCSizeNotAllowed)?,
                     data2.try_into().map_err(|_| MemoryError::NCSizeNotAllowed)?,

@@ -39,11 +39,11 @@ fn test_allocate_strategy(strat: FragStrategy) {
 
     info!("Test Fixed Distance");
     assert!(
-        test_allocate::<TestStruct, _>(|| Frag::alloc(strat, TestStruct::default(), TestStruct::default())).is_ok()
+        test_allocate::<TestStruct, _>(|| Frag::alloc_initialized(strat, TestStruct::default(), TestStruct::default())).is_ok()
     );
 
     info!("Test Arbitrary Distance");
-    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc2(strat, 0xFFFF)).is_ok());
+    assert!(test_allocate::<TestStruct, _>(|| Frag::alloc_default(strat, 0xFFFF)).is_ok());
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn test_deallocate(strat: FragStrategy) {
         .try_init();
 
     info!("Test Fixed Distance");
-    let frags = Frag::alloc(strat, TestStruct::default(), TestStruct::default());
+    let frags = Frag::alloc_initialized(strat, TestStruct::default(), TestStruct::default());
     assert!(frags.is_ok());
     let (mut f1, mut f2) = frags.unwrap();
 
