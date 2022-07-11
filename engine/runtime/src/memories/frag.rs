@@ -201,7 +201,6 @@ impl<T: Default + Clone> Frag<T> {
 /// of this memory will be randomly seeded.
 ///
 /// The actual implementation is system dependent and might vary.
-/// ```
 #[derive(Default, Clone)]
 struct MemoryMapAlloc;
 
