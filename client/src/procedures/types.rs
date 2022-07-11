@@ -12,21 +12,25 @@ use thiserror::Error as DeriveError;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
-    fn get_guard<F, T>(&self, location0: &Location, f: F) -> Result<T, VaultError<FatalProcedureError>>
-    where
-        F: FnOnce(Buffer<u8>) -> Result<T, FatalProcedureError>;
-
-    // Execute a function that uses the secret stored at `location0`. From the returned `Products` the secret is
-    // written into `location1` and the output is returned.
-    fn exec_proc<F, T>(
+    /// Applies `f` to the buffers from the given `locations`.
+    fn get_guards<F, T, const N: usize>(
         &self,
-        location0: &Location,
-        location1: &Location,
-        // hint: RecordHint,
+        locations: [Location; N],
         f: F,
     ) -> Result<T, VaultError<FatalProcedureError>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<Products<T>, FatalProcedureError>;
+        F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>;
+
+    // Execute a function that uses the secret stored at `source_locations`. From the returned `Products` the secret is
+    // written into `target_location` and the output is returned.
+    fn exec_proc<F, T, const N: usize>(
+        &self,
+        source_locations: [Location; N],
+        target_location: &Location,
+        f: F,
+    ) -> Result<T, VaultError<FatalProcedureError>>
+    where
+        F: FnOnce([Buffer<u8>; N]) -> Result<Products<T>, FatalProcedureError>;
 
     fn write_to_vault(&self, location1: &Location, value: Vec<u8>) -> Result<(), RecordError>;
 
@@ -72,37 +76,37 @@ pub trait GenerateSecret: Sized {
 }
 
 /// Trait for procedures that use an existing secret to derive a new one.
-pub trait DeriveSecret: Sized {
+pub trait DeriveSecret<const N: usize>: Sized {
     type Output;
 
-    fn derive(self, guard: Buffer<u8>) -> Result<Products<Self::Output>, FatalProcedureError>;
+    fn derive(self, guard: [Buffer<u8>; N]) -> Result<Products<Self::Output>, FatalProcedureError>;
 
-    fn source(&self) -> &Location;
+    fn source(&self) -> [Location; N];
 
     fn target(&self) -> &Location;
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
+        let sources: [Location; N] = self.source();
         let target = self.target();
         let target = target.clone();
         let f = |guard| self.derive(guard);
-        let output = runner.exec_proc(&source, &target, f)?;
+        let output = runner.exec_proc(sources, &target, f)?;
         Ok(output)
     }
 }
 
 /// Trait for procedures that use an existing secret.
-pub trait UseSecret: Sized {
+pub trait UseSecret<const N: usize>: Sized {
     type Output;
 
-    fn use_secret(self, guard: Buffer<u8>) -> Result<Self::Output, FatalProcedureError>;
+    fn use_secret(self, guard: [Buffer<u8>; N]) -> Result<Self::Output, FatalProcedureError>;
 
-    fn source(&self) -> &Location;
+    fn source(&self) -> [Location; N];
 
     fn exec<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
-        let source = self.source().clone();
+        let source: [Location; N] = self.source();
         let f = |guard| self.use_secret(guard);
-        let output = runner.get_guard(&source, f)?;
+        let output = runner.get_guards(source, f)?;
         Ok(output)
     }
 }
@@ -214,7 +218,7 @@ mod test {
 
     #[test]
     fn proc_io_vec() {
-        let vec = random::bytestring(2048);
+        let vec = random::variable_bytestring(2048);
         let proc_io: ProcedureOutput = vec.clone().into();
         let converted = Vec::try_from(proc_io).unwrap();
         assert_eq!(vec.len(), converted.len());

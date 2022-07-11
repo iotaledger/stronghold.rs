@@ -194,7 +194,7 @@ mod test {
     fn test_vec() -> Vec<Vec<u8>> {
         let mut data = Vec::with_capacity(TEST_DATA_COUNT);
         for _ in 0..data.capacity() {
-            let v = random::bytestring(32);
+            let v = random::variable_bytestring(32);
             data.push(v)
         }
         data

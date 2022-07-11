@@ -128,6 +128,7 @@ impl NonContiguousMemory {
         let random = random_vec(NC_DATA_SIZE);
         let (old_data1, old_data2) = self.get_shards_data()?;
 
+
         let new_data1 = xor(&old_data1, &random, NC_DATA_SIZE);
 
         let hash_of_old_shard1 = &blake2b::Blake2b256::digest(&old_data1);
@@ -175,6 +176,7 @@ impl NonContiguousMemory {
                 return Err(MemoryError::Allocation(
                     "Cannot get pointers. Unsupported MemoryShard configuration".to_owned(),
                 ));
+
             }
         };
 

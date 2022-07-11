@@ -1,0 +1,30 @@
+[package]
+name = "stronghold_native"
+version = "0.1.0"
+edition                 = "2021"
+license                 = "Apache-2.0"
+readme                  = "README.md"
+description             = "Native bindings for Stronghold"
+authors                 = ["IOTA Stiftung"]
+keywords                = [ "iota", "stronghold", "security" ]
+categories              = [ "security" ]
+homepage                = "https://wiki.iota.org/stronghold.rs/getting_started"
+repository              = "https://github.com/iotaledger/stronghold.rs"
+
+[lib]
+name = "stronghold_native"
+crate-type = ["cdylib"]
+bench = false
+
+
+
+[dependencies]
+libc = "0.2.2"
+thiserror               = { version = "1.0.30" }
+iota_stronghold         = { package = "iota_stronghold",   path = "../../client/", version = "0.5.0"}
+engine                  = { package = "stronghold_engine",  path = "../../engine", version = "0.5.1" }
+tokio                   = { version = "1.15.0", features = ["full"] }
+base64                  = { version = "0.13.0" }
+iota-crypto             = { version = "0.8.0", features = [ "aes", "random", "ed25519", "sha", "hmac", "bip39-en", "bip39-jp", "slip10", "chacha", "x25519" ] }
+lazy_static = "1.4.0"
+log                     = { version = "0.4.14" }

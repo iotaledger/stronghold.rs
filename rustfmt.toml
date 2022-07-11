@@ -1,7 +1,6 @@
 comment_width = 120
 format_code_in_doc_comments = true
 max_width = 120
-license_template_path = ".license_template"
 imports_granularity = "Crate"
 normalize_comments = true
 normalize_doc_attributes = true

@@ -1,5 +1,10 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
+// This overrides clippy's warning to hold a non-async lock across await points
+// and should be removed as soon as possible.
+#![allow(clippy::await_holding_lock)]
+
 use super::{location, snapshot};
 
 #[cfg(feature = "p2p")]
@@ -97,7 +102,7 @@ impl Client {
         Ok(keystore.vault_exists(vault_id))
     }
 
-    /// Returns Ok(true), if the record exsist. Ok(false), if not. An error is being
+    /// Returns Ok(true), if the record exists. Ok(false), if not. An error is being
     /// returned, if inner database could not be unlocked.
     ///
     /// # Example
@@ -220,6 +225,21 @@ impl Client {
         Ok(())
     }
 
+    /// Clears the inner [`Client`] state. This functions should not be called directly
+    /// but by calling the function of same name on [`Stronghold`]
+    pub(crate) fn clear(&self) -> Result<(), ClientError> {
+        let mut view = self.db.try_write()?;
+        view.clear();
+
+        let mut store = self.store.cache.try_write()?;
+        store.clear();
+
+        let mut ks = self.keystore.try_write()?;
+        ks.clear_keys();
+
+        Ok(())
+    }
+
     /// Executes a cryptographic [`Procedure`] and returns its output.
     /// A cryptographic [`Procedure`] is the main operation on secrets.
     ///
@@ -228,7 +248,7 @@ impl Client {
     where
         P: Procedure + Into<StrongholdProcedure>,
     {
-        let res = self.execure_procedure_chained(vec![procedure.into()]);
+        let res = self.execute_procedure_chained(vec![procedure.into()]);
         let mapped = res.map(|mut vec| vec.pop().unwrap().try_into().ok().unwrap())?;
         Ok(mapped)
     }
@@ -236,7 +256,7 @@ impl Client {
     /// Executes a list of cryptographic [`crate::procedures::Procedure`]s sequentially and returns a collected output
     ///
     /// # Example
-    pub fn execure_procedure_chained(
+    pub fn execute_procedure_chained(
         &self,
         procedures: Vec<StrongholdProcedure>,
     ) -> core::result::Result<Vec<ProcedureOutput>, ProcedureError> {

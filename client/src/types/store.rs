@@ -51,11 +51,14 @@ impl Store {
     /// let data = b"some data".to_vec();
     /// assert!(store.insert(key.clone(), data, None).is_ok());
     /// ```
-    pub fn insert(&self, key: Vec<u8>, value: Vec<u8>, lifetime: Option<Duration>) -> Result<(), ClientError> {
+    pub fn insert(
+        &self,
+        key: Vec<u8>,
+        value: Vec<u8>,
+        lifetime: Option<Duration>,
+    ) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write()?;
-        guard.insert(key.to_vec(), value, lifetime);
-
-        Ok(())
+        Ok(guard.insert(key.to_vec(), value, lifetime))
     }
 
     /// Tries to get the stored value via `key`
@@ -129,6 +132,34 @@ impl Store {
     pub fn reload(&self, cache: Cache<Vec<u8>, Vec<u8>>) -> Result<(), ClientError> {
         let mut inner = self.cache.try_write()?;
         *inner = cache;
+        Ok(())
+    }
+
+    /// Returns a list of all keys inside the store
+    ///
+    /// # Examples
+    /// ```
+    /// use iota_stronghold::Store;
+    ///
+    /// let store = Store::default();
+    /// store.insert(b"key-1".to_vec(), b"val-1".to_vec(), None);
+    /// store.insert(b"key-2".to_vec(), b"val-2".to_vec(), None);
+    /// store.insert(b"key-3".to_vec(), b"val-3".to_vec(), None);
+    /// let expected = vec![b"key-1".to_vec(), b"key-2".to_vec(), b"key-3".to_vec()];
+    /// let result = store.keys();
+    /// assert!(result.is_ok());
+    /// let mut actual = result.unwrap();
+    /// actual.sort();
+    /// assert_eq!(actual, expected);
+    /// ```
+    pub fn keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
+        let inner = self.cache.try_read()?;
+        Ok(inner.keys())
+    }
+
+    /// Clear the [`Store`]
+    pub fn clear(&self) -> Result<(), ClientError> {
+        self.cache.try_write()?.clear();
         Ok(())
     }
 }

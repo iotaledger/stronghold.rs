@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - dev
-      - dev-refactor
       - main
     paths:
-      - '**.rs'
-      - '**.toml'
-      - '.github/workflows/coverage.yml'
-      - '.github/workflows/scripts/coverage.sh'
+      - "**.rs"
+      - "**.toml"
+      - ".github/workflows/coverage.yml"
+      - ".github/workflows/scripts/coverage.sh"
 
 jobs:
   coverage:
