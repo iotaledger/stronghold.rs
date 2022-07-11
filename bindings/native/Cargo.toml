@@ -8,7 +8,7 @@ description             = "Native bindings for Stronghold"
 authors                 = ["IOTA Stiftung"]
 keywords                = [ "iota", "stronghold", "security" ]
 categories              = [ "security" ]
-homepage                = "https://wiki.iota.org/stronghold.rs/welcome"
+homepage                = "https://wiki.iota.org/stronghold.rs/getting_started"
 repository              = "https://github.com/iotaledger/stronghold.rs"
 
 [lib]
