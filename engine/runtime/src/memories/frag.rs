@@ -103,9 +103,7 @@ pub struct FragConfig {
 impl FragConfig {
     /// Creates a new [`FragConfig`]
     pub fn new(last_address: usize) -> Self {
-        Self {
-            last_address,
-        }
+        Self { last_address }
     }
 }
 
@@ -150,7 +148,7 @@ impl<T: Default + Clone> Frag<T> {
             return Ok((a, b));
         }
 
-        Err(MemoryError::Allocation(format!("Unable to allocate safe fragments")))
+        Err(MemoryError::Allocation("Unable to allocate safe fragments".to_string()))
     }
 
     /// Tries to allocate two objects of the same type with a default minimum distance in memory space of
@@ -256,7 +254,7 @@ where
             info!("Preallocated segment addr: {:p}", c_ptr);
 
             if c_ptr == libc::MAP_FAILED {
-                return Err(MemoryError::Allocation(format!("Memory mapping failed")));
+                return Err(MemoryError::Allocation("Memory mapping failed".to_string()));
             }
 
             #[cfg(any(target_os = "macos"))]
@@ -285,7 +283,7 @@ where
                     info: (c_ptr, desired_alloc_size),
                 })
             } else {
-                Err(MemoryError::Allocation(format!("Received a null pointer")))
+                Err(MemoryError::Allocation("Received a null pointer".to_string()))
             }
         }
     }
@@ -388,7 +386,7 @@ where
                 // allocate some randomly sized chunk of memory
                 let c_ptr = libc::malloc(alloc_size);
                 if c_ptr.is_null() {
-                    return Err(MemoryError::Allocation(format!("Received a null pointer")));
+                    return Err(MemoryError::Allocation("Received a null pointer".to_string()));
                 }
 
                 #[cfg(target_os = "macos")]
@@ -397,7 +395,8 @@ where
                     let error = libc::madvise(c_ptr, actual_size, libc::MADV_WILLNEED);
                     if error != 0 {
                         return Err(MemoryError::Allocation(format!(
-                            "memory advise returned an error {}", error
+                            "memory advise returned an error {}",
+                            error
                         )));
                     }
                 }
@@ -410,12 +409,12 @@ where
             let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
             actual_mem.write(T::default());
 
-            return Ok(Frag {
+            Ok(Frag {
                 ptr: NonNull::new_unchecked(actual_mem),
                 strategy: FragStrategy::Direct,
                 live: true,
                 info: (mem_ptr, alloc_size),
-            });
+            })
         }
     }
 
