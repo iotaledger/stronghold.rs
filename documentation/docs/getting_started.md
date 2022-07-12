@@ -1,7 +1,8 @@
 ---
-description: Stronghold is an open-source software library can be used to protect any digital secret. It is a secure database for working with cryptography, which ensures that secrets are never revealed - but can be used according to best practices.
+description: Get started with Stronghold. Prerequisites, how to build and use the library.   
 image: /img/Banner/banner_stronghold.png
 keywords:
+
 - getting started
 - open-source
 - secure
@@ -9,53 +10,44 @@ keywords:
 - Noise
 - database
 - p2p
+- Rust
+- build
+- run
+
 ---
-# Welcome
 
-![Stronghold](/img/Banner/banner_stronghold.png)
+# Getting Started
 
-Stronghold is an open-source software library that was originally built to protect IOTA Seeds, but can be used to protect any digital secret. 
+## Prerequisites
 
-It is a secure database for working with cryptography, which ensures that secrets (like private keys) are never revealed - but can be used according to best practices.
+To build Stronghold, you need a recent version of [Rust](https://www.rust-lang.org) installed.
 
-It provides its own peer-to-peer communication layer, so that different apps can securely communicate using the state-of-the-art Noise Protocol over libp2p. 
+## Build the Library
 
+The library comes with [examples](how_tos/cli/running_examples), but has no executables on its own. You can use the
+following instructions to build the library:
 
-[![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
-![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
-![Test](https://github.com/iotaledger/stronghold.rs/workflows/Test/badge.svg)
-[![docs](https://img.shields.io/badge/Docs-Official-green.svg)](https://stronghold.docs.iota.org)
-[![coverage](https://coveralls.io/repos/github/iotaledger/stronghold.rs/badge.svg?branch=dev)](https://coveralls.io/github/iotaledger/stronghold.rs?branch=dev)
-[![dependency status](https://deps.rs/repo/github/iotaledger/stronghold.rs/status.svg)](https://deps.rs/repo/github/iotaledger/stronghold.rs)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fiotaledger%2Fstronghold.rs?ref=badge_shield)
+1. Clone the repo:
 
+```sh
+git clone https://github.com/iotaledger/stronghold.rs.git
+```
 
-## 3rd Party Independent Security Audit
-In April of 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality of the code. You may review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/documentation/docs/meta/Audit.pdf).
+2. Build the library
 
-## Joining the discussion
-If you want to get involved in discussions about this library, or you're looking for support, go to the #stronghold-discussion channel on [Discord](https://discord.iota.org).
+```sh
+cargo build --release
+```
 
-## What you will find here
-This documentation has six sections. 
+## Use The Library
 
-1. **[Overview](reference/overview.md)**: detailed overview of the project
-2. **[Structure](reference/structure/overview.md)**: explains the layout of the individual crates and systems
-3. **[The Specification](reference/specs/overview.md)**: detailed explanation of requirements and functionality
-4. **[Retrospective](explanations/retrospective.md)**: a look at the evolution of this project
-5. **[Contribute](contribute.md)**: how you can participate in the Stronghold software development
-6. **[Get in touch](contribute#join-the-iota-stronghold-initiative)**: join the community and become part of the X-Team
+You can get acquainted with Stronghold by checking out the [How Tos section](how_tos/cli/running_examples).
 
-## Software Bill of Materials
+You can run the examples from the command line interface. Stronghold comes with a simple CLI example that briefly
+showcases all its features. To run the example, change into the `client` directory, and run the following
+command that will print the help of the example with all commands and options:
 
-We maintain a bill of materials for the upstream libraries that Stronghold consumes. You can download the latest version with the following link:
+```sh
+cargo run --example cli
+```
 
-https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf
-
-## Tutorials (Coming Soon)
-
-We will be adding video and textual tutorials for introducing the concepts behind Stronghold.
-
-## How To's (Coming Soon)
-
-We will be adding a number of specific How To examples that will cover common use cases, like integrations, backups etc.

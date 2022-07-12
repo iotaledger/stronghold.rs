@@ -1,0 +1,41 @@
+---
+description: Derive a new SLIP10 master key with optional size and derive a private/public key pair
+image: /img/logo/Stronghold_icon.png
+keywords:
+- example
+- cli
+- client crate
+- SLIP10
+- generate
+- Private Public Keypair
+---
+import CodeBlock from '@theme/CodeBlock';
+import clientExamples from '!!raw-loader!./../../../../client/examples/cli/main.rs';
+const currentFunctionName = 'async fn command_slip10_derive', indexStart = clientExamples.indexOf(currentFunctionName);
+const nextFunctionName = 'async fn command_create_snapshot', indexEnd = clientExamples.indexOf(nextFunctionName);
+const currentExample = clientExamples.substring(indexStart, indexEnd);
+
+# Derive a SLIP10 Private Public Keypair
+
+## Run the Example
+
+You can derive a new [SLIP10](https://github.com/satoshilabs/slips/blob/master/slip-0010.md) master key with optional
+size and derive a private/public key pair from it by running the following command from within the
+[client crate](https://github.com/iotaledger/stronghold.rs/tree/dev/client).
+
+```bash
+cargo run --example cli slip10-derive  --chain "/1234567/1234567" --input-vault-path "input-vault-path" --input-record-path "input-record-path" --output-vault-path "output-vault-path" --output-record-path "output-record-path"
+```
+
+## Expected Output
+
+```plaintext
+[2022-06-28T14:11:54Z INFO  cli] Deriving SLIP10 Child Secret
+[2022-06-28T14:11:54Z INFO  cli] Derivation Sucessful? true
+```
+
+## Example Code
+
+<CodeBlock language={'rust'}>
+    {currentExample}
+</CodeBlock>
