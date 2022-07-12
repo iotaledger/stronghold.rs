@@ -21,7 +21,32 @@ module.exports = {
     items: [
       {
         type: 'doc',
-        id: 'key_concepts/retrospective',
+        id: 'explanations/non-contiguous-data-types',
+        label: 'Non-contiguous Data Types'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/p2p',
+        label: 'Peer to Peer Communication'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/procedures',
+        label: 'Cryptographic Procedures'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/runtime-extensions',
+        label: 'Runtime Extensions'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/transactional-concurrency',
+        label: 'Transactional Memory and Transactional Concurrency'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/retrospective',
         label: 'Retrospective'
       },]
   },
@@ -30,90 +55,90 @@ module.exports = {
     label: 'Reference',
     items: [
       {
-        type:'doc',
+        type: 'doc',
         id: 'reference/overview',
         label: "Overview"
-      },{
-      type: 'category',
-      label: 'Structure',
-      items: [{
-        type: 'doc',
-        id: 'reference/structure/overview',
-        label: 'Overview'
       }, {
-        type: 'doc',
-        id: 'reference/structure/client',
-        label: 'Client'
+        type: 'category',
+        label: 'Structure',
+        items: [{
+          type: 'doc',
+          id: 'reference/structure/overview',
+          label: 'Overview'
+        }, {
+          type: 'doc',
+          id: 'reference/structure/client',
+          label: 'Client'
+        },
+        {
+          type: 'category',
+          label: 'Engine',
+          items: [
+            {
+              type: 'doc',
+              id: 'reference/structure/engine/overview',
+              label: 'Overview'
+            },
+
+            {
+              type: 'doc',
+              id: 'reference/structure/engine/snapshot',
+              label: 'Snapshot'
+            },
+
+            {
+              type: 'doc',
+              id: 'reference/structure/engine/vault',
+              label: 'Vault'
+            },
+
+            {
+              type: 'doc',
+              id: 'reference/structure/engine/store',
+              label: 'Store'
+            },
+
+            {
+              type: 'doc',
+              id: 'reference/structure/engine/runtime',
+              label: 'Runtime'
+            },
+          ],
+        },
+        {
+          type: 'doc',
+          id: 'reference/structure/p2p',
+          label: 'P2P Communication'
+        },
+        {
+          type: 'doc',
+          id: 'reference/structure/derive',
+          label: 'Derive'
+        },
+        {
+          type: 'doc',
+          id: 'reference/structure/utils',
+          label: 'Utils'
+        },
+        ]
       },
       {
         type: 'category',
-        label: 'Engine',
-        items: [
-          {
-            type: 'doc',
-            id: 'reference/structure/engine/overview',
-            label: 'Overview'
-          },
-
-          {
-            type: 'doc',
-            id: 'reference/structure/engine/snapshot',
-            label: 'Snapshot'
-          },
-
-          {
-            type: 'doc',
-            id: 'reference/structure/engine/vault',
-            label: 'Vault'
-          },
-
-          {
-            type: 'doc',
-            id: 'reference/structure/engine/store',
-            label: 'Store'
-          },
-
-          {
-            type: 'doc',
-            id: 'reference/structure/engine/runtime',
-            label: 'Runtime'
-          },
-        ],
-      },
-      {
-        type: 'doc',
-        id: 'reference/structure/p2p',
-        label: 'P2P Communication'
-      },
-      {
-        type: 'doc',
-        id: 'reference/structure/derive',
-        label: 'Derive'
-      },
-      {
-        type: 'doc',
-        id: 'reference/structure/utils',
-        label: 'Utils'
-      },
-      ]
-    },
-    {
-      type: 'category',
-      label: 'Specification',
-      items: [{
-        type: 'doc',
-        id: 'reference/specs/overview',
-        label: 'Overview'
-      }, {
-        type: 'doc',
-        id: 'reference/specs/scope',
-        label: 'Scope'
-      }, {
-        type: 'doc',
-        id: 'reference/specs/engineering',
-        label: 'Engineering'
+        label: 'Specification',
+        items: [{
+          type: 'doc',
+          id: 'reference/specs/overview',
+          label: 'Overview'
+        }, {
+          type: 'doc',
+          id: 'reference/specs/scope',
+          label: 'Scope'
+        }, {
+          type: 'doc',
+          id: 'reference/specs/engineering',
+          label: 'Engineering'
+        },]
       },]
-    },]
   },
   {
     type: 'doc',

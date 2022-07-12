@@ -42,7 +42,7 @@ This documentation has six sections.
 1. **[Overview](reference/overview.md)**: detailed overview of the project
 2. **[Structure](reference/structure/overview.md)**: explains the layout of the individual crates and systems
 3. **[The Specification](reference/specs/overview.md)**: detailed explanation of requirements and functionality
-4. **[Retrospective](key_concepts/retrospective.md)**: a look at the evolution of this project
+4. **[Retrospective](explanations/retrospective.md)**: a look at the evolution of this project
 5. **[Contribute](contribute.md)**: how you can participate in the Stronghold software development
 6. **[Get in touch](contribute#join-the-iota-stronghold-initiative)**: join the community and become part of the X-Team
 
