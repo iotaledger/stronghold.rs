@@ -1,0 +1,201 @@
+name: Build Bindings
+
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Generate C bindings from public rust headers for use with Go
+  bind_gen:
+    name: C Bindings
+    runs-on: ubuntu-latest
+    outputs:
+      rust_hash: ${{ steps.rust_headers_hash.outputs.rust_hash }}
+    steps:
+    - uses: actions/checkout@v3
+    
+    - id: rust_headers_hash
+      run: echo "::set-output name=rust_hash::${{ hashFiles('bindings/native/*.toml', 'bindings/native/src/*.rs') }}"
+
+    - name: Cache bindings
+      id: cache_bind_gen
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ steps.rust_headers_hash.outputs.rust_hash }}
+        path: |
+          bindings/native/*.h
+          bindings/native/*.hpp
+
+    - name: Install rust
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install cbindgen
+      # Only install cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: cargo install --force cbindgen
+
+    - name: Generate C bindings
+      # Only run cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: |
+        cd bindings/native
+        ./bindgen.sh
+
+  build:
+    # Build the lib for each desired OS
+    name: Build bindings on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: bind_gen
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    # Get the C header files that were cached in the previous job
+    - name: Cache C bindings
+      id: cache_bind_gen
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
+        path: |
+          bindings/native/*.h
+          bindings/native/*.hpp
+
+    # If the C header files weren't found, error out
+    # - name: Fail if C bindings could not be found
+    #   # if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+    #   if: steps.cache_bind_gen.outputs.cache-hit != 'true'
+    #   uses: actions/github-script@v6
+    #   with:
+    #     script: core.setFailed(`Actions failed to find the cached generated C bindings`);
+
+    # Get the cached rust dependencies from a previous run
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        key: ${{ matrix.os }}-rust-${{ hashFiles('bindings/native/Cargo.toml') }}
+        path: |
+          ~/.cargo/bin/**
+          ~/.cargo/registry/index/**
+          ~/.cargo/registry/cache/**
+          ~/.cargo/git/**
+          ~/.cargo/.crates.toml
+          ~/.cargo/.crates2.json
+          target/**
+
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install cbindgen
+      # Only install cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: cargo install --force cbindgen
+
+    - name: Generate C bindings
+      # Only run cbindgen if the hash of the rust files doesn't match the cached hash
+      if: ${{ steps.cache_bind_gen.outputs.cache-hit == false }}
+      run: |
+        cd bindings/native
+        ./bindgen.sh
+
+    # required for bindgen to work, see https://github.com/rust-lang/rust-bindgen/issues/1797
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@32c4866ebb71e0949e8833eb49beeebed48532bd
+      if: ${{ startsWith(matrix.os, 'windows') }}
+      with:
+        version: "11.0"
+        directory: ${{ runner.temp }}/llvm
+    - name: Set LIBCLANG_PATH
+      run: echo "LIBCLANG_PATH=$((gcm clang).source -replace "clang.exe")" >> $env:GITHUB_ENV
+      if: startsWith(matrix.os, 'windows')
+
+    - name: Build target
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --manifest-path=bindings/native/Cargo.toml
+
+    # Create an OS specific artifact
+    - name: Archive lib artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.os }}-libstronghold
+        if-no-files-found: error
+        path: |
+          target/release/*stronghold_native.dll
+          target/release/*stronghold_native.so
+          target/release/*stronghold_native.dylib
+    
+    # Create an artifact that contains ALL of the binaries for easy distribution
+    - name: Aggregate binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: libstronghold
+        if-no-files-found: error
+        retention-days: 1
+        path: |
+          target/release/*stronghold_native.dll
+          target/release/*stronghold_native.so
+          target/release/*stronghold_native.dylib
+
+  # Take the output from each OS build job and combine them into a single module
+  release:
+    name: Create universal Go module
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v3
+
+    # Get the C header files that were cached in the first job
+    - name: Get cached C bindings
+      uses: actions/cache@v3
+      with:
+        key: cbindgen-${{ needs.bind_gen.outputs.rust_hash }}
+        path: |
+          bindings/native/*.h
+          bindings/native/*.hpp
+
+    # Download aggregated binary artifact
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
+        name: libstronghold
+        path: bindings/native/
+
+    - name: Create checksums for shared libraries (Linux)
+      run: shasum -a 256 bindings/native/libstronghold_native.so > bindings/native/libstronghold_native.so.sha256 && shasum -a 512 bindings/native/libstronghold_native.so > bindings/native/libstronghold_native.so.sha512
+      shell: bash
+
+    - name: Create checksums for shared libraries (Mac)
+      run: shasum -a 256 bindings/native/libstronghold_native.dylib > bindings/native/libstronghold_native.dylib.sha256 && shasum -a 512 bindings/native/libstronghold_native.dylib > bindings/native/libstronghold_native.dylib.sha512
+      shell: bash
+
+    - name: Create checksums for shared libraries (Win)
+      run: shasum -a 256 bindings/native/stronghold_native.dll > bindings/native/stronghold_native.dll.sha256 && shasum -a 512 bindings/native/stronghold_native.dll > bindings/native/stronghold_native.dll.sha512
+      shell: bash
+
+    # Create the module artifact
+    - name: Archive module
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-libstronghold
+        if-no-files-found: error
+        path: |
+          bindings/native/**
+          !**/.DS_Store
+          !bindings/native/tests/**
+          !bindings/native/*/build/**
+          !bindings/native/*/deps/**
+          !bindings/.gitignore

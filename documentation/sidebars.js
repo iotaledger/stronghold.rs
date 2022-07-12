@@ -18,6 +18,40 @@ module.exports = {
         type: 'doc',
         label: 'Getting Started',
         id: 'getting_started',
+    }, {
+        type: "category",
+        label: "Explanations",
+        items: [
+            {
+                type: 'doc',
+                id: 'explanations/non-contiguous-data-types',
+                label: 'Non-contiguous Data Types'
+            },
+            {
+                type: 'doc',
+                id: 'explanations/p2p',
+                label: 'Peer to Peer Communication'
+            },
+            {
+                type: 'doc',
+                id: 'explanations/procedures',
+                label: 'Cryptographic Procedures'
+            },
+            {
+                type: 'doc',
+                id: 'explanations/runtime-extensions',
+                label: 'Runtime Extensions'
+            },
+            {
+                type: 'doc',
+                id: 'explanations/transactional-concurrency',
+                label: 'Transactional Memory and Transactional Concurrency'
+            },
+            {
+                type: 'doc',
+                id: 'explanations/retrospective',
+                label: 'Retrospective'
+            },]
     },
         {
 
@@ -41,16 +75,6 @@ module.exports = {
                         ]
                 },
             ]
-        },
-        {
-            type: "category",
-            label: "Concepts",
-            items: [
-                {
-                    type: 'doc',
-                    id: 'concepts/retrospective',
-                    label: 'Retrospective'
-                },]
         },
         {
             type: 'category',

@@ -1,12 +1,12 @@
 [package]
 name = "iota_stronghold"
-version = "0.6.4"
+version = "0.8.0"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
 description = "Client interface for Stronghold"
 authors = [ "IOTA Stiftung" ]
-homepage = "https://wiki.iota.org/stronghold.rs/welcome"
+homepage = "https://wiki.iota.org/stronghold.rs/getting_started"
 repository = "https://github.com/iotaledger/stronghold.rs"
 keywords = [ "iota", "stronghold", "security" ]
 categories = [ "security" ]
@@ -15,6 +15,7 @@ categories = [ "security" ]
 default = [ "std" ]
 p2p = [ "std", "futures", "pin-project", "stronghold-p2p" ]
 std = [ ]
+insecure = [ ]
 
 [dependencies]
 thiserror = { version = "1.0.30" }
@@ -39,7 +40,7 @@ pin-project = { version = "1.0.10", optional = true }
 futures = { version = "0.3.21", optional = true }
 stronghold-p2p = { package = "stronghold-p2p", path = "../p2p", version = "0.4.2", optional = true }
 rlu = { package = "stronghold-rlu", path = "../rlu/", version = "0.4.0" }
-engine = { package = "stronghold_engine", path = "../engine", version = "0.5.1" }
+engine = { package = "stronghold_engine", path = "../engine", version = "0.5.3" }
 stronghold_utils = { package = "stronghold-utils", path = "../utils/", version = "0.4.1" }
 stronghold_derive = { package = "stronghold-derive", path = "../derive", version = "0.3.1" }
 
