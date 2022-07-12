@@ -24,8 +24,7 @@ protect any digital secret.
 Stronghold is a secure database for working with cryptography, which ensures that secrets (like private keys) are never
 revealed, but can be used according to best practices.
 
-Stronghold provides its own peer-to-peer communication layer, so that different apps can securely communicate using the
-state-of-the-art Noise Protocol over libp2p.
+Stronghold provides its own peer-to-peer communication layer, so that different apps can securely communicate using an implementation of the Noise Protocol over libp2p.
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
