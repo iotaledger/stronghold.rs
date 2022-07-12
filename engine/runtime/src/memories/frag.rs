@@ -397,7 +397,7 @@ where
                     let error = libc::madvise(c_ptr, actual_size, libc::MADV_WILLNEED);
                     if error != 0 {
                         return Err(MemoryError::Allocation(format!(
-                            "memory advise returned an error {}", error;
+                            "memory advise returned an error {}", error
                         )));
                     }
                 }
