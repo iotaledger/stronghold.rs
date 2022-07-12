@@ -1,5 +1,30 @@
 # Changelog
 
+## \[0.8.0]
+
+- add insecure feature gated procedure to check values stored inside vault
+  - [a30fc8ea](https://www.github.com/iotaledger/stronghold.rs/commit/a30fc8eace0ab6af92a44c8848ee848162db9652) doc: add changes doc on 2022-07-06
+  - [aeb13540](https://www.github.com/iotaledger/stronghold.rs/commit/aeb1354034111335b67244de3e5eaf0af5a595df) doc: fix typo on 2022-07-06
+
+## \[0.7.1]
+
+- reduce visibility of Client runners `get_guard` function
+  - [13b7ebb8](https://www.github.com/iotaledger/stronghold.rs/commit/13b7ebb877634aadfbb8f4610b44660141ab43ed) doc: add changes doc on 2022-07-05
+
+## \[0.7.0]
+
+- add clear() function to Stronghold, Client and Snapshot
+  - [b71f75ed](https://www.github.com/iotaledger/stronghold.rs/commit/b71f75edff3f95722633a5e29b83b11fd3f6827a) fix: add changes file on 2022-07-04
+  - [8c2f9ebb](https://www.github.com/iotaledger/stronghold.rs/commit/8c2f9ebb09fadffe75e3c35b93f49c5012d09648) fix: changes file on 2022-07-04
+
+## \[0.6.4]
+
+- iota-stronghold bumped utils dependency
+  - [d350acfd](https://www.github.com/iotaledger/stronghold.rs/commit/d350acfd17dcee55f4aaa2ce0ccaa2e84ed1bd34) fix: bump stronghold patch version on 2022-06-27
+  - [2d08c650](https://www.github.com/iotaledger/stronghold.rs/commit/2d08c6506b63b11f45cec356284cde66bfe33ae3) fix: module name on 2022-06-27
+  - [0ddd0d4a](https://www.github.com/iotaledger/stronghold.rs/commit/0ddd0d4a77a225859c9de8ca1128eed43383e344) apply version updates on 2022-06-27
+  - [92db69ea](https://www.github.com/iotaledger/stronghold.rs/commit/92db69eaffaec1dca1468d2900904152785d2ed5) fix: bump dependency on utils to 0.4.1 on 2022-06-27
+
 ## \[0.6.3]
 
 - bump patch version

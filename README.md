@@ -24,7 +24,7 @@
     <p align="center">
         A Rust library to build a secure software storage for sensitive data.
         <br />
-        <a href="https://wiki.iota.org/stronghold.rs/welcome"><strong>Explore the docs »</strong></a>
+        <a href="https://wiki.iota.org/stronghold.rs/getting_started"><strong>Explore the docs »</strong></a>
         <br />
         <br />
         <a href="https://github.com/iotaledger/stronghold.rs/labels/bug">Report Bug</a>
@@ -36,8 +36,8 @@
 
 
 <!-- TABLE OF CONTENTS -->
-<!-- TODO 
-Edit the ToC to your needs. If your project is part of the wiki, you should link directly to the Wiki where possible and remove unneeded sections to prevent duplicates 
+<!-- TODO
+Edit the ToC to your needs. If your project is part of the wiki, you should link directly to the Wiki where possible and remove unneeded sections to prevent duplicates
 -->
 <details>
   <summary>Table of Contents</summary>
@@ -69,7 +69,7 @@ Edit the ToC to your needs. If your project is part of the wiki, you should link
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. It is written in stable rust and has strong guarantees of memory safety and process integrity. 
+<span style="font-weight: 666;">IOTA Stronghold</span> is a secure software implementation with the sole purpose of isolating digital secrets from exposure to hackers and accidental leaks. It uses encrypted snapshots that can be easily backed up and securely shared between devices. It is written in stable rust and has strong guarantees of memory safety and process integrity.
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -133,11 +133,11 @@ This should print the help of the example with all commands and options.
 - [x] Engine
 - [x] Client (with dual interfaces)
 - [x] peer-to-peer communications
-- [x] Secure runtime zone 
-- [x] Integration with crypto.rs 
+- [x] Secure runtime zone
+- [x] Integration with crypto.rs
 - [x] Integration with Firefly
 - [x] Integration with Identity
- 
+
 ### Documentation and Specification
 - [x] User Handbooks
 - [ ] Specification Documentation
@@ -152,7 +152,7 @@ This should print the help of the example with all commands and options.
 
 #### Applications
 - [x] CLI binary
-- [x] Dynamic high-performance store 
+- [x] Dynamic high-performance store
 - [ ] C FFI bindings
 - [ ] [Napi Bindings](https://napi.rs/)
 
