@@ -18,20 +18,36 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
+
       - uses: actions-rs/cargo@v1
         name: Install cargo-about
         with:
           command: install
           args: cargo-about
+
       - name: Move `about.toml` to project root
         run: mv .github/workflows/about.toml .
+
       - uses: actions-rs/cargo@v1
         name: Initialize template
         with:
           command: about
           args: init
+
       - uses: actions-rs/cargo@v1
         name: Check licenses
         with:
           command: about
           args: generate --workspace --all-features about.hbs
+
+      - name: Install cargo-license-template
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --force cargo-license-template
+
+      - name: Run cargo-license-template
+        uses: actions-rs/cargo@v1
+        with:
+          command: license-template
+          args: --template .license_template

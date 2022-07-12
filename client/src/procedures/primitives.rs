@@ -4,7 +4,7 @@
 use std::str::FromStr;
 
 use super::types::*;
-use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location};
+use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
 pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
@@ -57,6 +57,9 @@ pub enum StrongholdProcedure {
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
+
+    #[cfg(feature = "insecure")]
+    CompareSecret(CompareSecret),
 }
 
 impl Procedure for StrongholdProcedure {
@@ -85,6 +88,9 @@ impl Procedure for StrongholdProcedure {
             Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
+
+            #[cfg(feature = "insecure")]
+            CompareSecret(proc) => proc.exec(runner).map(|o| o.into()),
         }
     }
 }
@@ -183,6 +189,11 @@ macro_rules! generic_procedures {
             generic_procedures!($Trait<$n> => { $($Proc),+ } );
         )+
     };
+}
+
+#[cfg(feature = "insecure")]
+generic_procedures! {
+    UseSecret<1> => { CompareSecret }
 }
 
 generic_procedures! {
@@ -1022,5 +1033,36 @@ impl AesKeyWrapDecrypt {
         wrap.unwrap_key(self.wrapped_key.as_ref(), &mut plaintext)?;
 
         Ok(plaintext)
+    }
+}
+
+/// This procedure is to be used to check for values inside the vault.
+/// By its very nature, this procedure is not secure to use and is by default
+/// inactive. it MUST NOT be used in production setups.
+/// Returns `vec![1]` if `expected` matches the secret at `location`, `vec![0]` otherwise.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "insecure")]
+pub struct CompareSecret {
+    /// The location to look for the specified value
+    pub location: Location,
+
+    /// An expected value to check against
+    pub expected: Vec<u8>,
+}
+
+#[cfg(feature = "insecure")]
+impl UseSecret<1> for CompareSecret {
+    type Output = Vec<u8>; // this is a hack, since Procedure::Output only allows Vec output types
+                           // we assume a value of `1` as `true`, while a `0` is considered `false`
+
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let inner = guard[0].borrow();
+        let result = self.expected.eq(inner.as_ref());
+
+        Ok(vec![result.into()])
+    }
+
+    fn source(&self) -> [Location; 1] {
+        [self.location.clone()]
     }
 }
