@@ -9,7 +9,7 @@ keywords:
 - explanation
 ---
 
-# Runtime extensions 
+# Runtime Extensions 
 
 
 ## Memory Management

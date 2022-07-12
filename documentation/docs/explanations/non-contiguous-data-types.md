@@ -10,7 +10,7 @@ keywords:
 ---```
 
 
-# Non-Contiguous Data Types and Handling secrets at runtime
+# Non-Contiguous Data Types and Handling Secrets at Runtime
 
 Running processes store objects in allocated memory contiguously, meaning the stream of bytes is consecutive. This is not always desirable, as an attacker could easily read sensitive information from parts of the memory. This section will describe non-contiguous memory data structures and how they work.
 

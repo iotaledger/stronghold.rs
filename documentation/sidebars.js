@@ -21,6 +21,31 @@ module.exports = {
     items: [
       {
         type: 'doc',
+        id: 'explanations/non-continuos-data-types',
+        label: 'Non-continuos Data Types'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/p2p',
+        label: 'Peer to Peer Communication'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/procedures',
+        label: 'Cryptographic Procedures'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/runtime-extensions',
+        label: 'Runtime Extensions'
+      },
+      {
+        type: 'doc',
+        id: 'explanations/transactional-concurrency',
+        label: 'Transactional Memory and Transactional Concurrency'
+      },
+      {
+        type: 'doc',
         id: 'explanations/retrospective',
         label: 'Retrospective'
       },]
