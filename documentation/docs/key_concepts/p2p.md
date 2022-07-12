@@ -30,5 +30,4 @@ You can find a detailed explanation of how the NOISE protocol works on the offic
 
 A simple application level firewall secures each incoming connection. You can define rules for each peer trying to access certain parts of a Stronghold. For example, you can configure the firewall so only certain paths are available to a remote peer.
 
-
-Strongholds running as remote Instances are being addressed with the multiaddr format.
+Remote instances of Stronghold are being addressed with the [multiaddr format](https://multiformats.io/multiaddr/).
