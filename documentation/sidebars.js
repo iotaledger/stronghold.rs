@@ -21,7 +21,7 @@ module.exports = {
     items: [
       {
         type: 'doc',
-        id: 'explanations/non-contiguous-data-types.md',
+        id: 'explanations/non-contiguous-data-types',
         label: 'Non-contiguous Data Types'
       },
       {
