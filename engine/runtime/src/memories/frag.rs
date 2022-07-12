@@ -23,7 +23,8 @@ use zeroize::Zeroize;
 
 // The minimum distance we consider between 2 fragments
 // This is the page size for most linux systems
-pub const FRAG_MIN_DISTANCE: usize = 0x1000;
+pub static FRAG_MIN_DISTANCE: usize = 0x1000;
+const MAX_RETRY_ATTEMPTS: usize = 10;
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -97,17 +98,13 @@ pub struct FragConfig {
     /// value will be used to calculate the minimum distance to the
     /// previous allocation.
     pub(crate) last_address: usize,
-
-    /// The  minimum distance to a previous allocation
-    pub(crate) min_distance: usize,
 }
 
 impl FragConfig {
     /// Creates a new [`FragConfig`]
-    pub fn new(last_address: usize, min_distance: usize) -> Self {
+    pub fn new(last_address: usize) -> Self {
         Self {
             last_address,
-            min_distance,
         }
     }
 }
@@ -130,29 +127,30 @@ impl<T: Default + Clone> Frag<T> {
             FragStrategy::Hybrid => DirectAlloc::alloc(None),
         }?;
 
-        let config = Some(FragConfig::new(a.ptr.as_ptr() as usize, distance));
-        let b = match strategy {
-            FragStrategy::Direct => DirectAlloc::alloc(config),
-            FragStrategy::Map => MemoryMapAlloc::alloc(config),
-            FragStrategy::Hybrid => MemoryMapAlloc::alloc(config),
-        }?;
+        for _ in 0..MAX_RETRY_ATTEMPTS {
+            let config = Some(FragConfig::new(a.ptr.as_ptr() as usize));
+            let mut b = match strategy {
+                FragStrategy::Direct => DirectAlloc::alloc(config),
+                FragStrategy::Map => MemoryMapAlloc::alloc(config),
+                FragStrategy::Hybrid => MemoryMapAlloc::alloc(config),
+            }?;
 
-        let actual_distance = calc_distance(a.get()?, b.get()?);
-        if actual_distance < distance {
-            error!(
-                "Distance between parts below threshold: \na: 0x{:016x} \nb: 0x{:016x} \ngiven_value: 0x{:016x}",
-                a.ptr.as_ptr() as usize,
-                b.ptr.as_ptr() as usize,
-                &a as *const _ as usize
-            );
-            return Err(MemoryError::Allocation(format!(
-                "Distance between parts below threshold: 0x{:016X}",
-                actual_distance
-            )));
+            let actual_distance = calc_distance(a.get()?, b.get()?);
+            if actual_distance < distance {
+                error!(
+                    "Distance between parts below threshold: \na: 0x{:016x} \nb: 0x{:016x} \ngiven_value: 0x{:016x}",
+                    a.ptr.as_ptr() as usize,
+                    b.ptr.as_ptr() as usize,
+                    &a as *const _ as usize
+                );
+                Frag::dealloc(&mut b)?;
+                continue;
+            }
+            info!("Mapped 2 fragments: at {:?} and {:?}", a.ptr, b.ptr);
+            return Ok((a, b));
         }
 
-        info!("Mapped 2 fragments: at {:?} and {:?}", a.ptr, b.ptr);
-        Ok((a, b))
+        Err(MemoryError::Allocation(format!("Unable to allocate safe fragments")))
     }
 
     /// Tries to allocate two objects of the same type with a default minimum distance in memory space of
@@ -229,73 +227,65 @@ where
         info!("Using page size {}", pagesize);
 
         unsafe {
-            loop {
-                let mut addr: usize = (rng.gen::<usize>() >> 32) & (!0usize ^ (pagesize - 1));
+            let mut addr: usize = if let Some(cfg) = config {
+                let offset = rng.gen_range(100..10000) * pagesize;
+                cfg.last_address + offset
+            } else {
+                0
+            };
 
-                info!("Desired addr  0x{:08X}", addr);
+            info!("Desired addr  0x{:08X}", addr);
 
-                // the maximum size of the mapping
-                let max_alloc_size = 0xFFFFFF;
+            // the maximum size of the mapping
+            let max_alloc_size = 0xFFFFFF;
 
-                let desired_alloc_size: usize = rng.gen_range(size..=max_alloc_size);
+            let desired_alloc_size: usize = rng.gen_range(size..=max_alloc_size);
 
-                info!("prealloc: desired alloc size 0x{:08X}", desired_alloc_size);
+            info!("prealloc: desired alloc size 0x{:08X}", desired_alloc_size);
 
-                // this creates an anonymous mapping zeroed out.
-                let c_ptr = libc::mmap(
-                    &mut addr as *mut _ as *mut libc::c_void,
-                    desired_alloc_size,
-                    libc::PROT_READ | libc::PROT_WRITE,
-                    libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
-                    -1,
-                    0,
-                );
+            // this creates an anonymous mapping zeroed out.
+            let c_ptr = libc::mmap(
+                &mut addr as *mut _ as *mut libc::c_void,
+                desired_alloc_size,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_ANONYMOUS | libc::MAP_PRIVATE,
+                -1,
+                0,
+            );
 
-                info!("Preallocated segment addr: {:p}", c_ptr);
+            info!("Preallocated segment addr: {:p}", c_ptr);
 
-                if c_ptr == libc::MAP_FAILED {
-                    warn!("Memory mapping failed");
-                    continue;
-                }
+            if c_ptr == libc::MAP_FAILED {
+                return Err(MemoryError::Allocation(format!("Memory mapping failed")));
+            }
 
-                // Check that new memory is far enough
-                if let Some(ref cfg) = config {
-                    let actual_distance = (c_ptr as usize).abs_diff(cfg.last_address);
-                    if actual_distance < cfg.min_distance {
-                        warn!("New allocation distance to previous allocation is below threshold.");
-                        dealloc_map(c_ptr, desired_alloc_size)?;
-                        continue;
-                    }
-                }
-
-                #[cfg(any(target_os = "macos"))]
+            #[cfg(any(target_os = "macos"))]
+            {
+                // on linux this isn't required to commit memory
+                let error = libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
                 {
-                    // on linux this isn't required to commit memory
-                    let error = libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
-
-                    {
-                        if error != 0 {
-                            error!("madvise returned an error {}", error);
-                            continue;
-                        }
+                    if error != 0 {
+                        return Err(MemoryError::Allocation(format!("madvise returned an error {}", error)));
                     }
                 }
+            }
 
-                let ptr = c_ptr as *mut T;
+            let ptr = c_ptr as *mut T;
 
-                if !ptr.is_null() {
-                    let t = T::default();
-                    ptr.write(t);
+            if !ptr.is_null() {
+                let t = T::default();
+                ptr.write(t);
 
-                    info!("Object succesfully written into mem location");
+                info!("Object succesfully written into mem location");
 
-                    return Ok(Frag {
-                        ptr: NonNull::new_unchecked(ptr),
-                        strategy: FragStrategy::Map,
-                        live: true,
-                        info: (c_ptr, desired_alloc_size),
-                    });
-                }
+                Ok(Frag {
+                    ptr: NonNull::new_unchecked(ptr),
+                    strategy: FragStrategy::Map,
+                    live: true,
+                    info: (c_ptr, desired_alloc_size),
+                })
+            } else {
+                Err(MemoryError::Allocation(format!("Received a null pointer")))
             }
         }
     }
@@ -308,48 +298,43 @@ where
     #[cfg(target_os = "windows")]
     fn alloc(_config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
         let handle = windows::Win32::Foundation::INVALID_HANDLE_VALUE;
-        loop {
-            unsafe {
-                // actual memory mapping
-                {
-                    let actual_size = std::mem::size_of::<T>() as u32;
-                    let actual_mapping = windows::Win32::System::Memory::CreateFileMappingW(
-                        handle,
-                        std::ptr::null_mut(),
-                        windows::Win32::System::Memory::PAGE_READWRITE,
-                        0,
-                        actual_size,
-                        windows::core::PCWSTR(std::ptr::null_mut()),
-                    )
-                    .map_err(|e| MemoryError::Allocation(e.to_string()))?;
+        unsafe {
+            let actual_size = std::mem::size_of::<T>() as u32;
+            let actual_mapping = windows::Win32::System::Memory::CreateFileMappingW(
+                handle,
+                std::ptr::null_mut(),
+                windows::Win32::System::Memory::PAGE_READWRITE,
+                0,
+                actual_size,
+                windows::core::PCWSTR(std::ptr::null_mut()),
+            )
+            .map_err(|e| MemoryError::Allocation(e.to_string()))?;
 
-                    if let Err(e) = last_error() {
-                        return Err(e);
-                    }
-
-                    let mem_view = windows::Win32::System::Memory::MapViewOfFile(
-                        actual_mapping,
-                        windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
-                        0,
-                        0,
-                        actual_size as usize,
-                    );
-                    let actual_mem = mem_view as *mut T;
-
-                    if let Err(e) = last_error() {
-                        return Err(e);
-                    }
-
-                    actual_mem.write(T::default());
-
-                    return Ok(Frag {
-                        ptr: NonNull::new_unchecked(actual_mem),
-                        strategy: FragStrategy::Map,
-                        live: true,
-                        info: Some((actual_mapping, mem_view)),
-                    });
-                }
+            if let Err(e) = last_error() {
+                return Err(e);
             }
+
+            let mem_view = windows::Win32::System::Memory::MapViewOfFile(
+                actual_mapping,
+                windows::Win32::System::Memory::FILE_MAP_ALL_ACCESS,
+                0,
+                0,
+                actual_size as usize,
+            );
+            let actual_mem = mem_view as *mut T;
+
+            if let Err(e) = last_error() {
+                return Err(e);
+            }
+
+            actual_mem.write(T::default());
+
+            return Ok(Frag {
+                ptr: NonNull::new_unchecked(actual_mem),
+                strategy: FragStrategy::Map,
+                live: true,
+                info: Some((actual_mapping, mem_view)),
+            });
         }
     }
 
@@ -379,7 +364,7 @@ where
     type Error = MemoryError;
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn alloc(config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
+    fn alloc(_config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
@@ -395,53 +380,42 @@ where
             .unwrap_or(Some(default_page_size))
             .unwrap() as usize;
 
-        // Within the loop we allocate a sufficiently "large" chunk of memory. A random
-        // offset will be added to the returned pointer and the object will be written. This
-        // actually leaks memory.
-        loop {
-            unsafe {
-                let alloc_size = rng.gen::<usize>().min(min).max(max);
-                let mem_ptr = {
-                    // allocate some randomly sized chunk of memory
-                    let c_ptr = libc::malloc(alloc_size);
-                    if c_ptr.is_null() {
-                        continue;
-                    }
+        // We allocate a sufficiently "large" chunk of memory. A random
+        // offset will be added to the returned pointer and the object will be written.
+        unsafe {
+            let alloc_size = rng.gen::<usize>().min(min).max(max);
+            let mem_ptr = {
+                // allocate some randomly sized chunk of memory
+                let c_ptr = libc::malloc(alloc_size);
+                if c_ptr.is_null() {
+                    return Err(MemoryError::Allocation(format!("Received a null pointer")));
+                }
 
-                    #[cfg(target_os = "macos")]
-                    {
-                        // on linux it isn't required to commit memory
-                        let error = libc::madvise(c_ptr, actual_size, libc::MADV_WILLNEED);
-                        if error != 0 {
-                            error!("memory advise returned an error {}", error);
-                            continue;
-                        }
-                    }
-
-                    c_ptr
-                };
-
-                if let Some(ref cfg) = config {
-                    let actual_distance = (mem_ptr as usize).abs_diff(cfg.last_address);
-                    if actual_distance < cfg.min_distance {
-                        warn!("New allocation distance to previous allocation is below threshold.");
-                        dealloc_direct(mem_ptr)?;
-                        continue;
+                #[cfg(target_os = "macos")]
+                {
+                    // on linux it isn't required to commit memory
+                    let error = libc::madvise(c_ptr, actual_size, libc::MADV_WILLNEED);
+                    if error != 0 {
+                        return Err(MemoryError::Allocation(format!(
+                            "memory advise returned an error {}", error;
+                        )));
                     }
                 }
 
-                // we are searching for some address in between
-                let offset = rng.gen::<usize>().min(max - actual_size);
-                let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
-                actual_mem.write(T::default());
+                c_ptr
+            };
 
-                return Ok(Frag {
-                    ptr: NonNull::new_unchecked(actual_mem),
-                    strategy: FragStrategy::Direct,
-                    live: true,
-                    info: (mem_ptr, alloc_size),
-                });
-            }
+            // we are searching for some address in between
+            let offset = rng.gen::<usize>().min(max - actual_size);
+            let actual_mem = ((mem_ptr as usize) + offset) as *mut T;
+            actual_mem.write(T::default());
+
+            return Ok(Frag {
+                ptr: NonNull::new_unchecked(actual_mem),
+                strategy: FragStrategy::Direct,
+                live: true,
+                info: (mem_ptr, alloc_size),
+            });
         }
     }
 
@@ -454,41 +428,30 @@ where
     fn alloc(config: Option<FragConfig>) -> Result<Frag<T>, Self::Error> {
         use windows::Win32::System::Memory::{VirtualAlloc, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 
-        loop {
-            unsafe {
-                let actual_size = std::mem::size_of::<T>();
+        unsafe {
+            let actual_size = std::mem::size_of::<T>();
 
-                let actual_mem = VirtualAlloc(
-                    std::ptr::null_mut(),
-                    actual_size,
-                    MEM_COMMIT | MEM_RESERVE,
-                    PAGE_READWRITE,
-                );
+            let actual_mem = VirtualAlloc(
+                std::ptr::null_mut(),
+                actual_size,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_READWRITE,
+            );
 
-                if actual_mem.is_null() {
-                    if let Err(_) = last_error() {
-                        continue;
-                    }
+            if actual_mem.is_null() {
+                if let Err(_) = last_error() {
+                    return Err(MemoryError::Allocation(format!("Call to VirtualAlloc failed")));
                 }
-
-                if let Some(ref cfg) = config {
-                    let actual_distance = (actual_mem as usize).abs_diff(cfg.last_address);
-                    if actual_distance < cfg.min_distance {
-                        warn!("New allocation distance to previous allocation is below threshold.");
-                        dealloc_direct(actual_mem)?;
-                        continue;
-                    }
-                }
-
-                let actual_mem = actual_mem as *mut T;
-                actual_mem.write(T::default());
-                return Ok(Frag {
-                    ptr: NonNull::new_unchecked(actual_mem),
-                    strategy: FragStrategy::Direct,
-                    live: true,
-                    info: None,
-                });
             }
+
+            let actual_mem = actual_mem as *mut T;
+            actual_mem.write(T::default());
+            return Ok(Frag {
+                ptr: NonNull::new_unchecked(actual_mem),
+                strategy: FragStrategy::Direct,
+                live: true,
+                info: None,
+            });
         }
     }
 
