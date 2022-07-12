@@ -1,5 +1,6 @@
 ---
-description: 'Stronghold is an open-source software library which can be used to protect any digital secret. It is a secure
+description: 'Stronghold is an open-source software library which can be used to protect any digital secret. It is a
+secure
 database for working with cryptography, which ensures that secrets are never revealed - but can be used according to
 best practices.'
 image: /img/Banner/banner_stronghold.png
@@ -24,7 +25,8 @@ protect any digital secret.
 Stronghold is a secure database for working with cryptography, which ensures that secrets (like private keys) are never
 revealed, but can be used according to best practices.
 
-Stronghold provides its own peer-to-peer communication layer, so that different apps can securely communicate using an implementation of the Noise Protocol over libp2p.
+Stronghold provides its own peer-to-peer communication layer, so that different apps can securely communicate using an
+implementation of the Noise Protocol over libp2p.
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
@@ -38,8 +40,13 @@ Stronghold provides its own peer-to-peer communication layer, so that different 
 
 In April 2021, F-Secure performed a security assessment of the core crates of IOTA Stronghold and found nothing of
 concern. This is not an explicit declaration of fitness or freedom of error, but it is an indicator of the high quality
-of the code. You may
-review [the audit here](https://github.com/iotaledger/stronghold.rs/blob/dev/documentation/docs/meta/Audit.pdf).
+of the code. You may review in our
+[GitHub repository](https://github.com/iotaledger/stronghold.rs/blob/dev/documentation/docs/meta/Audit.pdf).
+
+In May 2022 Stronghold was also audited by [WithSecure](https://www.withsecure.com/en/home). You can find the full
+audit report in our
+[GitHub repository](https://github.com/iotaledger/stronghold.rs/blob/dev/2022-05-04-IOTA-Stronghold-statement-of-work-performed-1.pdf)
+.
 
 ## Joining the discussion
 
