@@ -22,7 +22,7 @@ module.exports = {
       {
         type: 'doc',
         id: 'explanations/non-contiguous-data-types.md',
-        label: 'Non-continuos Data Types'
+        label: 'Non-contiguous Data Types'
       },
       {
         type: 'doc',
