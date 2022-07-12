@@ -26,7 +26,7 @@ Non-contiguous (NC) data types store their inner referenced data in multiple loc
 
 Non-contiguous memory types split protected memory into multiple fragments, mitigating any memory dumps and making it virtually impossible for attackers to retrieve stored data. The following section describes non-contiguous memory types in more detail with a use case we often encountered and solved when we were developing Stronghold.
 
-#### Use Case: Passphrase Management
+#### Use case: passphrase management
 
 Proper passphrase management was one of the most challenging tasks during the development of Stronghold. You need a password whenever you want to load a persistent state from a snapshot file. If you were the only user of Stronghold, and reading and writing would be interactive, providing the password each time would not be a problem. The time window in which you would use the passphrase to decrypt and later encrypt to persist a state would be small and almost non-predictable.
 
