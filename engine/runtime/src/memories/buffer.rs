@@ -23,7 +23,7 @@ use serde::{
 /// This shall always be short lived
 #[derive(Clone, Eq)]
 pub struct Buffer<T: Bytes> {
-    boxed: Boxed<T>, // the boxed type of current GuardedVec
+    boxed: Boxed<T>, // the boxed type of current GuardedVec,
 }
 
 pub struct Ref<'a, T: Bytes> {
@@ -63,6 +63,13 @@ impl<T: Bytes> Buffer<T> {
     pub fn borrow_mut(&mut self) -> RefMut<'_, T> {
         RefMut::new(&mut self.boxed)
     }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    /// Returns the address of the pointer to the data
+    pub fn get_ptr_address(&self) -> usize {
+        self.boxed.get_ptr_address()
+    }
 }
 
 impl<T: Bytes + Randomized> Buffer<T> {
@@ -82,7 +89,7 @@ impl<T: Bytes> Zeroize for Buffer<T> {
 
 impl<T: Bytes> Drop for Buffer<T> {
     fn drop(&mut self) {
-        self.boxed.zeroize()
+        self.boxed.zeroize();
     }
 }
 

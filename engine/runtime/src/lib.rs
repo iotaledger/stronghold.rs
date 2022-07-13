@@ -28,6 +28,9 @@ pub enum MemoryError {
     #[error("Illegal non-contiguous size")]
     NCSizeNotAllowed,
 
+    #[error("Error while refreshing non-contiguous memory")]
+    NCRefreshError,
+
     #[error("Lock unavailable")]
     LockNotAvailable,
 
@@ -36,6 +39,15 @@ pub enum MemoryError {
 
     #[error("Illegal zero-sized value provided")]
     ZeroSizedNotAllowed,
+
+    #[error("Failed to allocate memory ({0})")]
+    Allocation(String),
+
+    #[error("Intended operation failed: ({0})")]
+    Operation(String),
+
+    #[error("Illegal tentative of using zeroized memory")]
+    IllegalZeroizedUsage,
 }
 
 /// A simple trait to force the types to call `zeroize()` when dropping

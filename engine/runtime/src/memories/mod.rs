@@ -3,5 +3,6 @@
 
 pub mod buffer;
 pub mod file_memory;
+pub mod frag;
 pub mod noncontiguous_memory;
 pub mod ram_memory;

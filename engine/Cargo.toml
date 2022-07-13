@@ -46,6 +46,10 @@ proptest = "1.0.0"
 criterion = "0.3.3"
 json = "0.12"
 
-  [dev-dependencies.stronghold-utils]
-  path = "../utils"
-  version = "0.4.1"
+[[bench]]
+name = "engine_bench"
+harness = false
+
+[dev-dependencies.stronghold-utils]
+path = "../utils"
+version = "0.4.1"

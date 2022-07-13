@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use random::{distributions::Alphanumeric, thread_rng, Rng};
+use random::{distributions::Alphanumeric, thread_rng, Rng, RngCore};
 
 pub fn xor(payload: &[u8], noise: &[u8], size: usize) -> Vec<u8> {
     let mut data = vec![0u8; size];
@@ -13,10 +13,9 @@ pub fn xor(payload: &[u8], noise: &[u8], size: usize) -> Vec<u8> {
 
 pub fn random_vec(size: usize) -> Vec<u8> {
     let mut rng = thread_rng();
-    let mut v = vec![0; size];
-    for x in v.iter_mut() {
-        *x = rng.gen();
-    }
+    let mut v = vec![0u8; size];
+    rng.fill_bytes(&mut v);
+
     v
 }
 

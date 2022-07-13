@@ -205,6 +205,13 @@ impl<T: Bytes> Boxed<T> {
     fn is_locked(&self) -> bool {
         self.prot.get() == Prot::NoAccess
     }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    /// Returns the address of the pointer to the data
+    pub fn get_ptr_address(&self) -> usize {
+        self.ptr.as_ptr() as *const _ as usize
+    }
 }
 
 impl<T: Bytes + Randomized> Boxed<T> {

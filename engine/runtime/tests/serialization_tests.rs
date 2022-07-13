@@ -45,7 +45,7 @@ fn serialize_deserialize_ok() {
 }
 
 #[test]
-// For backward compatibility all the types should return same kind of data
+// For compatibility all the types should return same kind of data
 fn serialized_data_equal() {
     let data = random_vec(NC_DATA_SIZE);
     let buf = Buffer::alloc(&data, NC_DATA_SIZE);

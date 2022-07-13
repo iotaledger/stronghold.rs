@@ -22,7 +22,7 @@ use serde::{
 /// This is basically a wrapper for the Buffer type, but the usage
 /// is different, buffer type are meant for short lived usage while
 /// RamMemory can store data for longer period of time.
-/// Hence data in RamMemory has to be either encyrpted or protected
+/// Hence data in RamMemory has to be either encrypted or protected
 /// behind a scheme
 #[derive(Clone)]
 pub struct RamMemory {
@@ -41,6 +41,13 @@ impl RamMemory {
             buf: Buffer::alloc(payload, size),
             size,
         })
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    /// Returns the address of the pointer to the data
+    pub fn get_ptr_address(&self) -> usize {
+        self.buf.get_ptr_address()
     }
 }
 

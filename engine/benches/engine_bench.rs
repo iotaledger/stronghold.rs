@@ -115,6 +115,6 @@ criterion_group!(
     bench_store_compress,
     bench_store_compression,
     bench_store_decompress,
-    bench_vault_write
+    bench_vault_write,
 );
 criterion_main!(benches);

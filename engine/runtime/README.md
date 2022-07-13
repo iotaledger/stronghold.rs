@@ -4,7 +4,6 @@ This crate provides multiple ways to store data securely whether in ram, disk or
 All these types of memories implement the `LockedMemory` trait which enables one to allocate or unlock the data stored.
 A `Buffer` type which implements basic security measures is also provided to temporarily store data for any computation.
 
-
 ## `Buffer`
 Memory which contains some "minimal" security measures such as:
 - Guard areas
@@ -78,8 +77,8 @@ Hence data security depends on the strength of the encryption scheme and the 'ob
   - [x] `NonContiguousMemory` 
 - [ ] Tests
   - [x] Functional correctness
-  - [ ] Security 
+  - [x] Security 
     - [x] zeroize 
     - [ ] access to the locked memory
-- [ ] Benchmarks
+- [x] Benchmarks
 - [ ] no-std
