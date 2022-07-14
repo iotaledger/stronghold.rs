@@ -30,6 +30,7 @@ use crypto::{
 use engine::runtime::memories::buffer::{Buffer, Ref};
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
+use zeroize::Zeroize;
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.
 ///
@@ -388,8 +389,12 @@ impl GenerateSecret for BIP39Recover {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = [0u8; 64];
-        let passphrase = self.passphrase.unwrap_or_else(|| "".into());
+        let mut passphrase = self.passphrase.clone().unwrap_or_else(|| "".into());
         bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, &mut seed);
+
+        // explicitly clear passphrase
+        passphrase.zeroize();
+
         Ok(Products {
             secret: seed.to_vec(),
             output: (),
@@ -398,6 +403,15 @@ impl GenerateSecret for BIP39Recover {
 
     fn target(&self) -> &Location {
         &self.output
+    }
+}
+
+impl Drop for BIP39Recover {
+    fn drop(&mut self) {
+        self.mnemonic.zeroize();
+        if let Some(ref mut p) = &mut self.passphrase {
+            p.zeroize();
+        }
     }
 }
 

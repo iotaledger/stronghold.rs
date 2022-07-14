@@ -769,3 +769,36 @@ async fn usecase_move_record() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> {
+    let client_path = "client-path";
+    let vault_path = b"vault-path";
+    let record_path = b"record_path";
+    let location_a = Location::const_generic(vault_path.to_vec(), record_path.to_vec());
+    let location_b = Location::const_generic(vault_path.to_vec(), record_path.to_vec());
+    let passphrase = "passphrase".to_string();
+
+    let stronghold = Stronghold::default();
+
+    let client = stronghold.create_client(client_path)?;
+
+    let bip39_generate = BIP39Generate {
+        language: MnemonicLanguage::English,
+        output: location_a,
+        passphrase: Some(passphrase.clone()),
+    };
+
+    let mnemonic = client.execute_procedure(bip39_generate)?;
+
+    let bip39_recover = BIP39Recover {
+        passphrase: Some(passphrase),
+        mnemonic,
+        output: location_b,
+    };
+
+    let result = client.execute_procedure(bip39_recover);
+    assert!(result.is_ok());
+
+    Ok(())
+}
