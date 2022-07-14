@@ -777,7 +777,7 @@ async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> 
     let record_path = b"record_path";
     let location_a = Location::const_generic(vault_path.to_vec(), record_path.to_vec());
     let location_b = Location::const_generic(vault_path.to_vec(), record_path.to_vec());
-    let passphrase = "passphrase".to_string();
+    let passphrase = "PASSPHRASEPASSHRASE".to_string();
 
     let stronghold = Stronghold::default();
 
@@ -796,6 +796,8 @@ async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> 
         mnemonic,
         output: location_b,
     };
+
+    let pid = std::process::id();
 
     let result = client.execute_procedure(bip39_recover);
     assert!(result.is_ok());
