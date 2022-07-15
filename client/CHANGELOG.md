@@ -1,5 +1,11 @@
 # Changelog
 
+## \[0.8.1]
+
+- Bip39 mnemonic will now be cleared before the procedure will be dropped
+  - [36e60937](https://www.github.com/iotaledger/stronghold.rs/commit/36e60937ce7eb801d9b6b542384ffaa5cecaea7b) doc: add changes doc on 2022-07-14
+  - [01cc3aab](https://www.github.com/iotaledger/stronghold.rs/commit/01cc3aab7f8bdd0d1754bbd5f5d5d03084316dfc) doc: fix to patch on 2022-07-14
+
 ## \[0.8.0]
 
 - add insecure feature gated procedure to check values stored inside vault
