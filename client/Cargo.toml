@@ -21,8 +21,9 @@ insecure = [ ]
 thiserror = { version = "1.0.30" }
 zeroize = { version = "1.4.3", features = [ "zeroize_derive" ] }
 serde = { version = "1.0", features = [ "derive" ] }
-iota-crypto = { version = "0.12.1", features = [
+iota-crypto = { version = "=0.13.0", features = [
   "aes-gcm",
+  "blake2b",
   "aes-kw",
   "random",
   "ed25519",
@@ -43,6 +44,7 @@ rlu = { package = "stronghold-rlu", path = "../rlu/", version = "0.4.0" }
 engine = { package = "stronghold_engine", path = "../engine", version = "0.5.3" }
 stronghold_utils = { package = "stronghold-utils", path = "../utils/", version = "0.4.1" }
 stronghold_derive = { package = "stronghold-derive", path = "../derive", version = "0.3.1" }
+rust-argon2 = { version = "=1.0.0" }
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = [ "full" ] }
