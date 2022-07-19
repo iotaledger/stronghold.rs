@@ -153,7 +153,7 @@ impl KeyProvider {
         let key = digest.finalize().to_vec();
 
         if key.len() != KEY_SIZE_HASHED {
-            // This restriction referes to the current implementation of the non-contiguous types
+            // This restriction refers to the current implementation of the non-contiguous types
             // and may be lifted in the future. This error will only be thrown, if digests will return
             // another size than 32 bytes.
             return Err(ClientError::IllegalKeySize(32));
