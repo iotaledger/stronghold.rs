@@ -517,6 +517,7 @@ fn test_keyprovider_truncated_passphrase() {
 
     let passphrase = b"superlongpassphraseextrasecure";
     let mut expected: [u8; 32] = [0u8; 32];
+
     passphrase.as_ref().iter().enumerate().take(32).for_each(|(i, value)| {
         expected[i] = *value;
     });

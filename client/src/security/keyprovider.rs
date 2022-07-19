@@ -17,7 +17,7 @@ use zeroize::Zeroize;
 use crate::{internal::Provider, ClientError};
 
 /// This constant will be used to truncate a supplied passphrase
-const KEY_SIZE_TRUNCATED: usize = 32;
+const KEY_SIZE_HASHED: usize = 32;
 
 /// The [`KeyProvider`] keeps secrets in [`NCKey`] at rest,
 /// such that no key can be directly read out from memory. The memory fragments
@@ -81,12 +81,12 @@ impl KeyProvider {
     where
         P: AsRef<[u8]> + Zeroize,
     {
-        let mut key: [u8; KEY_SIZE_TRUNCATED] = [0u8; KEY_SIZE_TRUNCATED];
+        let mut key: [u8; KEY_SIZE_HASHED] = [0u8; KEY_SIZE_HASHED];
         passphrase
             .as_ref()
             .iter()
             .enumerate()
-            .take(KEY_SIZE_TRUNCATED)
+            .take(KEY_SIZE_HASHED)
             .for_each(|(i, value)| {
                 key[i] = *value;
             });
@@ -150,9 +150,15 @@ impl KeyProvider {
         D: Digest,
     {
         digest.update(passphrase.as_ref());
-        let key = digest.finalize();
+        let key = digest.finalize().to_vec();
 
-        let result = Self::try_from(key.to_vec()).map_err(|e| ClientError::Inner(e.to_string()));
+        if key.len() != KEY_SIZE_HASHED {
+            // This restriction referes to the current implementation of the non-contiguous types
+            // and may be lifted in the future. This error will only be thrown, if digests will return
+            // another size than 32 bytes.
+            return Err(ClientError::IllegalKeySize(32));
+        }
+        let result = Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()));
         passphrase.zeroize();
 
         result
