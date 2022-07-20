@@ -45,6 +45,9 @@ pub enum ClientError {
 
     #[error("Snapshot file is missing ({0})")]
     SnapshotFileMissing(String),
+
+    #[error("Illegal key size. Should be ({0})")]
+    IllegalKeySize(usize),
 }
 
 #[cfg(feature = "p2p")]
