@@ -129,7 +129,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     stronghold.write_client(client_path.clone())?;
 
     // commit all to snapshot file
-    stronghold.commit(&snapshot_path, &keyprovider)?;
+    stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider)?;
 
     //// -- reset stronghold, re-load snapshot from disk
 
@@ -224,14 +224,14 @@ fn purge_client() {
 
     let key_provider = result.unwrap();
 
-    let result = stronghold.commit(&snapshot, &key_provider);
+    let result = stronghold.commit_with_keyprovider(&snapshot, &key_provider);
     assert!(result.is_ok(), "Commit failed {:?}", result);
 
     // purge client
     assert!(stronghold.purge_client(client).is_ok());
 
     // the next commit also deletes it from the snapshot file
-    let result = stronghold.commit(&snapshot, &key_provider);
+    let result = stronghold.commit_with_keyprovider(&snapshot, &key_provider);
     assert!(result.is_ok(), "Commit failed {:?}", result);
 
     // check, if client still exists
@@ -284,7 +284,7 @@ fn write_client_to_snapshot() {
             .expect("Failed to write secret into vault");
     }
 
-    let result = stronghold.commit(&snapshot_path, &keyprovider);
+    let result = stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider);
 
     assert!(
         result.is_ok(),
@@ -331,7 +331,7 @@ fn test_load_client_from_snapshot() {
 
     let key_provider = result.unwrap();
 
-    let result = stronghold.commit(&snapshot, &key_provider);
+    let result = stronghold.commit_with_keyprovider(&snapshot, &key_provider);
     assert!(result.is_ok(), "Commit failed {:?}", result);
 
     // reload from snapshot
@@ -365,7 +365,7 @@ fn test_load_multiple_clients_from_snapshot() {
         let _ = stronghold.create_client(path.clone());
     });
 
-    let result = stronghold.commit(&snapshot_path, &keyprovider);
+    let result = stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider);
     assert!(result.is_ok(), "Failed to commit clients state {:?}", result);
 
     client_path_vec.iter().for_each(|path| {
@@ -416,7 +416,7 @@ fn test_create_snapshot_file_in_custom_directory() {
 
     assert!(vault.write_secret(location, payload.clone()).is_ok());
 
-    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+    assert!(stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider).is_ok());
 
     let client2 = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path);
     assert!(client2.is_ok());
@@ -482,7 +482,7 @@ fn test_clear_stronghold_state() {
     assert!(result.is_ok());
 
     // store the state
-    assert!(stronghold.commit(&snapshot_path, &keyprovider).is_ok());
+    assert!(stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider).is_ok());
 
     // --
     // clear internal state
@@ -604,4 +604,46 @@ fn test_keyprovider_hashed_passphrase_argon2() {
     let key = buffer_ref.deref();
 
     assert_eq!(key, expected);
+}
+
+#[test]
+fn test_stronghold_with_key_location_for_snapshot() {
+    let client_path = "my-awesome-client-path";
+    let vault_path = b"vault_path".to_vec();
+    let record_path = b"record_path".to_vec();
+    let payload = b"payload".to_vec();
+    let secret_location = Location::const_generic(vault_path.clone(), record_path);
+    let key = rand::fixed_bytestring(32);
+    let key_location = Location::const_generic(b"secret-key-location".to_vec(), b"secret-key-location".to_vec());
+
+    let filename = base64::encode(fixed_random_bytes(32));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
+
+    let defer = Defer::from((snapshot_path, |path: &'_ PathBuf| {
+        let _ = std::fs::remove_file(path);
+    }));
+
+    let stronghold = Stronghold::default();
+    let client = stronghold.create_client(client_path).expect("Failed to create client");
+    let vault = client.vault(vault_path);
+    let snapshot = SnapshotPath::from_path(&*defer);
+
+    assert!(
+        vault.write_secret(secret_location, payload).is_ok(),
+        "Failed to write secret to specified location"
+    );
+
+    assert!(
+        stronghold.store_snapshot_key_at_location(key, key_location).is_ok(),
+        "Failed to store key at location for Snapshot"
+    );
+
+    let result = stronghold.commit(&snapshot);
+    assert!(
+        result.is_ok(),
+        "Failed to commmit all clients state with using implicit key location. ({:?})",
+        result
+    );
 }

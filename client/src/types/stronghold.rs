@@ -49,6 +49,7 @@ use stronghold_p2p::{Executor, ListenErr, Multiaddr, PeerId};
 #[cfg(feature = "p2p")]
 use futures::{channel::mpsc::UnboundedReceiver, future::Either};
 use stronghold_utils::GuardDebug;
+use zeroize::Zeroize;
 
 #[cfg(feature = "p2p")]
 use crate::network_old::Network;
@@ -77,6 +78,9 @@ pub struct Stronghold {
 
     // A per Stronghold session store
     store: Store,
+
+    /// Optional key location for writing to [`Snapshot`]
+    key_location: Arc<RwLock<Option<Location>>>,
 
     #[cfg(feature = "p2p")]
     network: Arc<futures::lock::Mutex<Option<Network>>>,
@@ -230,6 +234,32 @@ impl Stronghold {
         Ok(snapshot)
     }
 
+    /// Stores the key to write to the [`Snapshot`] at [`Location`]. This operation zeroizes the key
+    /// after successful insertion
+    pub fn store_snapshot_key_at_location<K>(&self, mut key: K, location: Location) -> Result<(), ClientError>
+    where
+        K: AsMut<[u8]> + Zeroize,
+    {
+        let key = key.as_mut();
+        // magic constant!
+        if key.len() != 32 {
+            return Err(ClientError::IllegalKeySize(key.len()));
+        }
+
+        let mut key_location = self.key_location.write().map_err(|e| ClientError::LockAcquireFailed)?;
+        key_location.replace(location.clone());
+
+        let (vault_id, record_id) = location.resolve();
+
+        let mut snapshot = self.get_snapshot()?;
+        let mut kkey = [0u8; 32];
+        kkey.copy_from_slice(key);
+        key.zeroize();
+        snapshot.store_snapshot_key(kkey, vault_id, record_id)?;
+
+        Ok(())
+    }
+
     /// Creates a new, empty [`Client`]
     ///
     /// # Example
@@ -250,10 +280,12 @@ impl Stronghold {
         Ok(client)
     }
 
-    /// Writes all client states into the [`Snapshot`] file
-    ///
-    /// # Example
-    pub fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
+    /// Writes all client states into the [`Snapshot`] file using the `KeyProvider` to
+    pub fn commit_with_keyprovider(
+        &self,
+        snapshot_path: &SnapshotPath,
+        keyprovider: &KeyProvider,
+    ) -> Result<(), ClientError> {
         let clients = self.clients.try_read()?;
 
         if !snapshot_path.exists() {
@@ -285,6 +317,47 @@ impl Stronghold {
 
         snapshot
             .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().unwrap()))
+            .map_err(|e| ClientError::Inner(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Writes all client states into the [`Snapshot`] file
+    ///
+    /// # Example
+    pub fn commit(&self, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
+        let clients = self.clients.try_read()?;
+
+        if !snapshot_path.exists() {
+            let path = snapshot_path.as_path().parent().ok_or_else(|| {
+                ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
+            })?;
+            if let Err(io_error) = std::fs::create_dir_all(path) {
+                return Err(ClientError::SnapshotFileMissing(
+                    "Could not create snapshot file".to_string(),
+                ));
+            }
+        }
+
+        let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
+        drop(clients);
+
+        for client_id in ids {
+            self.write(client_id)?;
+        }
+
+        let snapshot = self.snapshot.try_read()?;
+
+        // CRITICAL SECTION
+        let loc = self.key_location.read().map_err(|_| ClientError::LockAcquireFailed)?;
+
+        let key_location = match &*loc {
+            Some(key_location) => key_location,
+            None => return Err(ClientError::SnapshotKeyLocationMissing),
+        };
+
+        snapshot
+            .write_to_snapshot(snapshot_path, UseKey::Stored(key_location.clone()))
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
         Ok(())

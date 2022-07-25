@@ -272,7 +272,7 @@ impl Snapshot {
         Ok(())
     }
 
-    /// Stores a secert [`crypto::keys::x25519::SecretKey`] as bytes at given location.
+    /// Stores a secret [`crypto::keys::x25519::SecretKey`] as bytes at given location.
     /// The stored secret will later be used to decrypt a snapshot
     pub fn store_secret_key<K>(
         &mut self,

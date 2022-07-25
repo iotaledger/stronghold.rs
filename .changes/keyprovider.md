@@ -2,4 +2,4 @@
 "iota-stronghold" : minor
 ---
 
-Extend `KeyProvider` to create from truncated, or hashed passphrase
+Store key to snapshot files in snapshot datastructure as an alternative to write and read Snapshots at a later time.

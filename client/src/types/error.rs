@@ -48,6 +48,9 @@ pub enum ClientError {
 
     #[error("Illegal key size. Should be ({0})")]
     IllegalKeySize(usize),
+
+    #[error("Key Location for Snapshot not present")]
+    SnapshotKeyLocationMissing,
 }
 
 #[cfg(feature = "p2p")]
