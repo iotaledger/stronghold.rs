@@ -419,7 +419,7 @@ fn test_create_snapshot_file_in_custom_directory() {
     assert!(stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider).is_ok());
 
     let client2 = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path);
-    assert!(client2.is_ok());
+    assert!(client2.is_ok(), "Failed to load client from snapshot ({:?})", client2);
 
     let client2 = client2.unwrap();
 
