@@ -804,3 +804,51 @@ async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> 
 
     Ok(())
 }
+
+#[test]
+#[cfg(feature = "insecure")]
+fn test_usecase_concatkdf() {
+    use crate::procedures::ConcatSecret;
+
+    let client_path = b"client-path";
+
+    let location_a = Location::const_generic(b"first-loc".to_vec(), b"first-loc".to_vec());
+    let location_b = Location::const_generic(b"second-loc".to_vec(), b"second-loc".to_vec());
+    let output_location = Location::const_generic(b"output-loc".to_vec(), b"output-loc".to_vec());
+
+    let stronghold = Stronghold::default();
+    let client = stronghold.create_client(client_path).expect("Could not create client");
+
+    let result = client.execute_procedure_chained(vec![
+        WriteVault {
+            data: b"abcdefg".to_vec(),
+            location: location_a.clone(),
+        }
+        .into(),
+        WriteVault {
+            data: b"hijklmn".to_vec(),
+            location: location_b.clone(),
+        }
+        .into(),
+    ]);
+
+    assert!(result.is_ok());
+
+    let result = client.execute_procedure(ConcatSecret {
+        location_a,
+        location_b,
+        output_location: output_location.clone(),
+    });
+
+    assert!(result.is_ok());
+
+    let result = client.execute_procedure(CompareSecret {
+        expected: b"abcdefghijklmn".to_vec(),
+        location: output_location,
+    });
+
+    assert!(result.is_ok());
+
+    let result = result.unwrap();
+    assert!(result[0] == 1, "failed: ({:?})", result);
+}
