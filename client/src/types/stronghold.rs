@@ -281,6 +281,7 @@ impl Stronghold {
     }
 
     /// Writes all client states into the [`Snapshot`] file using the `KeyProvider` to
+    /// encrypt the [`Snapshot`] file.
     pub fn commit_with_keyprovider(
         &self,
         snapshot_path: &SnapshotPath,
