@@ -256,7 +256,7 @@ impl Snapshot {
     /// Adds data to the snapshot state hashmap.
     pub fn store_snapshot_key(
         &mut self,
-        snapshot_key: snapshot::Key,
+        mut snapshot_key: snapshot::Key,
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
@@ -269,6 +269,9 @@ impl Snapshot {
             &snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
+
+        snapshot_key.zeroize();
+
         Ok(())
     }
 

@@ -236,26 +236,19 @@ impl Stronghold {
 
     /// Stores the key to write to the [`Snapshot`] at [`Location`]. This operation zeroizes the key
     /// after successful insertion
-    pub fn store_snapshot_key_at_location<K>(&self, mut key: K, location: Location) -> Result<(), ClientError>
-    where
-        K: AsMut<[u8]> + Zeroize,
-    {
-        let key = key.as_mut();
-        // magic constant!
-        if key.len() != 32 {
-            return Err(ClientError::IllegalKeySize(key.len()));
-        }
+    pub fn store_snapshot_key_at_location(&self, key: KeyProvider, location: Location) -> Result<(), ClientError> {
+        let key = key.try_unlock().map_err(|e| ClientError::Inner(e.to_string()))?;
 
         let mut key_location = self.key_location.write().map_err(|e| ClientError::LockAcquireFailed)?;
         key_location.replace(location.clone());
 
-        let (vault_id, record_id) = location.resolve();
-
         let mut snapshot = self.get_snapshot()?;
         let mut kkey = [0u8; 32];
-        kkey.copy_from_slice(key);
-        key.zeroize();
-        snapshot.store_snapshot_key(kkey, vault_id, record_id)?;
+
+        let key = key.borrow();
+        kkey.copy_from_slice(key.as_ref());
+
+        snapshot.store_secret_key(kkey, location)?;
 
         Ok(())
     }

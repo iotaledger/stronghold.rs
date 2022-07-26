@@ -614,6 +614,9 @@ fn test_stronghold_with_key_location_for_snapshot() {
     let payload = b"payload".to_vec();
     let secret_location = Location::const_generic(vault_path.clone(), record_path);
     let key = rand::fixed_bytestring(32);
+    let salt = rand::fixed_bytestring(32);
+    let key_provider =
+        KeyProvider::with_passphrase_hashed_argon2(key.clone(), salt.clone()).expect("Failed to construct keyprovider");
     let key_location = Location::const_generic(b"secret-key-location".to_vec(), b"secret-key-location".to_vec());
 
     let filename = base64::encode(fixed_random_bytes(32));
@@ -621,7 +624,7 @@ fn test_stronghold_with_key_location_for_snapshot() {
     let mut snapshot_path = std::env::temp_dir();
     snapshot_path.push(filename);
 
-    let defer = Defer::from((snapshot_path, |path: &'_ PathBuf| {
+    let defer = Defer::from((snapshot_path.clone(), |path: &'_ PathBuf| {
         let _ = std::fs::remove_file(path);
     }));
 
@@ -636,7 +639,9 @@ fn test_stronghold_with_key_location_for_snapshot() {
     );
 
     assert!(
-        stronghold.store_snapshot_key_at_location(key, key_location).is_ok(),
+        stronghold
+            .store_snapshot_key_at_location(key_provider, key_location)
+            .is_ok(),
         "Failed to store key at location for Snapshot"
     );
 
@@ -646,4 +651,13 @@ fn test_stronghold_with_key_location_for_snapshot() {
         "Failed to commmit all clients state with using implicit key location. ({:?})",
         result
     );
+
+    // reset stronghold
+    let stronghold = stronghold.reset();
+    let key_provider = KeyProvider::with_passphrase_hashed_argon2(key, salt).expect("Failed to construct keyprovider");
+
+    let client2 =
+        stronghold.load_client_from_snapshot(client_path, &key_provider, &SnapshotPath::from_path(snapshot_path));
+
+    assert!(client2.is_ok());
 }
