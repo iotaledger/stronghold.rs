@@ -133,12 +133,10 @@ impl Network {
             None => return Err(ClientError::Inner("".to_string())),
         };
 
-        let result = network
+        network
             .send_request(peer, request)
             .await
-            .map_err(|e| ClientError::Inner(e.to_string()));
-
-        result
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     pub async fn export_config(&self) -> Result<NetworkConfig, ClientError> {
@@ -923,7 +921,7 @@ impl ClientAccess {
 }
 
 // Required client, vault and store access of an inbound `ShRequest`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AccessRequest {
     /// Client to which the request should be forwarded.
     pub client_path: Vec<u8>,
@@ -932,7 +930,7 @@ pub struct AccessRequest {
 }
 
 // Required access to a vault or the store of a client.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Access {
     // Write to a vault.
     Write { vault_path: Vec<u8> },
