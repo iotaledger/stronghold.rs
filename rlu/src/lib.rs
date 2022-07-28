@@ -44,7 +44,8 @@ pub mod rlu;
 pub mod types;
 pub mod var;
 
-pub mod stm;
+// pub mod stm;
+pub mod simple_stm;
 
 // public re-exports
 pub use breaker::BusyBreaker;

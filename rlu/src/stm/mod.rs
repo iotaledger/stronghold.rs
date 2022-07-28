@@ -18,9 +18,12 @@ use std::{
     hash::{Hash, Hasher},
     sync::{
         atomic::{AtomicBool, AtomicIsize},
-        Arc, Mutex, MutexGuard,
+        Arc,
+        Mutex, MutexGuard,
     },
 };
+// use no_deadlocks::{Mutex, MutexGuard};
+
 pub use version::VersionLock;
 
 pub struct Transaction<T>
@@ -65,13 +68,19 @@ pub(crate) enum ThreadLockState {
 }
 
 #[cfg(feature = "threaded")]
-#[derive(Debug)]
+// #[derive(Debug)]
 struct Pair<T>
 where
     T: Clone,
 {
     value: Mutex<T>,
     id: Arc<AtomicIsize>,
+}
+
+impl<T: Clone> Debug for Pair<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "toto")
+    }
 }
 
 #[cfg(feature = "threaded")]
@@ -136,6 +145,8 @@ where
 {
     #[cfg(feature = "threaded")]
     /// This is the original value to be modified
+    // Contains <Mutex<T>, Arc<AtomicIsize>>,
+    // second field contains the transaction id
     original: Arc<Pair<T>>,
 
     /// This is a local version clock
@@ -370,7 +381,7 @@ where
         let pre_version = tvar.lock.version();
 
         let data = tvar.original.value.lock().map_err(|e| TxError::LockPresent)?;
-        info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, data);
+        // info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, data);
         let post_version = tvar.lock.version();
 
         let is_locked = tvar.lock.is_locked();
@@ -398,11 +409,13 @@ where
 
     #[inline(always)]
     fn lock_write_set(&self) -> Result<(), TxError> {
+        // TODO do we need this as atomic?
         let fail_lock_write = AtomicBool::new(false);
 
         for tvar in self.write.keys() {
             info!("TRANSACTION({:?}): WRITE LOCK", self.id);
 
+            //TODO current implementation of try_lock cannot fail
             if tvar.lock.try_lock().is_err() {
                 info!("LOCK WRITE SET({:?}): TRANSACTION LOCKED.", self.id);
                 fail_lock_write.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -429,6 +442,7 @@ where
 
         if fail_lock_write.load(std::sync::atomic::Ordering::SeqCst) {
             for tvar in self.write.keys() {
+                // TODO shouldn't we only unlock tvar locked by our own thread id?
                 tvar.lock.unlock()?;
             }
 
@@ -450,7 +464,9 @@ where
         }
 
         for tvar in &self.read {
-            if tvar.lock.version() >= rv {
+            // TODO paper says > but => gives better result here
+            if tvar.lock.version() > rv {
+            // if tvar.lock.version() => rv {
                 info!(
                     "VALIDATE({:?}): OBJECT STALE. READ_VERSION ({}), OBJECT VERSION ({})",
                     self.id,
@@ -519,28 +535,11 @@ where
 mod tests {
     use super::Stm;
     use crate::stm::{TVar, Transaction};
-    use std::{
-        collections::HashSet,
-        process::{ExitCode, Termination},
-    };
+    use std::collections::HashSet;
     use threadpool::ThreadPool;
 
-    #[repr(transparent)]
-    struct TestResult(bool);
-    impl Termination for TestResult {
-        fn report(self) -> std::process::ExitCode {
-            match self.0 {
-                true => ExitCode::from(0),
-                false => ExitCode::from(1),
-            }
-        }
-    }
-
-    impl From<bool> for TestResult {
-        fn from(b: bool) -> Self {
-            Self(b)
-        }
-    }
+    #[allow(unused_imports)]
+    use log::*;
 
     #[test]
     fn test_stm_basic() {
@@ -574,18 +573,18 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "threaded")]
+    // #[cfg(feature = "threaded")]
     fn run_stm_threaded() {
         use rand::{distributions::Bernoulli, prelude::Distribution};
 
-        // #[cfg(feature = "verbose")]
-        // env_logger::builder()
-        //     .is_test(true)
-        //     .filter_level(log::LevelFilter::Info)
-        //     .init();
+        #[cfg(feature = "verbose")]
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .init();
 
         let stm = Stm::default();
-        let entries: usize = 1000;
+        let entries: usize = 10;
 
         // bernoulli distribution over reads vs read/write transactions
         let distribution = Bernoulli::new(0.7).unwrap();
@@ -602,21 +601,35 @@ mod tests {
             let set_a = set.clone();
             let value = value.clone();
 
-            let do_read = distribution.sample(&mut rand::thread_rng());
+            let is_readonly = distribution.sample(&mut rand::thread_rng());
+            // TODO remove, only used for debugging
+            let is_readonly = false;
 
-            if do_read {
+            // We store the value that won't be written
+            if is_readonly {
                 removal.insert(value.clone());
             }
 
             pool.execute(move || {
                 let result = {
-                    match do_read {
+                    match is_readonly {
                         false => stm_a.read_write(
                             move |tx: &mut Transaction<_>| {
                                 let mut inner = tx.load(&set_a)?;
+                                info!(
+                                    "LOAD DONE({:?}): read set ({:?}) ",
+                                    tx.id, inner
+                                );
 
                                 inner.insert(value.clone());
-                                tx.store(&set_a, inner)?;
+                                tx.store(&set_a, inner.clone())?;
+
+                                info!(
+                                    "STORED in WRITE SET({:?}): new set ({:?}) ",
+                                    tx.id, inner
+                                );
+
+
 
                                 Ok(())
                             },
@@ -644,10 +657,12 @@ mod tests {
         let result = set.get();
         assert!(result.is_ok());
 
+
         let actual = result.unwrap();
+        // assert!(false);
 
         assert!(
-            expected.is_subset(&actual),
+            expected == actual,
             "Actual collection is not equal to expected collection: missing {:?}",
             expected.symmetric_difference(&actual)
         );
