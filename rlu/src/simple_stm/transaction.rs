@@ -23,8 +23,6 @@ where
     /// execution. If value is `None` it means that the tvar was only
     /// loaded. If a new value was stored into the tvar it will be stored
     /// in the hashmap
-    // TODO improve and have different treatment for tvars that have only
-    //      been read and not been updated
     tvars_used: HashSet<TVar<T>>,
 
     tvars_new_values: HashMap<TVar<T>, T>,
@@ -74,6 +72,9 @@ where
     /// Try to lock all the tvar used during speculative execution
     /// Also return the new values from the speculative execution associated
     /// to the tvars
+    // NOTE: paper says to only validate updated tvars but this is fishy. In
+    //       this scenario we suspect potential race condition when
+    //       validating only_read tvars later in the process
     pub(crate) fn lock_tvars_used(&self) -> Result<(Vec<MutexGuard<'_, TVarData<T>>>, Vec<Option<T>>), TxError> {
         let mut locks = vec![];
         let mut values: Vec<Option<T>> = vec![];
@@ -85,27 +86,20 @@ where
         Ok((locks, values))
     }
 
-    /// Check each tvar of the read set:
-    /// - not locked by another thread
-    /// - tvar version is lower or equal to transaction version
-    // TODO currently all the tvar is locked by the transaction we just need
-    //      to check the version
-    // TODO add optmization which does not require any checks if
-    //      stm_write_version = tx.version + 1
-    pub(crate) fn validate<'a>(&self, locks: &Vec<MutexGuard<'a, TVarData<T>>>) -> Result<(), TxError> {
+    /// Check that each tvar used has a tvar version lower or equal
+    /// to the transaction version
+    pub(crate) fn validate<'a>(&self, locks: &Vec<MutexGuard<'a, TVarData<T>>>, stm_current_version: usize) -> Result<(), TxError> {
+        // No transactions have been committed since the creation
+        // of this transaction
+        if stm_current_version == self.version + 1 {
+            return Ok(());
+        }
+
         for lock in locks {
             let tvar_version = lock.version;
             self.check_tvar_version(tvar_version)?;
         }
         Ok(())
-
-        // Check that tvar is not locked by another thread
-        // let is_tvar_locked = tvar.try_lock().is_err();
-        // let is_tvar_locked_by_tx = self.write.contains_key(&tvar);
-        // let is_tvar_locked_by_another = is_tvar_locked && !is_tvar_locked_by_tx;
-        // if is_tvar_locked_by_another {
-        //     return Err(TxError::LockPresent)
-        // }
     }
 
     /// Commit the transaction

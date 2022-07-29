@@ -80,7 +80,7 @@ impl Stm {
                     let wv = self.increment_clock();
                     info!("TX({:?}): INCREMENT GLOBAL VERSION: ({})", tx.id, wv);
 
-                    if tx.validate(&locks).is_err() {
+                    if  tx.validate(&locks, wv).is_err() {
                         info!("TX({:?}): VALIDATING READ SET FAILED", tx.id);
                         continue;
                     }
