@@ -1,3 +1,6 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::simple_stm::{error::TxError, tvar::*};
 use std::{
     collections::{HashMap, HashSet},
@@ -11,10 +14,10 @@ where
     T: Clone + Debug,
 {
     /// Transaction id
-    pub(crate) id: usize,
+    pub id: usize,
 
     /// A snapshot of the global version counter
-    pub(crate) version: usize,
+    pub version: usize,
 
     /// All the tvars involved in the transaction during speculative
     /// execution. If value is `None` it means that the tvar was only
@@ -22,9 +25,9 @@ where
     /// in the hashmap
     // TODO improve and have different treatment for tvars that have only
     //      been read and not been updated
-    pub(crate) tvars_used: HashSet<TVar<T>>,
+    tvars_used: HashSet<TVar<T>>,
 
-    pub(crate) tvars_new_values: HashMap<TVar<T>, T>,
+    tvars_new_values: HashMap<TVar<T>, T>,
 }
 
 impl<T> Transaction<T>

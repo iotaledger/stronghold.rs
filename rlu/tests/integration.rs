@@ -25,6 +25,7 @@ use stronghold_rlu as rlu;
 //         .try_init();
 // }
 
+#[ignore]
 #[test]
 fn reference_impl() {
     let mut map = HashMap::new();
@@ -59,6 +60,7 @@ fn reference_impl() {
         .is_ok());
 }
 
+#[ignore]
 #[test]
 fn reference_concurrent() {
     let map = HashMap::new();
@@ -132,6 +134,7 @@ fn reference_concurrent() {
     }
 }
 
+#[ignore]
 #[test]
 fn test_multiple_readers_single_writer() {
     const EXPECTED: usize = 15usize;

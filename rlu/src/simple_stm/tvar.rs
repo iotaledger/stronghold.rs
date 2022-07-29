@@ -1,3 +1,6 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::simple_stm::error::TxError;
 use std::{
     fmt::Debug,
@@ -67,7 +70,7 @@ where
     }
 
     // Get data without holding the mutex
-    pub(crate) fn try_get_data(&self) -> Result<T, TxError> {
+    pub fn try_get_data(&self) -> Result<T, TxError> {
         self.try_lock().map(|guard| guard.value.clone())
     }
 
