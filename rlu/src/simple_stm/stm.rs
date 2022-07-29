@@ -1,19 +1,18 @@
-use crate::simple_stm::error::TxError;
-use crate::simple_stm::transaction::Transaction;
-use crate::simple_stm::tvar::TVar;
+use crate::simple_stm::{error::TxError, transaction::Transaction, tvar::TVar};
 use log::*;
-use std::fmt::Debug;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    fmt::Debug,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
-//TODO:
+// TODO:
 // - implement the low contention global version-clock from the paper
 // - treat read and write of tvars differently
 // - make a test with multiple tvars
 // - augment possible behavior when failing a transaction
-
 
 #[derive(Clone, Default)]
 struct Stm {
@@ -51,6 +50,8 @@ impl Stm {
     /// 4. Validate all the tvars used
     /// 5. Increment the global clock
     /// 6. Commit changes to memory
+    ///
+    /// Returns the transaction id when successful
     pub fn read_write<T, F>(&self, transaction: F) -> Result<usize, TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
@@ -95,7 +96,7 @@ impl Stm {
                     //     Strategy::Abort => return Err(TxError::Failed),
                     //     Strategy::Retry => continue,
                     // }
-                } 
+                }
             }
         }
         Ok(tx_id)
@@ -167,22 +168,20 @@ mod tests {
 
         let transfer_bob_charly = 30;
         let alice_bonus = 40;
-        let result = stm.read_write(
-            move |tx: &mut Transaction<_>| {
-                let mut amt_alice = tx.load(&ba)?;
-                let mut amt_bob = tx.load(&bb)?;
-                let mut amt_charly = tx.load(&bc)?;
-                amt_alice += alice_bonus;
-                amt_bob -= transfer_bob_charly;
-                amt_charly += transfer_bob_charly;
+        let result = stm.read_write(move |tx: &mut Transaction<_>| {
+            let mut amt_alice = tx.load(&ba)?;
+            let mut amt_bob = tx.load(&bb)?;
+            let mut amt_charly = tx.load(&bc)?;
+            amt_alice += alice_bonus;
+            amt_bob -= transfer_bob_charly;
+            amt_charly += transfer_bob_charly;
 
-                tx.store(&ba, amt_alice)?;
-                tx.store(&bb, amt_bob)?;
-                tx.store(&bc, amt_charly)?;
+            tx.store(&ba, amt_alice)?;
+            tx.store(&bb, amt_bob)?;
+            tx.store(&bc, amt_charly)?;
 
-                Ok(())
-            }
-        );
+            Ok(())
+        });
 
         assert!(result.is_ok(), "Transaction failed");
 
@@ -234,25 +233,31 @@ mod tests {
             pool.execute(move || {
                 let result = {
                     match is_readonly {
-                        false =>
-                            {
-                              let id =
-                                    stm_a.read_write(
-                                        move |tx: &mut Transaction<_>| {
-
-                                            info!("TX({}):\n?????START?????\nGlobal Clock: {}\nSet: {:?}", tx.id, stm_debug.get_clock(), set_a);
-                                            let mut inner = tx.load(&set_a)?;
-                                            inner.insert(value.clone());
-                                            tx.store(&set_a, inner.clone())?;
-                                            Ok(())
-                                        }
-                                    );
-                                if let Ok(id) = id {
-                                    info!("TX({}):\n##### SUCCESS #####\nGlobal Clock: {}\nSet: {:?}", id, stm_a.get_clock(), set_debug);
-                                } else {
-                                    info!("TX(): FAILURE\nSet: {:?}",  set_debug);
-                                }
-                            },
+                        false => {
+                            let result = stm_a.read_write(move |tx: &mut Transaction<_>| {
+                                info!(
+                                    "TX({}):\n?????START?????\nGlobal Clock: {}\nSet: {:?}",
+                                    tx.id,
+                                    stm_debug.get_clock(),
+                                    set_a
+                                );
+                                let mut inner = tx.load(&set_a)?;
+                                inner.insert(value.clone());
+                                tx.store(&set_a, inner.clone())?;
+                                Ok(())
+                            });
+                            if let Ok(id) = result {
+                                info!(
+                                    "TX({}):\n##### SUCCESS #####\nGlobal Clock: {}\nSet: {:?}",
+                                    id,
+                                    stm_a.get_clock(),
+                                    set_debug
+                                );
+                            } else {
+                                info!("TX(): FAILURE\nSet: {:?}", set_debug);
+                            }
+                            result
+                        }
 
                         true => todo!(),
                         // stm_a.read_only(move |tx: &mut Transaction<_>| {

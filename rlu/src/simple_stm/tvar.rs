@@ -1,8 +1,10 @@
-use std::sync::{Arc, Mutex, MutexGuard};
 use crate::simple_stm::error::TxError;
-use std::hash::{Hash, Hasher};
-use std::time::Duration;
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
+};
 
 #[derive(Debug)]
 pub struct TVar<T>
@@ -13,7 +15,7 @@ where
     pub(crate) data: Arc<Mutex<TVarData<T>>>,
 }
 
-// /// A TVar locked by a mutex. 
+// /// A TVar locked by a mutex.
 // pub(crate) struct TVarLock<T>
 // where T: Clone {
 //     pub lock: Mutex<TVarData<T>>
@@ -21,7 +23,9 @@ where
 
 #[derive(Clone, Debug)]
 pub(crate) struct TVarData<T>
-where T: Clone + Debug {
+where
+    T: Clone + Debug,
+{
     pub value: T,
     pub version: usize,
 }
@@ -31,7 +35,9 @@ where
     T: Clone + Debug,
 {
     pub fn new(value: T, version: usize) -> Self {
-        TVar { data: Arc::new(Mutex::new(TVarData { value, version})) }
+        TVar {
+            data: Arc::new(Mutex::new(TVarData { value, version })),
+        }
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, TVarData<T>> {
@@ -46,7 +52,6 @@ where
         // We try to acquire the lock during 1s
         let bound = 1000;
         for _ in 0..bound {
-
             let lock = self.try_lock();
             if lock.is_ok() {
                 return lock;
@@ -69,19 +74,18 @@ where
     pub fn try_get_version(&self) -> Result<usize, TxError> {
         self.try_lock().map(|guard| guard.version)
     }
-
 }
-
 
 impl<T> Clone for TVar<T>
 where
     T: Clone + Debug,
 {
     fn clone(&self) -> Self {
-        TVar { data: self.data.clone() }
+        TVar {
+            data: self.data.clone(),
+        }
     }
 }
-
 
 impl<T> Hash for TVar<T>
 where
@@ -112,8 +116,10 @@ impl<T> Eq for TVar<T> where T: Clone + Debug {}
 #[cfg(test)]
 mod tests {
     use super::TVar;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
 
     #[test]
     fn test_tvar_clone_equality() {
@@ -132,5 +138,3 @@ mod tests {
         assert_eq!(ha, hb);
     }
 }
-
-

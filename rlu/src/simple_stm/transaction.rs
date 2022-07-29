@@ -1,8 +1,9 @@
-use crate::simple_stm::error::TxError;
-use crate::simple_stm::tvar::*;
-use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
-use std::sync::{MutexGuard};
+use crate::simple_stm::{error::TxError, tvar::*};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    sync::MutexGuard,
+};
 // use log::*;
 
 pub struct Transaction<T>
@@ -75,7 +76,7 @@ where
         let mut values: Vec<Option<T>> = vec![];
         for tvar in self.tvars_used.iter() {
             locks.push(tvar.bounded_lock()?);
-            let new_value = self.tvars_new_values.get(tvar).map(|value| value.clone());
+            let new_value = self.tvars_new_values.get(tvar).cloned();
             values.push(new_value);
         }
         Ok((locks, values))
@@ -108,7 +109,12 @@ where
     /// - Update each TVar with value from the write set
     /// - Update each TVar version lock with wv
     /// - Release each TVar lock
-    pub(crate) fn commit<'a>(&self, wv: usize, locks: Vec<MutexGuard<'a, TVarData<T>>>, values: Vec<Option<T>>) -> Result<(), TxError>{
+    pub(crate) fn commit(
+        &self,
+        wv: usize,
+        locks: Vec<MutexGuard<'_, TVarData<T>>>,
+        values: Vec<Option<T>>,
+    ) -> Result<(), TxError> {
         for (mut lock, value) in locks.into_iter().zip(values.into_iter()) {
             if let Some(value) = value {
                 lock.value = value;
