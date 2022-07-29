@@ -13,7 +13,6 @@ use std::{
 
 // TODO:
 // - implement the low contention global version-clock from the paper
-// - treat read and write of tvars differently
 // - make a test with multiple tvars
 // - augment possible behavior when failing a transaction
 
@@ -80,7 +79,10 @@ impl Stm {
                     let wv = self.increment_clock();
                     info!("TX({:?}): INCREMENT GLOBAL VERSION: ({})", tx.id, wv);
 
-                    if  tx.validate(&locks, wv).is_err() {
+                    // If no transactions have been committed since the creation
+                    // of this transaction then no need to validate
+                    let has_new_tx_commits = wv > tx.version + 1;
+                    if has_new_tx_commits && tx.validate(&locks).is_err() {
                         info!("TX({:?}): VALIDATING READ SET FAILED", tx.id);
                         continue;
                     }
@@ -112,26 +114,40 @@ impl Stm {
     /// 1. Get Current Version
     ///    Sample the global version to detect changes to the transactable data
     /// 2. Speculative Execution
-    ///    Try to run the transaction (eg. the function with the [`Transaction`] parameter). keep track of
-    ///    the addresses loaded in the read set, and the address/value-to-be-written in a write set.
-    ///    Check first, if a value has already been written in the write-set. return that value.
-    // TODO
-    // pub fn read_only<T, F>(&self, transaction: F) -> Result<(), TxError>
-    // where
-    //     F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
-    //     T: Clone + Send + Sync + Debug,
-    // {
-    // loop {
-    //     let mut tx = Transaction::<T>::new(self.get_clock(), self.increment_tx_ids());
-    //     match transaction(&mut tx) {
-    //         Ok(_) => {
-    //             break;
-    //         }
-    //         Err(e) => continue, // TODO: this can be augmented with a strategy
-    //     }
-    // }
-    // Ok(())
-    // }
+    /// 3. Lock the tvars used
+    /// 4. No need to increment the global clock
+    /// 5. Check version consistency of the tvars used
+    /// 6. No need to commit
+    pub fn read_only<T, F>(&self, transaction: F) -> Result<usize, TxError>
+    where
+        F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
+        T: Clone + Send + Sync + Debug,
+    {
+        let tx_id = self.increment_tx_ids();
+        loop {
+            let mut tx = Transaction::<T>::new(self.get_clock(), tx_id);
+            match transaction(&mut tx) {
+                Ok(_) => {
+                    // Lock all the used tvar
+                    let locks = tx.lock_tvars_used();
+                    if locks.is_err() {
+                        info!("TX_RO({:?}): Locking used TVars failed", tx.id);
+                        continue;
+                    }
+                    let (locks, _) = locks.unwrap();
+
+                    let has_new_tx_commits = self.get_clock() == tx.version;
+                    if has_new_tx_commits && tx.validate(&locks).is_err() {
+                        info!("TX_RO({:?}): VALIDATING READ SET FAILED", tx.id);
+                        continue;
+                    }
+                    break;
+                }
+                Err(e) => continue, // TODO: this can be augmented with a strategy
+            }
+        }
+        Ok(tx_id)
+    }
 
     /// This will create a new transactional variable [`TVar`].
     pub fn create<T>(&self, val: T) -> TVar<T>

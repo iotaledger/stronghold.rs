@@ -88,13 +88,7 @@ where
 
     /// Check that each tvar used has a tvar version lower or equal
     /// to the transaction version
-    pub(crate) fn validate<'a>(&self, locks: &Vec<MutexGuard<'a, TVarData<T>>>, stm_current_version: usize) -> Result<(), TxError> {
-        // No transactions have been committed since the creation
-        // of this transaction
-        if stm_current_version == self.version + 1 {
-            return Ok(());
-        }
-
+    pub(crate) fn validate<'a>(&self, locks: &Vec<MutexGuard<'a, TVarData<T>>>) -> Result<(), TxError> {
         for lock in locks {
             let tvar_version = lock.version;
             self.check_tvar_version(tvar_version)?;

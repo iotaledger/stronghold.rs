@@ -54,7 +54,7 @@ fn test_stm_basic() {
 #[test]
 // #[cfg(feature = "threaded")]
 fn test_stm_threaded_one_tvar() {
-    // use rand::{distributions::Bernoulli, prelude::Distribution};
+    use rand::{distributions::Bernoulli, prelude::Distribution};
 
     #[cfg(feature = "verbose")]
     env_logger::builder()
@@ -66,7 +66,7 @@ fn test_stm_threaded_one_tvar() {
     let entries: usize = 1000;
 
     // bernoulli distribution over reads vs read/write transactions
-    // let distribution = Bernoulli::new(0.7).unwrap();
+    let distribution = Bernoulli::new(0.7).unwrap();
 
     let mut expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
 
@@ -82,9 +82,7 @@ fn test_stm_threaded_one_tvar() {
         let stm_debug = stm.clone();
         let value = value.clone();
 
-        // TODO we don't handle readonly transaction yet
-        // let is_readonly = distribution.sample(&mut rand::thread_rng());
-        let is_readonly = false;
+        let is_readonly = distribution.sample(&mut rand::thread_rng());
 
         // We store the value that won't be written
         if is_readonly {
@@ -120,11 +118,11 @@ fn test_stm_threaded_one_tvar() {
                         result
                     }
 
-                    true => todo!(),
-                    // stm_a.read_only(move |tx: &mut Transaction<_>| {
-                    //     let inner = tx.load(&set_a);
-                    //     Ok(())
-                    // }),
+                    true =>  
+                        stm_a.read_only(move |tx: &mut Transaction<_>| {
+                            let _inner = tx.load(&set_a);
+                            Ok(())
+                        }),
                 }
             };
 
