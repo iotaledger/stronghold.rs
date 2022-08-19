@@ -1,4 +1,4 @@
-// Copyright 2020-2021 IOTA Stiftung
+// Copyright 2020-202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1 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
 /// p2p Stronghold functionality

@@ -1,9 +1,9 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use rlu::simple_stm::{stm::Stm, transaction::Transaction, tvar::TVar};
 use std::collections::HashSet;
-use stronghold_rlu as rlu;
+use stm::stm::{stm::Stm, transaction::Transaction, tvar::TVar};
+use stronghold_stm as stm;
 use threadpool::ThreadPool;
 
 #[allow(unused_imports)]
@@ -118,11 +118,10 @@ fn test_stm_threaded_one_tvar() {
                         result
                     }
 
-                    true =>  
-                        stm_a.read_only(move |tx: &mut Transaction<_>| {
-                            let _inner = tx.load(&set_a);
-                            Ok(())
-                        }),
+                    true => stm_a.read_only(move |tx: &mut Transaction<_>| {
+                        let _inner = tx.load(&set_a);
+                        Ok(())
+                    }),
                 }
             };
 

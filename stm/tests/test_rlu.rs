@@ -5,14 +5,14 @@
 use lazy_static::__Deref;
 use log::*;
 use rand_utils::random as rnd;
-use rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc, Mutex, RwLock},
     time::Duration,
 };
-use stronghold_rlu as rlu;
+use stm::rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
+use stronghold_stm as stm;
 
 /// This function will run before any of the tests
 // #[ignore]

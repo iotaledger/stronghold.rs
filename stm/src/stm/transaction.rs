@@ -1,7 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::simple_stm::{error::TxError, tvar::*};
+use crate::stm::{error::TxError, tvar::*};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,

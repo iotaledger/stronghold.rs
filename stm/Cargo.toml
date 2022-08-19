@@ -1,10 +1,10 @@
 [package]
-name = "stronghold-rlu"
+name = "stronghold-stm"
 version = "0.4.3"
 edition = "2021"
 authors = [ "IOTA Stiftung" ]
 license = "Apache-2.0"
-description = "Read-Log-Update software transactional memory like synchronization mechanism"
+description = "Software transactional memory"
 repository = "https://github.com/iotaledger/stronghold.rs"
 homepage = "https://wiki.iota.org/stronghold.rs/welcome"
 documentation = "https://wiki.iota.org/stronghold.rs/welcome"
@@ -41,4 +41,4 @@ name = "config"
 harness = false
 
 [[test]]
-name = "integration"
+name = "test_rlu"

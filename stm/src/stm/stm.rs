@@ -1,7 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::simple_stm::{error::TxError, transaction::Transaction, tvar::TVar};
+use crate::stm::{error::TxError, transaction::Transaction, tvar::TVar};
 use log::*;
 use std::{
     fmt::Debug,
@@ -94,7 +94,7 @@ impl Stm {
 
                     break;
                 }
-                Err(e) => {
+                Err(_) => {
                     // TODO add potential new behavior, currently we try infinitely
                     info!("TX({:?}): Speculative execution failed. Retrying", tx.id);
                     // match strategy {
@@ -143,7 +143,7 @@ impl Stm {
                     }
                     break;
                 }
-                Err(e) => continue, // TODO: this can be augmented with a strategy
+                Err(_) => continue, // TODO: this can be augmented with a strategy
             }
         }
         Ok(tx_id)

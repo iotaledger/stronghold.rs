@@ -11,8 +11,8 @@ use std::{
 
 use crate::ClientError;
 use engine::store::Cache;
-use rlu::Read;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
+use stm::rlu::Read;
 
 // The [`StoreGuard`] wraps the [`RwLocKReadGuard`] with an associated key. The
 // inner value can simply be accessed by a custom `deref` function

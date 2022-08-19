@@ -1,7 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::simple_stm::error::TxError;
+use crate::stm::error::TxError;
 use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
@@ -43,6 +43,7 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn lock(&self) -> MutexGuard<'_, TVarData<T>> {
         self.data.lock().expect("TVar mutex poisoned")
     }
