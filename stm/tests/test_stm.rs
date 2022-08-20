@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashSet;
-use stm::stm::{stm::Stm, transaction::Transaction, tvar::TVar};
+use stm::stm::{error::TxError, stm::Stm, transaction::Transaction, tvar::TVar};
 use stronghold_stm as stm;
 use threadpool::ThreadPool;
 
@@ -82,16 +82,16 @@ fn test_stm_threaded_one_tvar() {
         let stm_debug = stm.clone();
         let value = value.clone();
 
-        let is_readonly = distribution.sample(&mut rand::thread_rng());
+        let read_percent = distribution.sample(&mut rand::thread_rng());
 
         // We store the value that won't be written
-        if is_readonly {
+        if read_percent {
             removal.insert(value.clone());
         }
 
         pool.execute(move || {
             let result = {
-                match is_readonly {
+                match read_percent {
                     false => {
                         let result = stm_a.read_write(move |tx: &mut Transaction<_>| {
                             info!(
@@ -147,4 +147,89 @@ fn test_stm_threaded_one_tvar() {
         "Actual collection is not equal to expected collection: missing {:?}",
         expected.symmetric_difference(&actual)
     );
+}
+
+#[test]
+fn test_multiple_readers_single_writer_single_thread() {
+    const EXPECTED: usize = 15usize;
+
+    let stm = Stm::default();
+
+    let tvar: TVar<usize> = stm.create(6usize);
+
+    let tvar1 = tvar.clone();
+    let stm1 = stm.clone();
+
+    assert!(stm1
+        .read_write(move |tx: &mut Transaction<_>| {
+            let data = tx.load(&tvar1)?;
+            tx.store(&tvar1, data + 9)?;
+            Ok(())
+        })
+        .is_ok());
+
+    for _ in 0..10000 {
+        let tvar1 = tvar.clone();
+        let stm1 = stm.clone();
+
+        assert!(stm1
+            .read_only(move |tx: &mut Transaction<_>| {
+                let data = tx.load(&tvar1)?;
+                if data == EXPECTED {
+                    Ok(())
+                } else {
+                    Err(TxError::Failed)
+                }
+            })
+            .is_ok());
+    }
+
+    let value = tvar.take().unwrap();
+    assert_eq!(value, EXPECTED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_mutliple_readers_single_writer_async() {
+    const EXPECTED: usize = 15usize;
+
+    let stm = Stm::default();
+
+    let tvar: TVar<usize> = stm.create(6usize);
+
+    let tvar1 = tvar.clone();
+    let stm1 = stm.clone();
+
+    let j0 = tokio::spawn(async move {
+        stm1.read_write(move |tx: &mut Transaction<_>| {
+            let data = tx.load(&tvar1)?;
+            tx.store(&tvar1, data + 9)?;
+            Ok(())
+        })
+    });
+
+    let mut threads = Vec::new();
+    for _ in 0..10000 {
+        let tvar1 = tvar.clone();
+        let stm1 = stm.clone();
+
+        let j1 = tokio::spawn(async move {
+            stm1.read_only(move |tx: &mut Transaction<_>| {
+                let data = tx.load(&tvar1)?;
+                if data == EXPECTED {
+                    Ok(())
+                } else {
+                    Err(TxError::Failed)
+                }
+            })
+        });
+        threads.push(j1)
+    }
+
+    j0.await.expect("Failed to join writer thread").unwrap();
+    for j in threads {
+        j.await.expect("Failed to join reader thread").unwrap();
+    }
+
+    let value = tvar.take().unwrap();
+    assert_eq!(value, EXPECTED);
 }

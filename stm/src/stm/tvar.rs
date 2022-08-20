@@ -14,23 +14,16 @@ pub struct TVar<T>
 where
     T: Clone + Debug,
 {
-    // TODO can be improved with a spinlock?
     pub(crate) data: Arc<Mutex<TVarData<T>>>,
 }
-
-// /// A TVar locked by a mutex.
-// pub(crate) struct TVarLock<T>
-// where T: Clone {
-//     pub lock: Mutex<TVarData<T>>
-// }
 
 #[derive(Clone, Debug)]
 pub(crate) struct TVarData<T>
 where
     T: Clone + Debug,
 {
-    pub value: T,
-    pub version: usize,
+    pub(crate) value: T,
+    pub(crate) version: usize,
 }
 
 impl<T> TVar<T>
@@ -78,6 +71,19 @@ where
     pub fn try_get_version(&self) -> Result<usize, TxError> {
         self.try_lock().map(|guard| guard.version)
     }
+
+    /// Try to consume the `TVar` if it there is a single instance existing
+    /// If multiple clones of the `TVar` exists then it fails and returns
+    /// an identical `TVar`
+    pub fn take(self) -> Result<T, Self> {
+        match Arc::try_unwrap(self.data) {
+            Ok(mutex) => {
+                let tvar_data = mutex.into_inner().expect("Mutex poisoned when trying to consume it");
+                Ok(tvar_data.value)
+            }
+            Err(arc) => Err(TVar { data: arc }),
+        }
+    }
 }
 
 impl<T> Clone for TVar<T>
@@ -123,6 +129,7 @@ mod tests {
     use std::{
         collections::hash_map::DefaultHasher,
         hash::{Hash, Hasher},
+        thread,
     };
 
     #[test]
@@ -140,5 +147,27 @@ mod tests {
 
         assert_eq!(a, b);
         assert_eq!(ha, hb);
+    }
+
+    #[test]
+    fn test_tvar_take() {
+        let a = TVar::new(10usize, 0);
+        let mut handles = vec![];
+
+        for _ in 0..100 {
+            let b = a.clone();
+            let h = thread::spawn(move || {
+                assert!(b.take().is_err());
+            });
+            handles.push(h);
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let c = a.take();
+        assert!(c.is_ok());
+        assert_eq!(c.unwrap(), 10usize);
     }
 }
