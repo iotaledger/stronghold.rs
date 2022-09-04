@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashSet;
-use stm::stm::{error::TxError, stm::Stm, transaction::Transaction, tvar::TVar};
+use stm::stm::{error::TxError, stm::{Stm, TxResult}, transaction::Transaction, tvar::TVar};
 use stronghold_stm as stm;
 use threadpool::ThreadPool;
+use rand::{distributions::Bernoulli, prelude::Distribution, Rng};
+
 
 #[allow(unused_imports)]
 use log::*;
@@ -54,7 +56,6 @@ fn test_stm_basic() {
 #[test]
 // #[cfg(feature = "threaded")]
 fn test_stm_threaded_one_tvar() {
-    use rand::{distributions::Bernoulli, prelude::Distribution};
 
     #[cfg(feature = "verbose")]
     env_logger::builder()
@@ -105,10 +106,10 @@ fn test_stm_threaded_one_tvar() {
                             tx.store(&set_a, inner.clone())?;
                             Ok(())
                         });
-                        if let Ok(id) = result {
+                        if let Ok(ref res) = result {
                             info!(
                                 "TX({}):\n##### SUCCESS #####\nGlobal Clock: {}\nSet: {:?}",
-                                id,
+                                res.tx_id,
                                 stm_a.get_clock(),
                                 set_debug
                             );
@@ -188,6 +189,7 @@ fn test_multiple_readers_single_writer_single_thread() {
     assert_eq!(value, EXPECTED);
 }
 
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_mutliple_readers_single_writer_async() {
     const EXPECTED: usize = 15usize;
@@ -232,4 +234,72 @@ async fn test_mutliple_readers_single_writer_async() {
 
     let value = tvar.take().unwrap();
     assert_eq!(value, EXPECTED);
+}
+
+
+// Additional tests taken from the paper:
+// [Testing patterns for software transactional memory engines](https://www.researchgate.net/publication/220854689_Testing_patterns_for_software_transactional_memory_engines)
+
+// Thread1 iterate through a list and checkout their content
+// Thread2 randomly removes element from the list until there are none
+// Thread1 should not 
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_paper_1() {
+    const NB_MSG: usize = 1000;
+    let msg_in_the_list = "In the vec";
+
+    let stm = Stm::default();
+    let init_v = vec![String::from(msg_in_the_list); NB_MSG];
+    let tvar: TVar<Vec<String>> = stm.create(init_v);
+
+    // objects for thread1
+    let tvar1 = tvar.clone();
+    let stm1 = stm.clone();
+    // objects for thread2
+    let tvar2 = tvar.clone();
+    let stm2 = stm.clone();
+
+    // Thread1 iterate through the list and check that strings are correct
+    // This is done as long as elements remain in the list
+    // let t1: JoinHandle<Output=Result<(), TxError>> = tokio::spawn(async move {
+    let t1 = tokio::spawn(async move {
+        loop {
+            // Iter through the list and check content
+            let tvar = tvar1.clone();
+            let is_empty: TxResult<bool> = stm1.read_only(move |tx: &mut Transaction<_>| {
+                let v = tx.load(&tvar)?;
+                for s in v.iter() {
+                    assert_eq!(*s, String::from(msg_in_the_list));
+                }
+                Ok(v.is_empty())
+            })?;
+
+            if is_empty.res {
+                break;
+            }
+        }
+        Ok::<(), TxError>(())
+    });
+
+    // Thread2 remove a random element from the list and clear the string
+    let t2 = tokio::spawn(async move {
+        for _ in 0..NB_MSG {
+            let tvar = tvar2.clone();
+            stm2.read_write(move |tx: &mut Transaction<_>| {
+                let mut v = tx.load(&tvar)?;
+                let rand_index = rand::thread_rng().gen_range(0..v.len());
+                let mut s = v.remove(rand_index);
+                s.clear();
+                tx.store(&tvar, v)?;
+                Ok(())
+            })?;
+        }
+        Ok::<(), TxError>(())
+    });
+
+    t1.await.expect("Failed to join").unwrap();
+    t2.await.expect("Failed to join").unwrap();
+
+    let value = tvar.take().unwrap();
+    assert!(value.is_empty());
 }

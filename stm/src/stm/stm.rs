@@ -15,6 +15,14 @@ use std::{
 // - implement the low contention global version-clock from the paper
 // - make a test with multiple tvars
 // - augment possible behavior when failing a transaction
+// - currently a transaction only accept tvars containing the same type
+
+/// Structure to hold the result of a transaction that have been successfully
+/// executed
+pub struct TxResult<U> {
+    pub tx_id: usize,    // Id of the transaction that have succeeded 
+    pub res: U,          // Return value of the transaction
+}
 
 #[derive(Clone, Default)]
 pub struct Stm {
@@ -54,9 +62,9 @@ impl Stm {
     /// 6. Commit changes to memory
     ///
     /// Returns the transaction id when successful
-    pub fn read_write<T, F>(&self, transaction: F) -> Result<usize, TxError>
+    pub fn read_write<T, F, U>(&self, transaction: F) -> Result<TxResult<U>, TxError>
     where
-        F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
+        F: Fn(&mut Transaction<T>) -> Result<U, TxError>,
         T: Clone + Send + Sync + Debug,
     {
         let tx_id = self.increment_tx_ids();
@@ -67,7 +75,7 @@ impl Stm {
 
             info!("TX({:?}): START. GLOBAL VERSION ({})", tx.id, self.get_clock());
             match transaction(&mut tx) {
-                Ok(_) => {
+                Ok(res) => {
                     // Lock all the used tvar
                     let locks = tx.lock_tvars_used();
                     if locks.is_err() {
@@ -92,7 +100,7 @@ impl Stm {
                         continue;
                     };
 
-                    break;
+                    return Ok(TxResult{tx_id, res});
                 }
                 Err(_) => {
                     // TODO add potential new behavior, currently we try infinitely
@@ -104,7 +112,6 @@ impl Stm {
                 }
             }
         }
-        Ok(tx_id)
     }
 
     /// This runs a transaction with the given context. The TL2 algorithm makes
@@ -118,16 +125,18 @@ impl Stm {
     /// 4. No need to increment the global clock
     /// 5. Check version consistency of the tvars used
     /// 6. No need to commit
-    pub fn read_only<T, F>(&self, transaction: F) -> Result<usize, TxError>
+    ///
+    /// Returns transaction id and result of the transaction on success
+    pub fn read_only<T, F, U>(&self, transaction: F) -> Result<TxResult<U>, TxError>
     where
-        F: Fn(&mut Transaction<T>) -> Result<(), TxError>,
+        F: Fn(&mut Transaction<T>) -> Result<U, TxError>,
         T: Clone + Send + Sync + Debug,
     {
         let tx_id = self.increment_tx_ids();
         loop {
             let mut tx = Transaction::<T>::new(self.get_clock(), tx_id);
             match transaction(&mut tx) {
-                Ok(_) => {
+                Ok(v) => {
                     // Lock all the used tvar
                     let locks = tx.lock_tvars_used();
                     if locks.is_err() {
@@ -141,12 +150,11 @@ impl Stm {
                         info!("TX_RO({:?}): VALIDATING READ SET FAILED", tx.id);
                         continue;
                     }
-                    break;
+                    return Ok(TxResult{tx_id, res: v});
                 }
                 Err(_) => continue, // TODO: this can be augmented with a strategy
             }
         }
-        Ok(tx_id)
     }
 
     /// This will create a new transactional variable [`TVar`].
