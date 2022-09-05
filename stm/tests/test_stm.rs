@@ -328,7 +328,7 @@ async fn test_paper_2() {
                 stm1.read_write(move |tx: &mut Transaction<_>| {
                     let mut vec = tx.load(&tvar2)?;
                     for v in vec.iter_mut() {
-                        *v = *v + 1;
+                        *v += 1;
                     }
                     tx.store(&tvar2, vec)?;
                     Ok(())
@@ -344,7 +344,7 @@ async fn test_paper_2() {
     }
 
     let value = tvar.take().unwrap();
-    assert_eq!(value, vec![NB_THREADS*NB_ITER; SIZE]);
+    assert_eq!(value, vec![NB_THREADS * NB_ITER; SIZE]);
 }
 
 // High number of transactional variables to check that collisions
@@ -378,7 +378,7 @@ async fn test_paper_3() {
             stm1.read_write(move |tx: &mut Transaction<_>| {
                 for tvar in vector.iter() {
                     let v = tx.load(tvar)?;
-                    tx.store(tvar, v+1)?;
+                    tx.store(tvar, v + 1)?;
                 }
                 Ok(())
             })?;

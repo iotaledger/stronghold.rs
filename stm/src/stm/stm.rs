@@ -20,8 +20,8 @@ use std::{
 /// Structure to hold the result of a transaction that have been successfully
 /// executed
 pub struct TxResult<U> {
-    pub tx_id: usize,    // Id of the transaction that have succeeded 
-    pub res: U,          // Return value of the transaction
+    pub tx_id: usize, // Id of the transaction that have succeeded
+    pub res: U,       // Return value of the transaction
 }
 
 #[derive(Clone, Default)]
@@ -100,7 +100,7 @@ impl Stm {
                         continue;
                     };
 
-                    return Ok(TxResult{tx_id, res});
+                    return Ok(TxResult { tx_id, res });
                 }
                 Err(_) => {
                     // TODO add potential new behavior, currently we try infinitely
@@ -150,7 +150,7 @@ impl Stm {
                         info!("TX_RO({:?}): VALIDATING READ SET FAILED", tx.id);
                         continue;
                     }
-                    return Ok(TxResult{tx_id, res: v});
+                    return Ok(TxResult { tx_id, res: v });
                 }
                 Err(_) => continue, // TODO: this can be augmented with a strategy
             }
