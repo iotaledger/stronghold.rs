@@ -1,12 +1,16 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+use rand::{distributions::Bernoulli, prelude::Distribution, Rng};
 use std::collections::HashSet;
-use stm::stm::{error::TxError, stm::{Stm, TxResult}, transaction::Transaction, tvar::TVar};
+use stm::stm::{
+    error::TxError,
+    stm::{Stm, TxResult},
+    transaction::Transaction,
+    tvar::TVar,
+};
 use stronghold_stm as stm;
 use threadpool::ThreadPool;
-use rand::{distributions::Bernoulli, prelude::Distribution, Rng};
-
 
 #[allow(unused_imports)]
 use log::*;
@@ -56,7 +60,6 @@ fn test_stm_basic() {
 #[test]
 // #[cfg(feature = "threaded")]
 fn test_stm_threaded_one_tvar() {
-
     #[cfg(feature = "verbose")]
     env_logger::builder()
         .is_test(true)
@@ -189,7 +192,6 @@ fn test_multiple_readers_single_writer_single_thread() {
     assert_eq!(value, EXPECTED);
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_mutliple_readers_single_writer_async() {
     const EXPECTED: usize = 15usize;
@@ -236,16 +238,13 @@ async fn test_mutliple_readers_single_writer_async() {
     assert_eq!(value, EXPECTED);
 }
 
-
 // Additional tests taken from the paper:
 // [Testing patterns for software transactional memory engines](https://www.researchgate.net/publication/220854689_Testing_patterns_for_software_transactional_memory_engines)
 
-// Thread1 iterate through a list and checkout their content
-// Thread2 randomly removes element from the list until there are none
-// Thread1 should not 
+// High frequency of variables being added/removed from the transactional space
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_paper_1() {
-    const NB_MSG: usize = 1000;
+    const NB_MSG: usize = 5000;
     let msg_in_the_list = "In the vec";
 
     let stm = Stm::default();
@@ -293,6 +292,8 @@ async fn test_paper_1() {
                 tx.store(&tvar, v)?;
                 Ok(())
             })?;
+            // Trying to free the tvar should result in an error
+            assert!(tvar2.clone().take().is_err());
         }
         Ok::<(), TxError>(())
     });
@@ -302,4 +303,96 @@ async fn test_paper_1() {
 
     let value = tvar.take().unwrap();
     assert!(value.is_empty());
+}
+
+// High number of transactions on a single tvar to force a lot of abort/commit
+#[tokio::test(flavor = "multi_thread", worker_threads = 32)]
+async fn test_paper_2() {
+    const SIZE: usize = 100;
+    const NB_ITER: usize = 5000;
+    const NB_THREADS: usize = 100;
+
+    let stm = Stm::default();
+    let init_v: Vec<usize> = vec![0; SIZE];
+    let tvar = stm.create(init_v);
+
+    let mut threads = Vec::new();
+
+    // Threads keeps incrementing the nodes of the list
+    for _ in 0..NB_THREADS {
+        let tvar1 = tvar.clone();
+        let stm1 = stm.clone();
+        let t = tokio::spawn(async move {
+            for _ in 0..NB_ITER {
+                let tvar2 = tvar1.clone();
+                stm1.read_write(move |tx: &mut Transaction<_>| {
+                    let mut vec = tx.load(&tvar2)?;
+                    for v in vec.iter_mut() {
+                        *v = *v + 1;
+                    }
+                    tx.store(&tvar2, vec)?;
+                    Ok(())
+                })?;
+            }
+            Ok::<(), TxError>(())
+        });
+        threads.push(t)
+    }
+
+    for t in threads.into_iter() {
+        t.await.expect("Failed to join").unwrap();
+    }
+
+    let value = tvar.take().unwrap();
+    assert_eq!(value, vec![NB_THREADS*NB_ITER; SIZE]);
+}
+
+// High number of transactional variables to check that collisions
+// in the HashMap/HashSet of transactions if highly improbable
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_paper_3() {
+    const NB_TVAR: usize = 50000;
+    const NB_THREADS: usize = 10;
+
+    let stm = Stm::default();
+    let mut init_v: Vec<TVar<usize>> = vec![];
+    for _ in 0..NB_TVAR {
+        init_v.push(stm.create(0));
+    }
+
+    // Creating a vector containing the tvars for each thread
+    let mut vectors: Vec<Vec<TVar<usize>>> = vec![];
+    for _ in 0..NB_THREADS {
+        let mut vector = vec![];
+        for tvar in init_v.iter() {
+            vector.push(tvar.clone())
+        }
+        vectors.push(vector);
+    }
+
+    // Each thread increment each tvar once
+    let mut threads = vec![];
+    for vector in vectors.into_iter() {
+        let stm1 = stm.clone();
+        let t = tokio::spawn(async move {
+            stm1.read_write(move |tx: &mut Transaction<_>| {
+                for tvar in vector.iter() {
+                    let v = tx.load(tvar)?;
+                    tx.store(tvar, v+1)?;
+                }
+                Ok(())
+            })?;
+            Ok::<(), TxError>(())
+        });
+        threads.push(t);
+    }
+
+    for t in threads.into_iter() {
+        t.await.expect("Failed to join").unwrap();
+    }
+
+    for tvar in init_v.into_iter() {
+        let value = tvar.take().expect("wtf");
+        assert_eq!(value, NB_THREADS);
+    }
 }
