@@ -8,18 +8,18 @@
 //! differentiates between reading and writing transaction, while having some reading transaction performance
 //! optimization in place.
 pub mod error;
+pub mod sync;
 pub mod version;
+
 use self::version::VersionClock;
 pub use error::*;
 use log::*;
+use sync::*;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::{Hash, Hasher},
-    sync::{
-        atomic::{AtomicBool, AtomicIsize},
-        Arc, Mutex, MutexGuard,
-    },
 };
 pub use version::VersionLock;
 
@@ -65,7 +65,7 @@ pub(crate) enum ThreadLockState {
 }
 
 #[cfg(feature = "threaded")]
-#[derive(Debug)]
+// #[derive(Debug)]
 struct Pair<T>
 where
     T: Clone,
@@ -129,7 +129,7 @@ where
 /// keeps a local id, and writes copies of all changes into a log.
 ///
 /// The local id is being defined by the global id being kept by the STM
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TVar<T>
 where
     T: Clone,
@@ -275,7 +275,6 @@ impl Stm {
                 }
                 Err(e) => {
                     info!("TRANSACTION({:?}): FAILED. RETRYING", tx.id);
-                    // std::thread::sleep(Duration::from_millis(1000));
                     match strategy {
                         Strategy::Abort => return Err(TxError::Failed),
                         Strategy::Retry => continue,
@@ -370,7 +369,7 @@ where
         let pre_version = tvar.lock.version();
 
         let data = tvar.original.value.lock().map_err(|e| TxError::LockPresent)?;
-        info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, data);
+        info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, *data);
         let post_version = tvar.lock.version();
 
         let is_locked = tvar.lock.is_locked();
@@ -380,17 +379,22 @@ where
         match is_locked || version_mismatch || stale_object {
             true => {
                 info!(
-                    "LOAD({:?}): VERSION MISMATCH ({}), STALE OBJECT ({}), PRE_VERSION ({}), TRANSACTION_VERSION ({})",
-                    self.id, version_mismatch, stale_object, pre_version, self.version
+                    "LOAD({:?}) FAILURE: LOCKED({}), VERSION MISMATCH ({}), STALE OBJECT ({}), PRE_VERSION ({}), TRANSACTION_VERSION ({})",
+                    self.id, is_locked, version_mismatch, stale_object, pre_version, self.version
                 );
                 Err(TxError::VersionMismatch)
             }
-            false => Ok((*data).clone()),
+            false => {
+                // change to also lock reads
+                tvar.lock.try_lock()?;
+                Ok((*data).clone())
+            }
         }
     }
 
     /// this writes the value into the transactional log
     pub fn store(&mut self, tvar: &TVar<T>, value: T) -> Result<(), TxError> {
+        info!("STORE({}): value ({:?})", self.id, value);
         self.write.insert(tvar.clone(), value);
 
         Ok(())
@@ -450,7 +454,8 @@ where
         }
 
         for tvar in &self.read {
-            if tvar.lock.version() >= rv {
+            // was >=
+            if tvar.lock.version() > rv {
                 info!(
                     "VALIDATE({:?}): OBJECT STALE. READ_VERSION ({}), OBJECT VERSION ({})",
                     self.id,
@@ -493,10 +498,9 @@ where
                 self.id, wv
             );
             tvar.lock.release_set(wv)?;
-            info!("COMMIT({:?}): VARIABLE UNLOCKED", self.id);
 
             info!(
-                "COMMIT({:?}): END UNLOCKED VERSION ({:04}). IS LOCKED? ({}). THREAD_LOCK ({:?})",
+                "COMMIT({:?}) FINAL: END UNLOCKED VERSION ({:04}). IS LOCKED? ({}). THREAD_LOCK ({:?})",
                 self.id,
                 tvar.lock.version(),
                 tvar.lock.is_locked(),
@@ -519,11 +523,12 @@ where
 mod tests {
     use super::Stm;
     use crate::stm::{TVar, Transaction};
+    use log::*;
     use std::{
         collections::HashSet,
         process::{ExitCode, Termination},
     };
-    use threadpool::ThreadPool;
+    // use threadpool::ThreadPool;
 
     #[repr(transparent)]
     struct TestResult(bool);
@@ -576,81 +581,110 @@ mod tests {
     #[test]
     #[cfg(feature = "threaded")]
     fn run_stm_threaded() {
-        use rand::{distributions::Bernoulli, prelude::Distribution};
+        use std::time::Duration;
+
+        // use env_logger::Target;
+        use rand::distributions::Bernoulli;
 
         // #[cfg(feature = "verbose")]
-        // env_logger::builder()
-        //     .is_test(true)
-        //     .filter_level(log::LevelFilter::Info)
-        //     .init();
+        // {
+        //     // let file = std::fs::File::create("stm.log").expect("This should create a file named 'stm.log'");
+        //     env_logger::builder()
+        //         .is_test(true)
+        //         // .target(Target::Pipe(Box::new(file)))
+        //         .filter_level(log::LevelFilter::Info)
+        //         .init();
+        // }
 
-        let stm = Stm::default();
-        let entries: usize = 1000;
+        let runs = 1000;
 
-        // bernoulli distribution over reads vs read/write transactions
-        let distribution = Bernoulli::new(0.7).unwrap();
+        for run in 0..runs {
+            let stm = Stm::default();
+            let entries: usize = 8;
 
-        let mut expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
+            // bernoulli distribution over reads vs read/write transactions
+            let distribution = Bernoulli::new(0.3).unwrap();
 
-        let set: TVar<HashSet<String>> = stm.create(HashSet::new());
-        let pool = ThreadPool::new(8);
+            let mut expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
 
-        let mut removal = HashSet::new();
+            let set: TVar<HashSet<String>> = stm.create(HashSet::new());
+            // let pool = ThreadPool::new(8);
 
-        for value in expected.iter() {
-            let stm_a = stm.clone();
-            let set_a = set.clone();
-            let value = value.clone();
+            let mut removal = HashSet::new();
 
-            let do_read = distribution.sample(&mut rand::thread_rng());
+            let mut handles = Vec::new();
 
-            if do_read {
-                removal.insert(value.clone());
+            for value in expected.iter() {
+                let stm_a = stm.clone();
+                let set_a = set.clone();
+                let value = value.clone();
+
+                let do_read = false; // distribution.sample(&mut rand::thread_rng());
+
+                if do_read {
+                    removal.insert(value.clone());
+                }
+
+                let handle = std::thread::spawn(move || {
+                    let result = {
+                        match do_read {
+                            false => stm_a.read_write(
+                                move |tx: &mut Transaction<_>| {
+                                    let mut inner = tx.load(&set_a)?;
+
+                                    inner.insert(value.clone());
+                                    tx.store(&set_a, inner)?;
+
+                                    Ok(())
+                                },
+                                crate::stm::Strategy::Retry,
+                            ),
+
+                            true => stm_a.read_only(move |tx: &mut Transaction<_>| {
+                                let inner = tx.load(&set_a);
+                                Ok(())
+                            }),
+                        }
+                    };
+
+                    // assert!(result.is_ok(), "Failed to run transaction");
+                });
+
+                handles.push(handle);
             }
 
-            pool.execute(move || {
-                let result = {
-                    match do_read {
-                        false => stm_a.read_write(
-                            move |tx: &mut Transaction<_>| {
-                                let mut inner = tx.load(&set_a)?;
+            // synchronized all running worker threads
+            // pool.join();
 
-                                inner.insert(value.clone());
-                                tx.store(&set_a, inner)?;
+            for result in handles {
+                result.join().expect("Thread should be joining");
+            }
 
-                                Ok(())
-                            },
-                            crate::stm::Strategy::Retry,
-                        ),
+            for value in removal.iter() {
+                expected.remove(value);
+            }
 
-                        true => stm_a.read_only(move |tx: &mut Transaction<_>| {
-                            let inner = tx.load(&set_a);
-                            Ok(())
-                        }),
-                    }
-                };
+            let result = set.get();
+            assert!(result.is_ok());
 
-                // assert!(result.is_ok(), "Failed to run transaction");
-            });
+            let actual = result.unwrap();
+
+            if !expected.is_subset(&actual) {
+                error!(
+                    "Failed! Actual collection should contain those items {:?} additionally",
+                    expected.symmetric_difference(&actual)
+                );
+            }
+
+            assert!(
+                expected.is_subset(&actual),
+                "Actual collection should contain those items {:?} additionally",
+                expected.symmetric_difference(&actual)
+            );
+
+            println!("Testrun #{:04}: OK!", run);
+            std::thread::sleep(Duration::from_millis(100));
         }
-
-        // synchronized all running worker threads
-        pool.join();
-
-        for value in removal.iter() {
-            expected.remove(value);
-        }
-
-        let result = set.get();
-        assert!(result.is_ok());
-
-        let actual = result.unwrap();
-
-        assert!(
-            expected.is_subset(&actual),
-            "Actual collection is not equal to expected collection: missing {:?}",
-            expected.symmetric_difference(&actual)
-        );
     }
 
     #[test]

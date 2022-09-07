@@ -73,7 +73,7 @@ pub use stronghold_derive::RequestPermissions;
 
 /// The permission value for request variants.
 /// This is realized as a bit set at a certain index, hence the value is always a power of 2.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PermissionValue(u32);
 
 impl PermissionValue {
@@ -106,7 +106,7 @@ impl PartialEq<u32> for PermissionValue {
 
 /// The sum of allowed  [`PermissionValue`]s.
 /// This is realized as different bits set in the integer, analogous to file permissions in Unix.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FirewallPermission(u32);
 
 impl FirewallPermission {

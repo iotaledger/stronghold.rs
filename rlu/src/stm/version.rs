@@ -44,26 +44,23 @@ impl VersionLock {
         let bound = 1 << 31;
 
         // bounded spin-locking
-        // for n in 0..bound {
-        loop {
-            // loop {
+        for n in 0..bound {
             if self.is_locked() {
                 // Safe some cpu time.
                 #[cfg(feature = "threaded")]
                 std::thread::sleep(Duration::from_millis(1));
 
-                // indicate spin lock to the cpu
-                std::hint::spin_loop();
+                // // indicate spin lock to the cpu
+                // std::hint::spin_loop();
 
                 continue;
             }
 
-            // if n == (bound - 1) {
-            //     // return an error, if lock couldn't be acquire within given bounds
-            //     // this avoids a dead lock, but may create thread starving on the other end
-            //     return Err(TxError::LockPresent);
-            // }
-            break;
+            if n == (bound - 1) {
+                // return an error, if lock couldn't be acquire within given bounds
+                // this avoids a dead lock, but may create thread starving on the other end
+                return Err(TxError::LockPresent);
+            }
         }
         // set  lock bit
         self.atomic.fetch_or(!mask(), Ordering::SeqCst);
@@ -138,10 +135,10 @@ impl VersionClock {
         }
     }
 
-    /// Atomically increments the version and returns the new value
+    /// Atomically increments the version and returns the old value
     pub fn increment(&self) -> Result<usize, TxError> {
-        self.atomic.fetch_add(1, Ordering::SeqCst);
-        Ok(self.atomic.load(Ordering::SeqCst))
+        Ok(self.atomic.fetch_add(1, Ordering::SeqCst))
+        // Ok(self.atomic.load(Ordering::SeqCst))
     }
 
     /// Returns the current version
@@ -177,7 +174,7 @@ mod tests {
     fn test_version_lock() -> Result<(), TxError> {
         let lock = VersionLock::default();
 
-        let max_runs = 0xFFFFF;
+        let max_runs = 0xFFF;
         let runs: u32 = rand::thread_rng().gen_range(0..max_runs);
 
         for _ in 0..runs {
@@ -195,7 +192,7 @@ mod tests {
     #[cfg(feature = "threaded")]
     fn test_version_lock_threaded() -> Result<(), TxError> {
         let lock = VersionLock::default();
-        let max_runs = 0xFFFFF;
+        let max_runs = 0xFFFF;
         let runs: u32 = rand::thread_rng().gen_range(0..max_runs);
 
         let threadpool = ThreadPool::new(8);

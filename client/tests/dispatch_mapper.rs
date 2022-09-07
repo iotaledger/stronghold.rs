@@ -105,7 +105,7 @@ mod p2p_module {
                 Some(inner) => {
                     let mut params = item.get_params();
 
-                    match &*inner {
+                    match inner {
                         FNType::FN0(f) => f(self),
                         FNType::FN1(f) => f(self, params[0].take().unwrap()),
                         FNType::FN2(f) => f(self, params[0].take().unwrap(), params[1].take().unwrap()),
