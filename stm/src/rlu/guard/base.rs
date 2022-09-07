@@ -1,6 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use crate::RluContext;
+use crate::rlu::RluContext;
 use std::{
     ops::{Deref, DerefMut},
     sync::MutexGuard,

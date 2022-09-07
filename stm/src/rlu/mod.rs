@@ -35,7 +35,7 @@
 //! - [paper](https://people.csail.mit.edu/amatveev/RLU_SOSP15_paper.pdf)
 //! - [reference impl](https://github.com/rlu-sync/rlu/blob/master/rlu.c)
 //! - [rcu presentation](https://www.cs.unc.edu/~porter/courses/cse506/f11/slides/rcu.pdf)
-#![allow(unused_variables, dead_code, clippy::type_complexity)]
+#![allow(unused_variables, dead_code, clippy::type_complexity, clippy::module_inception)]
 
 pub mod breaker;
 pub mod guard;
@@ -43,8 +43,6 @@ pub mod rlog;
 pub mod rlu;
 pub mod types;
 pub mod var;
-
-pub mod stm;
 
 // public re-exports
 pub use breaker::BusyBreaker;

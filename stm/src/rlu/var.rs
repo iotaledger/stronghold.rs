@@ -1,7 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{guard::BaseGuard, Result, TransactionError, RLU};
+use crate::rlu::{guard::BaseGuard, Result, TransactionError, RLU};
 use log::*;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},

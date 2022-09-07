@@ -20,7 +20,14 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::{Hash, Hasher},
+    sync::{
+        atomic::{AtomicBool, AtomicIsize},
+        Arc,
+        Mutex, MutexGuard,
+    },
 };
+// use no_deadlocks::{Mutex, MutexGuard};
+
 pub use version::VersionLock;
 
 pub struct Transaction<T>
@@ -72,6 +79,12 @@ where
 {
     value: Mutex<T>,
     id: Arc<AtomicIsize>,
+}
+
+impl<T: Clone> Debug for Pair<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "toto")
+    }
 }
 
 #[cfg(feature = "threaded")]
@@ -136,6 +149,8 @@ where
 {
     #[cfg(feature = "threaded")]
     /// This is the original value to be modified
+    // Contains <Mutex<T>, Arc<AtomicIsize>>,
+    // second field contains the transaction id
     original: Arc<Pair<T>>,
 
     /// This is a local version clock
@@ -369,7 +384,7 @@ where
         let pre_version = tvar.lock.version();
 
         let data = tvar.original.value.lock().map_err(|e| TxError::LockPresent)?;
-        info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, *data);
+        // info!("LOAD({:?}): TVAR CONTENTS ({:?})", self.id, data);
         let post_version = tvar.lock.version();
 
         let is_locked = tvar.lock.is_locked();
@@ -402,11 +417,13 @@ where
 
     #[inline(always)]
     fn lock_write_set(&self) -> Result<(), TxError> {
+        // TODO do we need this as atomic?
         let fail_lock_write = AtomicBool::new(false);
 
         for tvar in self.write.keys() {
             info!("TRANSACTION({:?}): WRITE LOCK", self.id);
 
+            //TODO current implementation of try_lock cannot fail
             if tvar.lock.try_lock().is_err() {
                 info!("LOCK WRITE SET({:?}): TRANSACTION LOCKED.", self.id);
                 fail_lock_write.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -433,6 +450,7 @@ where
 
         if fail_lock_write.load(std::sync::atomic::Ordering::SeqCst) {
             for tvar in self.write.keys() {
+                // TODO shouldn't we only unlock tvar locked by our own thread id?
                 tvar.lock.unlock()?;
             }
 
@@ -454,8 +472,9 @@ where
         }
 
         for tvar in &self.read {
-            // was >=
+            // TODO paper says > but => gives better result here
             if tvar.lock.version() > rv {
+            // if tvar.lock.version() => rv {
                 info!(
                     "VALIDATE({:?}): OBJECT STALE. READ_VERSION ({}), OBJECT VERSION ({})",
                     self.id,
@@ -523,29 +542,11 @@ where
 mod tests {
     use super::Stm;
     use crate::stm::{TVar, Transaction};
+    use std::collections::HashSet;
+    use threadpool::ThreadPool;
+
+    #[allow(unused_imports)]
     use log::*;
-    use std::{
-        collections::HashSet,
-        process::{ExitCode, Termination},
-    };
-    // use threadpool::ThreadPool;
-
-    #[repr(transparent)]
-    struct TestResult(bool);
-    impl Termination for TestResult {
-        fn report(self) -> std::process::ExitCode {
-            match self.0 {
-                true => ExitCode::from(0),
-                false => ExitCode::from(1),
-            }
-        }
-    }
-
-    impl From<bool> for TestResult {
-        fn from(b: bool) -> Self {
-            Self(b)
-        }
-    }
 
     #[test]
     fn test_stm_basic() {
@@ -579,24 +580,21 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "threaded")]
+    // #[cfg(feature = "threaded")]
     fn run_stm_threaded() {
         use std::time::Duration;
 
         // use env_logger::Target;
         use rand::distributions::Bernoulli;
 
-        // #[cfg(feature = "verbose")]
-        // {
-        //     // let file = std::fs::File::create("stm.log").expect("This should create a file named 'stm.log'");
-        //     env_logger::builder()
-        //         .is_test(true)
-        //         // .target(Target::Pipe(Box::new(file)))
-        //         .filter_level(log::LevelFilter::Info)
-        //         .init();
-        // }
+        #[cfg(feature = "verbose")]
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .init();
 
-        let runs = 1000;
+        let stm = Stm::default();
+        let entries: usize = 10;
 
         for run in 0..runs {
             let stm = Stm::default();
@@ -612,33 +610,35 @@ mod tests {
 
             let mut removal = HashSet::new();
 
-            let mut handles = Vec::new();
+            let is_readonly = distribution.sample(&mut rand::thread_rng());
+            // TODO remove, only used for debugging
+            let is_readonly = false;
 
-            for value in expected.iter() {
-                let stm_a = stm.clone();
-                let set_a = set.clone();
-                let value = value.clone();
+            // We store the value that won't be written
+            if is_readonly {
+                removal.insert(value.clone());
+            }
 
-                let do_read = false; // distribution.sample(&mut rand::thread_rng());
+            pool.execute(move || {
+                let result = {
+                    match is_readonly {
+                        false => stm_a.read_write(
+                            move |tx: &mut Transaction<_>| {
+                                let mut inner = tx.load(&set_a)?;
+                                info!(
+                                    "LOAD DONE({:?}): read set ({:?}) ",
+                                    tx.id, inner
+                                );
 
-                if do_read {
-                    removal.insert(value.clone());
-                }
+                                inner.insert(value.clone());
+                                tx.store(&set_a, inner.clone())?;
 
-                let handle = std::thread::spawn(move || {
-                    let result = {
-                        match do_read {
-                            false => stm_a.read_write(
-                                move |tx: &mut Transaction<_>| {
-                                    let mut inner = tx.load(&set_a)?;
+                                info!(
+                                    "STORED in WRITE SET({:?}): new set ({:?}) ",
+                                    tx.id, inner
+                                );
 
-                                    inner.insert(value.clone());
-                                    tx.store(&set_a, inner)?;
 
-                                    Ok(())
-                                },
-                                crate::stm::Strategy::Retry,
-                            ),
 
                             true => stm_a.read_only(move |tx: &mut Transaction<_>| {
                                 let inner = tx.load(&set_a);
@@ -660,31 +660,15 @@ mod tests {
                 result.join().expect("Thread should be joining");
             }
 
-            for value in removal.iter() {
-                expected.remove(value);
-            }
 
-            let result = set.get();
-            assert!(result.is_ok());
+        let actual = result.unwrap();
+        // assert!(false);
 
-            let actual = result.unwrap();
-
-            if !expected.is_subset(&actual) {
-                error!(
-                    "Failed! Actual collection should contain those items {:?} additionally",
-                    expected.symmetric_difference(&actual)
-                );
-            }
-
-            assert!(
-                expected.is_subset(&actual),
-                "Actual collection should contain those items {:?} additionally",
-                expected.symmetric_difference(&actual)
-            );
-
-            println!("Testrun #{:04}: OK!", run);
-            std::thread::sleep(Duration::from_millis(100));
-        }
+        assert!(
+            expected == actual,
+            "Actual collection is not equal to expected collection: missing {:?}",
+            expected.symmetric_difference(&actual)
+        );
     }
 
     #[test]

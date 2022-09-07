@@ -1,6 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use crate::{var::InnerVarCopy, InnerVar, RluContext};
+use crate::rlu::{var::InnerVarCopy, InnerVar, RluContext};
 use log::*;
 use std::{
     ops::{Deref, DerefMut},

@@ -25,7 +25,7 @@ pub struct SwarmInfo {
 }
 
 #[cfg(feature = "p2p")]
-#[derive(DeriveError, Debug, Clone, Eq, PartialEq)]
+#[derive(DeriveError, Debug, Clone, PartialEq, Eq)]
 pub enum P2pError {
     #[error("sending request to remote stronghold failed: {0}")]
     SendRequest(#[from] OutboundFailure),

@@ -167,7 +167,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::RLULog;
+    use crate::rlu::RLULog;
     use rand_utils::random::{string, usize};
 
     fn rand_string() -> String {
