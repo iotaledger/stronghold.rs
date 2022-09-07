@@ -58,6 +58,7 @@ pub enum StrongholdProcedure {
     Pbkdf2Hmac(Pbkdf2Hmac),
     AeadEncrypt(AeadEncrypt),
     AeadDecrypt(AeadDecrypt),
+    ConcatSecret(ConcatSecret),
 
     #[cfg(feature = "insecure")]
     CompareSecret(CompareSecret),
@@ -89,6 +90,7 @@ impl Procedure for StrongholdProcedure {
             Pbkdf2Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             AeadEncrypt(proc) => proc.execute(runner).map(|o| o.into()),
             AeadDecrypt(proc) => proc.execute(runner).map(|o| o.into()),
+            ConcatSecret(proc) => proc.exec(runner).map(|o| o.into()),
 
             #[cfg(feature = "insecure")]
             CompareSecret(proc) => proc.exec(runner).map(|o| o.into()),
@@ -202,7 +204,8 @@ generic_procedures! {
     UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
-    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt }
+    DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt },
+    DeriveSecret<2> => { ConcatSecret }
 }
 
 procedures! {
@@ -1086,12 +1089,51 @@ impl UseSecret<1> for CompareSecret {
 
     fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let inner = guard[0].borrow();
-        let result = self.expected.eq(inner.as_ref());
+        let inner: &[u8] = inner.as_ref();
+        let result = self.expected.eq(&inner.to_vec());
 
         Ok(vec![result.into()])
     }
 
     fn source(&self) -> [Location; 1] {
         [self.location.clone()]
+    }
+}
+
+/// Concatenates two secrets and stores the result at a new location
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcatSecret {
+    /// The location of the first secret to be concatenated
+    pub location_a: Location,
+
+    /// The location of the second secret to be concatenated
+    pub location_b: Location,
+
+    /// The output location of the concatenated secrets
+    pub output_location: Location,
+}
+
+impl DeriveSecret<2> for ConcatSecret {
+    type Output = ();
+
+    fn derive(self, guard: [Buffer<u8>; 2]) -> Result<Products<Self::Output>, FatalProcedureError> {
+        let a = guard[0].borrow();
+        let a: &[u8] = a.as_ref();
+
+        let b = guard[1].borrow();
+        let b: &[u8] = b.as_ref();
+
+        Ok(Products {
+            secret: [a, b].concat(),
+            output: (),
+        })
+    }
+
+    fn source(&self) -> [Location; 2] {
+        [self.location_a.clone(), self.location_b.clone()]
+    }
+
+    fn target(&self) -> &Location {
+        &self.output_location
     }
 }
