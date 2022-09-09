@@ -20,6 +20,7 @@ version = "0.4"
 [dependencies.iota-crypto]
 version = "0.7.0"
 features = [ "random", "chacha" ]
+default-features= false
 
 [dependencies.generic-array]
 version = "0.14.4"

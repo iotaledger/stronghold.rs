@@ -404,8 +404,7 @@ impl Peer {
     ) -> Result<StrongholdNetworkResult, ClientError> {
         let client_path = (*self.remote_client_path).clone();
 
-        let result = self
-            .stronghold
+        self.stronghold
             .send(
                 *self.peer_id,
                 client_path.clone(),
@@ -414,9 +413,7 @@ impl Peer {
                     request: crate::network_old::ClientRequest::Procedures { procedures },
                 },
             )
-            .await;
-
-        result
+            .await
     }
 
     /// Checks, if a remote vault exists and returns
