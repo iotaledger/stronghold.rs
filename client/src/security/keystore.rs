@@ -14,6 +14,7 @@ use std::collections::HashMap;
 /// encrypted [`Key<P>`] using the `master_key`.
 /// `master_key` is stored in a non-contiguous data structure [`NCKey<P>`]
 /// for more security
+#[derive(Clone)]
 pub struct KeyStore<P>
 where
     P: BoxProvider,

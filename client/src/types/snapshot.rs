@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     convert::Infallible,
-    fmt::Display,
+    fmt::{self, Display},
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -50,7 +50,7 @@ impl<'a> SyncClients<'a> for ClientState {
 }
 
 /// Wrapper for the [`SnapshotState`] data structure.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Snapshot {
     // Keys for vaults in db and for the encrypted client states.
     keystore: KeyStore<Provider>,
@@ -58,6 +58,12 @@ pub struct Snapshot {
     db: DbView<Provider>,
     // Loaded snapshot states with each client state separately encrypted.
     states: HashMap<ClientId, EncryptedClientState>,
+}
+
+impl fmt::Debug for Snapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Snapshot information not accessible through debug")
+    }
 }
 
 /// Data structure that is written to the snapshot.

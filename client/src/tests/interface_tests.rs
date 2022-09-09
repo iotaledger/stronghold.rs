@@ -510,3 +510,36 @@ fn test_clear_stronghold_state() {
 
     assert!(matches!(result, Err(ClientError::ClientDataNotPresent)));
 }
+
+#[test]
+fn test_stronghold_multi_threading() {
+    let client_path = b"client_path".to_vec();
+    let client_path2 = b"client_path2".to_vec();
+
+    let stronghold1 = Stronghold::default();
+
+    let client = stronghold1.create_client(&client_path).unwrap();
+    let client2 = stronghold1.create_client(&client_path2).unwrap();
+
+    stronghold1.write_client(&client_path).unwrap();
+    stronghold1.write_client(&client_path2).unwrap();
+
+    let stronghold2 = stronghold1.clone();
+
+    let t1 = std::thread::spawn(move || {
+        for i in 0..20 {
+            let cl = stronghold1.load_client(&client_path).unwrap();
+            cl.store().insert(b"test".to_vec(), b"value".to_vec(), None).unwrap();
+        }
+    });
+
+    let t2 = std::thread::spawn(move || {
+        for i in 0..20 {
+            let cl = stronghold2.load_client(&client_path2).unwrap();
+            cl.store().insert(b"test".to_vec(), b"value".to_vec(), None).unwrap();
+        }
+    });
+
+    t1.join().unwrap();
+    t2.join().unwrap();
+}

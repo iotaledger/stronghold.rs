@@ -238,6 +238,70 @@ async fn test_mutliple_readers_single_writer_async() {
     assert_eq!(value, EXPECTED);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn test_nested_tvars() {
+    const NB_TVARS: usize = 10000;
+    const NB_THREADS: usize = 50;
+
+    let stm_element = Stm::default();
+    let stm_vec = Stm::default();
+    let mut init_v: Vec<TVar<usize>> = vec![];
+    for _ in 0..NB_TVARS {
+        init_v.push(stm_element.create(0));
+    }
+    let tvar_vec = stm_vec.create(init_v);
+
+    let mut threads = vec![];
+
+    // One thread delete half the list
+    let stm_v = stm_vec.clone();
+    let tvar_v = tvar_vec.clone();
+    let t = tokio::spawn(async move {
+        let stm_vv = stm_v.clone();
+        for _ in 0..(NB_TVARS/2) {
+            let tvar_vv = tvar_v.clone();
+            stm_vv.read_write(move |tx_v: &mut Transaction<_>| {
+                let mut v = tx_v.load(&tvar_vv)?;
+                v.pop();
+                tx_v.store(&tvar_vv, v)?;
+                Ok(())
+            })?;
+        }
+        Ok::<(), TxError>(())
+    });
+    threads.push(t);
+
+    for _ in 0..NB_THREADS {
+        let stm_elmt = stm_element.clone();
+        let stm_v = stm_vec.clone();
+        let tvar_v = tvar_vec.clone();
+        let t = tokio::spawn(async move {
+            stm_v.read_only(move |tx_v: &mut Transaction<_>| {
+                let v = tx_v.load(&tvar_v)?;
+                for tvar_elmt in v.iter() {
+                    stm_elmt.read_write(move |tx_elmt: &mut Transaction<_>| {
+                        let mut elmt = tx_elmt.load(tvar_elmt)?;
+                        elmt += 1;
+                        tx_elmt.store(tvar_elmt, elmt)?;
+                        Ok(())
+                    })?;
+                }
+                Ok(())
+            })?;
+            Ok::<(), TxError>(())
+        });
+        threads.push(t);
+    }
+
+    for t in threads.into_iter() {
+        t.await.expect("Failed to join").unwrap();
+    }
+    let v = tvar_vec.take().unwrap();
+    let v: Vec<usize> = v.into_iter().map(|i| i.take().unwrap()).collect();
+    assert_eq!(v, vec![NB_THREADS; NB_TVARS/2]);
+}
+
+
 // Additional tests taken from the paper:
 // [Testing patterns for software transactional memory engines](https://www.researchgate.net/publication/220854689_Testing_patterns_for_software_transactional_memory_engines)
 
@@ -260,7 +324,6 @@ async fn test_paper_1() {
 
     // Thread1 iterate through the list and check that strings are correct
     // This is done as long as elements remain in the list
-    // let t1: JoinHandle<Output=Result<(), TxError>> = tokio::spawn(async move {
     let t1 = tokio::spawn(async move {
         loop {
             // Iter through the list and check content

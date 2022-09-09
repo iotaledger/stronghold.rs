@@ -16,9 +16,13 @@ use std::{
 use crate::{
     procedures::Runner,
     sync::{SnapshotHierarchy, SyncSnapshots, SyncSnapshotsConfig},
-    Client, ClientError, ClientState, KeyProvider, LoadFromPath, Location, RemoteMergeError, RemoteVaultError,
-    Snapshot, SnapshotPath, Store, UseKey,
+    Client,
+    ClientError::{self, LockAcquireFailed},
+    ClientState, KeyProvider, LoadFromPath, Location, RemoteMergeError, RemoteVaultError, Snapshot, SnapshotPath,
+    Store, UseKey,
 };
+
+use stronghold_stm::stm::{stm::Stm, transaction::Transaction, tvar::TVar};
 
 #[cfg(feature = "p2p")]
 use crate::{Peer, SpawnNetworkError};
@@ -69,11 +73,15 @@ use std::ops::Deref;
 /// Snapshot itself is encrypted and can be accessed by a key.
 #[derive(Default, Clone, GuardDebug)]
 pub struct Stronghold {
+    /// Software Transactional Memory which synchronizes multithreaded
+    /// use of Stronghold
+    stm: Stm,
+
     /// a reference to the [`Snapshot`]
-    snapshot: Arc<RwLock<Snapshot>>,
+    snapshot: TVar<Snapshot>,
 
     /// A map of [`ClientId`] to [`Client`]s
-    clients: Arc<RwLock<HashMap<ClientId, Client>>>,
+    clients: TVar<HashMap<ClientId, Client>>,
 
     // A per Stronghold session store
     store: Store,
@@ -114,20 +122,27 @@ impl Stronghold {
         // load the snapshot from disk
         self.load_snapshot(keyprovider, snapshot_path)?;
 
-        let snapshot = self.snapshot.try_read()?;
+        let tvar_clients = self.clients.clone();
+        let tvar_snapshot = self.snapshot.clone();
 
-        let client_state: ClientState = snapshot
-            .get_state(client_id)
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
+        let client_state = self
+            .stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let snapshot = tx.load(&tvar_snapshot)?;
+                Ok(snapshot.get_state(client_id))
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res?;
 
-        // Load the client state
         client.restore(client_state, client_id)?;
 
-        // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
-        clients.insert(client_id, client.clone());
-
+        let ref_client = &client;
+        let tx_res = self.stm.read_write(move |tx: &mut Transaction<_>| {
+            let mut clients = tx.load(&tvar_clients)?;
+            clients.insert(client_id, ref_client.clone());
+            tx.store(&tvar_clients, clients)?;
+            Ok(())
+        }).map_err(|e| LockAcquireFailed)?;
         Ok(client)
     }
 
@@ -141,7 +156,15 @@ impl Stronghold {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         let mut client = Client::default();
 
-        let snapshot = self.snapshot.try_read()?;
+        let tvar_snapshot = self.snapshot.clone();
+        let snapshot = self
+            .stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let snapshot = tx.load(&tvar_snapshot)?;
+                Ok(snapshot)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res;
 
         if !snapshot.has_data(client_id) {
             return Err(ClientError::ClientDataNotPresent);
@@ -150,15 +173,19 @@ impl Stronghold {
         let client_state: ClientState = snapshot
             .get_state(client_id)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
 
         // Load the client state
         client.restore(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
-        clients.insert(client_id, client.clone());
-
+        let ref_client = &client;
+        let tvar_clients = self.clients.clone();
+        let tx_res = self.stm.read_write(move |tx: &mut Transaction<_>| {
+            let mut clients = tx.load(&tvar_clients)?;
+            clients.insert(client_id, ref_client.clone());
+            tx.store(&tvar_clients, clients)?;
+            Ok(())
+        }).map_err(|e| LockAcquireFailed)?;
         Ok(client)
     }
 
@@ -170,7 +197,15 @@ impl Stronghold {
         P: AsRef<[u8]>,
     {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
-        let clients = self.clients.try_read()?;
+        let tvar_clients = self.clients.clone();
+        let clients = self
+            .stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let clients = tx.load(&tvar_clients)?;
+                Ok(clients)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res;
         clients
             .get(&client_id)
             .cloned()
@@ -182,12 +217,29 @@ impl Stronghold {
     ///
     /// # Example
     pub fn purge_client(&self, client: Client) -> Result<(), ClientError> {
-        let mut clients = self.clients.try_write()?;
-        clients.remove(client.id());
+        let tvar_clients = self.clients.clone();
+        let ref_client = &client;
+        let tx_res = self
+            .stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut clients = tx.load(&tvar_clients)?;
+                clients.remove(ref_client.id());
+                tx.store(&tvar_clients, clients)?;
+                Ok(())
+            })
+            .map_err(|e| LockAcquireFailed)?;
 
-        let mut snapshot = self.snapshot.try_write()?;
-        snapshot
-            .purge_client(*client.id())
+        let tvar_snapshot = self.snapshot.clone();
+        let ref_client = &client;
+        self.stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut snapshot = tx.load(&tvar_snapshot)?;
+                let res = snapshot.purge_client(*ref_client.id());
+                tx.store(&tvar_snapshot, snapshot)?;
+                Ok(res)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
             .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
@@ -196,8 +248,6 @@ impl Stronghold {
     ///
     /// # Example
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
-        let mut snapshot = self.snapshot.try_write()?;
-
         if !snapshot_path.exists() {
             let path = snapshot_path
                 .as_path()
@@ -213,21 +263,39 @@ impl Stronghold {
             .map_err(|e| ClientError::Inner(format!("{:?}", e)))?;
         let buffer_ref = buffer.borrow().deref().try_into().unwrap();
 
-        *snapshot = Snapshot::read_from_snapshot(snapshot_path, buffer_ref, None)
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
-        // END CRITICAL SECTION
-
-        Ok(())
+        let tvar_snapshot = self.snapshot.clone();
+        self.stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let snapshot = Snapshot::read_from_snapshot(snapshot_path, buffer_ref, None);
+                match snapshot {
+                    Ok(snapshot) => {
+                        tx.store(&tvar_snapshot, snapshot)?;
+                        Ok(Ok(()))
+                    }
+                    Err(snapshot_err) => Ok(Err(snapshot_err)),
+                }
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Returns a reference to the local [`Snapshot`]
     ///
     /// # Example
-    pub fn get_snapshot(&self) -> Result<RwLockWriteGuard<Snapshot>, ClientError> {
-        let snapshot = self.snapshot.try_write()?;
-
-        Ok(snapshot)
+    pub fn exec_tx_on_snapshot<F>(&self, f: F) -> Result<(), ClientError>
+    where 
+        F: Fn(&mut Snapshot) -> Result<(), ClientError> {
+        let tvar_snapshot = self.snapshot.clone();
+        self.stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut snapshot = tx.load(&tvar_snapshot)?;
+                let res = f(&mut snapshot);
+                Ok(res)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Creates a new, empty [`Client`]
@@ -244,8 +312,17 @@ impl Stronghold {
         };
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
-        clients.insert(client_id, client.clone());
+        let tvar_clients = self.clients.clone();
+        let ref_client = &client;
+        let tx_res = self
+            .stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut clients = tx.load(&tvar_clients)?;
+                clients.insert(client_id, ref_client.clone());
+                tx.store(&tvar_clients, clients)?;
+                Ok(())
+            })
+            .map_err(|e| LockAcquireFailed)?;
 
         Ok(client)
     }
@@ -254,8 +331,6 @@ impl Stronghold {
     ///
     /// # Example
     pub fn commit(&self, snapshot_path: &SnapshotPath, keyprovider: &KeyProvider) -> Result<(), ClientError> {
-        let clients = self.clients.try_read()?;
-
         if !snapshot_path.exists() {
             let path = snapshot_path.as_path().parent().ok_or_else(|| {
                 ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
@@ -267,14 +342,20 @@ impl Stronghold {
             }
         }
 
-        let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
-        drop(clients);
+        let tvar_clients = self.clients.clone();
+        let ids: Vec<ClientId> = self
+            .stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let clients = tx.load(&tvar_clients)?;
+                let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
+                Ok(ids)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res;
 
         for client_id in ids {
             self.write(client_id)?;
         }
-
-        let snapshot = self.snapshot.try_read()?;
 
         // CRITICAL SECTION
         let buffer = keyprovider
@@ -283,11 +364,16 @@ impl Stronghold {
         let buffer_ref = buffer.borrow();
         let key = buffer_ref.deref();
 
-        snapshot
-            .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().unwrap()))
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-
-        Ok(())
+        let tvar_snapshot = self.snapshot.clone();
+        self.stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let snapshot = tx.load(&tvar_snapshot)?;
+                let res = snapshot.write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().unwrap()));
+                Ok(res)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Writes the state of a single client into [`Snapshot`] data
@@ -305,13 +391,17 @@ impl Stronghold {
     ///
     /// # Example
     fn write(&self, client_id: ClientId) -> Result<(), ClientError> {
-        let mut snapshot = self.snapshot.try_write()?;
-        let clients = self.clients.try_read()?;
-
-        let client = match clients.get(&client_id) {
-            Some(client) => client,
-            None => return Err(ClientError::ClientDataNotPresent),
-        };
+        let tvar_clients = self.clients.clone();
+        let client = self
+            .stm
+            .read_only(move |tx: &mut Transaction<_>| {
+                let clients = tx.load(&tvar_clients)?;
+                let client: Option<Client> = clients.get(&client_id).map(|c| c.clone());
+                Ok(client)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
+            .ok_or(ClientError::ClientDataNotPresent)?;
 
         let mut keystore_guard = client.keystore.try_write()?;
 
@@ -325,12 +415,17 @@ impl Stronghold {
         drop(keystore_guard);
 
         // This might be critical, as keystore gets copied into Boxed types, but still safe
-        // we also use cloned data, which might not be ideal.
-        snapshot
-            .add_data(client_id, (keystore, (*view).clone(), (*store).clone()))
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-
-        Ok(())
+        let tvar_snapshot = self.snapshot.clone();
+        self.stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut snapshot = tx.load(&tvar_snapshot)?;
+                let res = snapshot.add_data(client_id, (keystore.clone(), (*view).clone(), (*store).clone()));
+                tx.store(&tvar_snapshot, snapshot)?;
+                Ok(res)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res
+            .map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Calling this function clears the runtime state of all [`Client`]s and the in-memory
@@ -338,10 +433,35 @@ impl Stronghold {
     /// snapshot file. Use [`Self::load_client_from_snapshot`] to reload any [`Client`] and
     /// [`Snapshot`] state
     pub fn clear(&self) -> Result<(), ClientError> {
-        for (_, c) in self.clients.try_write()?.iter() {
-            c.clear()?;
-        }
-        self.snapshot.try_write()?.clear()?;
+
+        let tvar_clients = self.clients.clone();
+        self
+            .stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let clients = tx.load(&tvar_clients)?;
+                for (_, c) in clients.iter() {
+                    if let Err(e) = c.clear() {
+                        return Ok(Err(e));
+                    }
+                }
+                tx.store(&tvar_clients, clients)?;
+                Ok(Ok(()))
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res?;
+
+
+        let tvar_snapshot = self.snapshot.clone();
+        self.stm
+            .read_write(move |tx: &mut Transaction<_>| {
+                let mut snapshot = tx.load(&tvar_snapshot)?;
+                let res = snapshot.clear();
+                tx.store(&tvar_snapshot, snapshot)?;
+                Ok(res)
+            })
+            .map_err(|e| LockAcquireFailed)?
+            .res?;
+
         self.store.clear()?;
 
         Ok(())

@@ -11,7 +11,7 @@ use std::{
 
 pub struct Transaction<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     /// Transaction id
     pub id: usize,
@@ -30,7 +30,7 @@ where
 
 impl<T> Transaction<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     pub fn new(version: usize, id: usize) -> Self {
         Self {
@@ -66,7 +66,8 @@ where
         // Else take the value from the tvar
         let data = tvar.try_get_data()?;
         let version = tvar.try_get_version()?;
-        self.check_tvar_version(version).map(|_| data)
+        self.check_tvar_version(version)?;
+        Ok(data)
     }
 
     /// Try to lock all the tvar used during speculative execution

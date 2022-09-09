@@ -9,18 +9,18 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TVar<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     pub(crate) data: Arc<Mutex<TVarData<T>>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct TVarData<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     pub(crate) value: T,
     pub(crate) version: usize,
@@ -28,7 +28,7 @@ where
 
 impl<T> TVar<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     pub fn new(value: T, version: usize) -> Self {
         TVar {
@@ -88,7 +88,7 @@ where
 
 impl<T> Clone for TVar<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     fn clone(&self) -> Self {
         TVar {
@@ -99,7 +99,7 @@ where
 
 impl<T> Hash for TVar<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // Due to API limitations, we cannot return the address of the object itself,
@@ -111,7 +111,7 @@ where
 
 impl<T> PartialEq for TVar<T>
 where
-    T: Clone + Debug,
+    T: Clone + Debug + Default,
 {
     fn eq(&self, other: &Self) -> bool {
         let a = std::ptr::addr_of!(*self.data) as usize;
@@ -121,7 +121,7 @@ where
     }
 }
 
-impl<T> Eq for TVar<T> where T: Clone + Debug {}
+impl<T> Eq for TVar<T> where T: Clone + Debug + Default {}
 
 #[cfg(test)]
 mod tests {

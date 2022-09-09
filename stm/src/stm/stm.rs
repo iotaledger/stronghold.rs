@@ -65,7 +65,7 @@ impl Stm {
     pub fn read_write<T, F, U>(&self, transaction: F) -> Result<TxResult<U>, TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<U, TxError>,
-        T: Clone + Send + Sync + Debug,
+        T: Clone + Send + Sync + Debug + Default,
     {
         let tx_id = self.increment_tx_ids();
 
@@ -130,7 +130,7 @@ impl Stm {
     pub fn read_only<T, F, U>(&self, transaction: F) -> Result<TxResult<U>, TxError>
     where
         F: Fn(&mut Transaction<T>) -> Result<U, TxError>,
-        T: Clone + Send + Sync + Debug,
+        T: Clone + Send + Sync + Debug + Default,
     {
         let tx_id = self.increment_tx_ids();
         loop {
@@ -160,7 +160,7 @@ impl Stm {
     /// This will create a new transactional variable [`TVar`].
     pub fn create<T>(&self, val: T) -> TVar<T>
     where
-        T: Clone + Debug,
+        T: Clone + Debug + Default,
     {
         TVar::new(val, self.get_clock())
     }
