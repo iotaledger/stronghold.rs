@@ -100,7 +100,7 @@ where
                         None => 0,
                     };
 
-                    let data = &*m.deref();
+                    let data = m.deref();
 
                     let copy = InnerVarCopy {
                         locked_thread_id: Some(AtomicUsize::new(locked_id)),

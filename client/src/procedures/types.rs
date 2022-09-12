@@ -112,7 +112,7 @@ pub trait UseSecret<const N: usize>: Sized {
 }
 
 /// Output of a [`StrongholdProcedure`][super::StrongholdProcedure].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProcedureOutput(Vec<u8>);
 
 impl From<()> for ProcedureOutput {
