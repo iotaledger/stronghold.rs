@@ -19,7 +19,7 @@ default = [ ]
 [dependencies]
 thiserror = "1.0.30"
 log = "0.4.14"
-zeroize = { version = "1.4.3", features = [ "zeroize_derive" ] }
+zeroize = { version = "1.5.7", default-features = false, features = [ "zeroize_derive" ] }
 lazy_static = { version = "1.4.0" }
 atom = { version = "0.4.0" }
 
