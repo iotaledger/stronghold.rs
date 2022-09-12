@@ -1,6 +1,6 @@
 [package]
 name = "stronghold-runtime"
-version = "0.5.2"
+version = "0.5.3"
 authors = [ "IOTA Stiftung", "Alexandre Dang <alexandre.dang@iota.org" ]
 edition = "2021"
 readme = "README.md"
@@ -16,26 +16,32 @@ categories = [ "security" ]
 name = "runtime"
 
 [dependencies]
-libc                    = { version = "0.2" }
-log                     = { version = "0.4.17" }
-zeroize = { version = "1.5.7", default-features = false, features = ["zeroize_derive"]}
+libc = { version = "0.2" }
+log = { version = "0.4.17" }
+zeroize = { version = "1.5.7", default-features = false, features = [ "zeroize_derive" ] }
 libsodium-sys = { version = "0.2" }
 serde = { version = "1.0", features = [ "derive" ] }
 random = { version = "0.8.4", package = "rand" }
 dirs = { version = "4.0.0" }
 thiserror = { version = "1.0" }
-iota-crypto = { version = "0.14.0", default-features=false, features = [ "blake2b" ] }
+iota-crypto = { version = "0.14.0", default-features = false, features = [ "blake2b" ] }
 
-[target.'cfg(windows)'.dependencies]
-windows                 = { version = "0.36.0", features = ["Win32_System_Memory", "Win32_System_SystemInformation", "Win32_System_Diagnostics_Debug", "Win32_Foundation", "Win32_Security"] }
+[target."cfg(windows)".dependencies]
+windows = { version = "0.36.0", features = [
+  "Win32_System_Memory",
+  "Win32_System_SystemInformation",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_Foundation",
+  "Win32_Security"
+] }
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-nix                     = { version = "0.24.1" }
+[target."cfg(any(target_os = \"linux\", target_os = \"macos\"))".dependencies]
+nix = { version = "0.24.1" }
 
 [dev-dependencies]
-serde_json              = { version = "1.0" }
-env_logger              = { version = "0.9" }
-dhat                    = { version = "0.3" }
+serde_json = { version = "1.0" }
+env_logger = { version = "0.9" }
+dhat = { version = "0.3" }
 criterion = "0.3.3"
 
 [[bench]]
