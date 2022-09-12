@@ -256,7 +256,7 @@ impl Snapshot {
     /// Adds data to the snapshot state hashmap.
     pub fn store_snapshot_key(
         &mut self,
-        snapshot_key: snapshot::Key,
+        mut snapshot_key: snapshot::Key,
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
@@ -269,10 +269,13 @@ impl Snapshot {
             &snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
+
+        snapshot_key.zeroize();
+
         Ok(())
     }
 
-    /// Stores a secert [`crypto::keys::x25519::SecretKey`] as bytes at given location.
+    /// Stores a secret [`crypto::keys::x25519::SecretKey`] as bytes at given location.
     /// The stored secret will later be used to decrypt a snapshot
     pub fn store_secret_key<K>(
         &mut self,

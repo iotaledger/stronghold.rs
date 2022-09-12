@@ -370,7 +370,7 @@ async fn command_create_snapshot(path: String, client_path: String, output: Vaul
     info!(
         "Snapshot created successully? {}",
         stronghold
-            .commit(&SnapshotPath::from_path(path), &KeyProvider::try_from(key).unwrap())
+            .commit_with_keyprovider(&SnapshotPath::from_path(path), &KeyProvider::try_from(key).unwrap())
             .is_ok()
     );
 }

@@ -92,14 +92,14 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] Client written");
 
-        if let Err(err) = result.commit(key_as_hash) {
+        if let Err(err) = result.commit_with_key(key_as_hash) {
             return Err(err);
         }
 
         Ok(result)
     }
 
-    fn commit<R>(&self, key_as_hash: R) -> Result<bool, WrapperError>
+    fn commit_with_key<R>(&self, key_as_hash: R) -> Result<bool, WrapperError>
     where
         R: AsRef<[u8]>,
     {
@@ -108,7 +108,10 @@ impl StrongholdWrapper {
         let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
         let key_provider = &KeyProvider::try_from(key_as_hash.as_ref().to_vec()).unwrap();
 
-        match self.stronghold.commit(commit_snapshot_path, key_provider) {
+        match self
+            .stronghold
+            .commit_with_keyprovider(commit_snapshot_path, key_provider)
+        {
             Err(_err) => Err(WrapperError::CommitToSnapshot),
             _ => Ok(true),
         }
@@ -150,7 +153,7 @@ impl StrongholdWrapper {
             return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err)));
         }
 
-        self.commit(key_as_hash)
+        self.commit_with_key(key_as_hash)
     }
 
     pub fn sign(&self, record_path: String, data: Vec<u8>) -> Result<Vec<u8>, WrapperError> {
@@ -217,7 +220,7 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] client stored");
 
-        match self.commit(key_as_hash) {
+        match self.commit_with_key(key_as_hash) {
             Err(err) => Err(err),
             _ => Ok(chain_code),
         }
@@ -252,7 +255,7 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] client stored");
 
-        self.commit(key_as_hash)
+        self.commit_with_key(key_as_hash)
     }
 
     pub fn generate_ed25519_keypair<R>(&self, key_as_hash: R, record_path: String) -> Result<bool, WrapperError>
@@ -281,6 +284,6 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] client stored");
 
-        self.commit(key_as_hash)
+        self.commit_with_key(key_as_hash)
     }
 }
