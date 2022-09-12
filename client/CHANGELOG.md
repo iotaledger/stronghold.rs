@@ -1,5 +1,16 @@
 # Changelog
 
+## \[0.9.0]
+
+- bump dependency on crypto.rs to latest version
+  - [5aee6c28](https://www.github.com/iotaledger/stronghold.rs/commit/5aee6c283a92eeee9f738b421f3c24f9e726ca7f) dep: upgrade dependency on crypto.rs on 2022-09-09
+  - [1dc143d0](https://www.github.com/iotaledger/stronghold.rs/commit/1dc143d0e0373bd43ad21cf76985c0e1ca4989fd) feat: remove stronghold-native from version updates on 2022-09-09
+- Add ConcatSecret as procedure to concatenate secrets from different locations together
+  - [ce3a69d0](https://www.github.com/iotaledger/stronghold.rs/commit/ce3a69d0db6245c7dd5b4ec28adc2dbfb1279d37) feat: add ConcatSecret as procedure on 2022-07-25
+- Store key to snapshot files in snapshot datastructure as an alternative to write and read Snapshots at a later time.
+  Replace generic Key type with KeyProvider
+  - [ea53e27c](https://www.github.com/iotaledger/stronghold.rs/commit/ea53e27cc8ba7dcda9bc17ddb997f6cb92c949b9) file: renamed on 2022-09-07
+
 ## \[0.8.1]
 
 - Bip39 mnemonic will now be cleared before the procedure will be dropped
