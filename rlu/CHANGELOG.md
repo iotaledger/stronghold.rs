@@ -1,5 +1,10 @@
 # Changelog
 
+## \[0.4.5]
+
+- upgrade dev-dependency for criterion
+  - [f41e5dd7](https://www.github.com/iotaledger/stronghold.rs/commit/f41e5dd7b56bba30cf5e25ed9475cddef6f8b8e3) version: bump dev dependency of criterion to 0.4.0 on 2022-09-13
+
 ## \[0.4.4]
 
 - bump dependency on crypto.rs to latest version
