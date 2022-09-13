@@ -1,6 +1,6 @@
 [package]
 name = "stronghold-runtime"
-version = "0.5.3"
+version = "0.5.4"
 authors = [ "IOTA Stiftung", "Alexandre Dang <alexandre.dang@iota.org" ]
 edition = "2021"
 readme = "README.md"

@@ -1,6 +1,6 @@
 [package]
 name = "stronghold_engine"
-version = "0.5.4"
+version = "0.5.5"
 authors = [
   "IOTA Stiftung",
   "tensorprogramming <tensordeveloper@gmail.com>"
