@@ -81,3 +81,39 @@ fn test_keys() {
 
     assert_eq!(actual, keys);
 }
+
+use threadpool::ThreadPool;
+#[test]
+fn test_multithreaded() {
+    let main_store = Store::default();
+    const NB_INPUTS: usize = 10;
+    let generate = || -> Vec<Vec<u8>> {
+        std::iter::repeat_with(|| rand::variable_bytestring(256))
+            .take(NB_INPUTS)
+            .collect()
+    };
+
+    let mut main_keys = generate();
+    let keys = main_keys.clone();
+    let main_values = generate();
+    let values = main_values.clone();
+
+    let pool = ThreadPool::new(8);
+    for (key, value) in keys.into_iter().zip(values.into_iter()) {
+        let store = main_store.clone();
+        pool.execute(move || {
+            assert!(store.insert(key, value, None).is_ok());
+        });
+    }
+    pool.join();
+
+    let result = main_store.keys();
+    assert!(result.is_ok());
+
+    let mut actual = result.unwrap();
+    actual.sort();
+    main_keys.sort();
+
+    assert_eq!(actual, main_keys);
+
+}

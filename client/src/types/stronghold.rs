@@ -284,7 +284,7 @@ impl Stronghold {
     ///
     /// # Example
     pub fn exec_tx_on_snapshot<F>(&self, f: F) -> Result<(), ClientError>
-    where 
+    where
         F: Fn(&mut Snapshot) -> Result<(), ClientError> {
         let tvar_snapshot = self.snapshot.clone();
         self.stm
