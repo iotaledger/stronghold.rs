@@ -6,7 +6,6 @@ members = [
   "client",
   "utils",
   "derive",
-  "p2p",
   "rlu"
 ]
 exclude = [

@@ -5,7 +5,7 @@
 
 //! simple prototype to show case enum to function mapping. see tests for more info.
 
-#[cfg(feature = "p2p")]
+// #[cfg(feature = "p2p")]
 mod p2p_module {
 
     pub use futures::{future::Either, lock::Mutex, SinkExt, StreamExt};
