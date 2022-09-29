@@ -7,23 +7,17 @@ updates:
     open-pull-requests-limit: 3
 
   - package-ecosystem: "cargo"
-    directory: "/p2p"
+    directory: "/engine"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 3
 
   - package-ecosystem: "cargo"
-    directory: "/engine"
-    schedule:
-      interval: "daily"
-    open-pull-requests-limit: 3
-  
-  - package-ecosystem: "cargo"
     directory: "/runtime"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 3
-  
+
   - package-ecosystem: "cargo"
     directory: "/utils"
     schedule:

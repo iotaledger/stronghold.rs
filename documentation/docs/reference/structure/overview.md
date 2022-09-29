@@ -20,6 +20,5 @@ In this section we describe the individual crates and components of Stronghold:
     - [Vault](engine/vault.md)
     - [Store](engine/store.md)
     - [Runtime](engine/runtime.md)
-- [P2P-Communication](p2p.md)
 - [Derive](derive.md)
 - [Utils](utils.md)

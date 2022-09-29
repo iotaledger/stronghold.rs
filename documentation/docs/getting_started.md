@@ -9,7 +9,6 @@ keywords:
 - secrets
 - Noise
 - database
-- p2p
 - Rust
 - build
 - run
