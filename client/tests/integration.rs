@@ -43,9 +43,3 @@ mod stronghold_test_std {
         Ok(())
     }
 }
-
-#[cfg(feature = "p2p")]
-mod stronghold_test_p2p {}
-
-#[cfg(feature = "p2p")]
-mod dispatch_mapper;

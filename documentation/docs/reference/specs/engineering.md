@@ -41,7 +41,6 @@ A Stronghold is composed of several interacting systems at a low level:
 3. Store - a read/write key:value storage system for dynamic data 
 4. Cache - an in-memory abstraction for vault and store
 5. Runtime - memory protection system for secrets
-6. Communication - libp2p based system for communication between strongholds
 
 ### High Level
 At the high level, Stronghold provides an official client for interfacing with a Stronghold snapshot and its records.

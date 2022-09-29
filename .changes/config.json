@@ -94,13 +94,6 @@
         "stronghold-derive"
       ]
     },
-    "stronghold-p2p": {
-      "path": "./p2p/",
-      "manager": "rust",
-      "dependencies": [
-        "stronghold-utils"
-      ]
-    },
     "stronghold-rlu": {
       "path": "./rlu/",
       "manager": "rust",
@@ -113,7 +106,6 @@
       "manager": "rust",
       "dependencies": [
         "stronghold-engine",
-        "stronghold-p2p",
         "stronghold-utils",
         "stronghold-runtime"
       ]

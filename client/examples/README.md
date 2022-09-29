@@ -12,8 +12,6 @@ The following examples explain how Stronghold works. There are two sets of examp
     - [Read a Snapshot From Filesystem](#read-a-snapshot-from-filesystem)
     - [Recover a BIP39 Seed with a Mnemonic and Optional Passphrase](#recover-a-bip39-seed-with-a-mnemonic-and-optional-passphrase)
 
-2) Examples showcasing Stronghold’s p2p functionality: Exchange and execute remote cryptographic procedures over the p2p interface from Stronghold.
-
 ---
 ## Command Line Interface
 

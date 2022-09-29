@@ -129,7 +129,7 @@ pub unsafe extern "C" fn stronghold_destroy_stronghold(stronghold_ptr: *mut Stro
         return;
     }
 
-    Box::from_raw(stronghold_ptr);
+    let _ = Box::from_raw(stronghold_ptr);
 
     info!("[Rust] Destroyed instance");
 }
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn stronghold_destroy_data_pointer(ptr: *mut u8) {
         return;
     }
 
-    Box::from_raw(ptr);
+    let _ = Box::from_raw(ptr);
 
     info!("[Rust] Destroyed instance");
 }

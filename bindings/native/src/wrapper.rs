@@ -92,9 +92,7 @@ impl StrongholdWrapper {
 
         log::info!("[Rust] Client written");
 
-        if let Err(err) = result.commit_with_key(key_as_hash) {
-            return Err(err);
-        }
+        result.commit_with_key(key_as_hash)?;
 
         Ok(result)
     }

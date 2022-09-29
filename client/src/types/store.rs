@@ -43,7 +43,7 @@ impl Store {
     /// Inserts a `value` into the store with `key`
     ///
     /// # Example
-    /// ```ignore
+    /// ```
     /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
@@ -64,15 +64,15 @@ impl Store {
     /// Tries to get the stored value via `key`
     ///
     /// # Example
-    /// ```ignore
+    /// ```
     /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
     /// let data = b"some data".to_vec();
     /// assert!(store.insert(key.clone(), data, None).is_ok());
-    /// assert!(store.get(key.clone()).is_ok());
-    /// assert!(store.get(key).unwrap().deref().is_some());
+    /// assert!(store.get(&key).is_ok());
+    /// assert!(store.get(&key).unwrap().is_some());
     /// ```
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
         let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
@@ -86,16 +86,19 @@ impl Store {
     /// Tries to delete the inner vale with `key`
     ///
     /// # Example
-    /// ```ignore
+    /// ```
     /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
     /// let data = b"some data".to_vec();
     /// store.insert(key.clone(), data, None).unwrap();
-    /// let deleted = store.delete(key.clone());
+    /// let deleted = store.delete(&key);
     /// assert!(deleted.is_ok());
-    /// assert!(store.get(key).unwrap().deref().is_none());
+    /// assert!(store
+    ///     .get(&key)
+    ///     .expect("The key for the store is not present")
+    ///     .is_none());
     /// ```
     pub fn delete(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
         let mut guard = self.cache.try_write()?;
@@ -104,14 +107,14 @@ impl Store {
 
     /// Checks the [`Store`], if the provided key exists
     /// # Example
-    /// ```ignore
+    /// ```
     /// use iota_stronghold::Store;
     ///
     /// let store = Store::default();
     /// let key = b"some key".to_vec();
     /// let data = b"some data".to_vec();
     /// store.insert(key.clone(), data, None).unwrap();
-    /// assert!(store.contains_key(key).unwrap());
+    /// assert!(store.contains_key(&key).unwrap());
     /// ```
     pub fn contains_key(&self, key: &[u8]) -> Result<bool, ClientError> {
         let guard = self.cache.try_read()?;
