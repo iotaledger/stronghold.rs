@@ -53,28 +53,6 @@ pub enum ClientError {
     SnapshotKeyLocationMissing,
 }
 
-#[cfg(feature = "p2p")]
-#[derive(DeriveError, Debug)]
-pub enum SpawnNetworkError {
-    #[error("network already running")]
-    AlreadySpawned,
-
-    #[error("no client found for loading the config")]
-    ClientNotFound,
-
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-
-    #[error("Error loading network config: {0}")]
-    LoadConfig(String),
-
-    #[error("Error deriving noise-keypair: {0}")]
-    DeriveKeypair(String),
-
-    #[error("Inner error occured {0}")]
-    Inner(String),
-}
-
 impl<T> From<TryLockError<T>> for ClientError {
     fn from(_: TryLockError<T>) -> Self {
         ClientError::LockAcquireFailed
