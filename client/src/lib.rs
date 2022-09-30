@@ -40,6 +40,9 @@ pub mod utils;
 #[cfg(test)]
 mod tests;
 
+#[macro_use]
+mod stm;
+
 // macros
 
 // #[macro_export]

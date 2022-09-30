@@ -534,54 +534,52 @@ impl Peer {
             _ => return Err(ClientError::Inner("Unknown Return type".to_owned())),
         };
 
-        self.stronghold.exec_tx_on_snapshot(move |mut snapshot: Snapshot| {
-            let vault_id = VaultId::load(&vault_path).unwrap();
-            let record_id = RecordId::load(&record_path).unwrap();
+        let vault_id = VaultId::load(&vault_path).unwrap();
+        let record_id = RecordId::load(&record_path).unwrap();
+        let mut snapshot = self.stronghold.get_snapshot()?;
 
-            snapshot
-                .store_secret_key(ephemeral, random_key_location.clone())
-                .expect("Could not store ephemeral key");
+        snapshot
+            .store_secret_key(ephemeral, random_key_location.clone())
+            .expect("Could not store ephemeral key");
 
-            // calculate diff from local snapshot with remote hiearchy
-            let diff = snapshot
-                .get_diff(hierarchy.unwrap(), &config)
-                .expect("Failed to get diff");
+        // calculate diff from local snapshot with remote hiearchy
+        let diff = snapshot
+            .get_diff(hierarchy.unwrap(), &config)
+            .expect("Failed to get diff");
 
-            // get snapshot and write ephemeral key
-            // let mut snapshot = self.stronghold.get_snapshot()?;
+        // get snapshot and write ephemeral key
+        // let mut snapshot = self.stronghold.get_snapshot()?;
 
-            // send diff to remote Stronghold instance to export snapshot and retrieve
-            // the encrypted snapshot
-            let result = self
-                .stronghold
-                .send(
-                    *self.peer_id,
-                    (*self.remote_client_path).clone(),
-                    StrongholdRequest::SnapshotRequest {
-                        request: SnapshotRequest::ExportRemoteDiff {
-                            dh_pub_key: ephemeral_public_key_bytes,
-                            diff,
-                        },
+        // send diff to remote Stronghold instance to export snapshot and retrieve
+        // the encrypted snapshot
+        let result = self
+            .stronghold
+            .send(
+                *self.peer_id,
+                (*self.remote_client_path).clone(),
+                StrongholdRequest::SnapshotRequest {
+                    request: SnapshotRequest::ExportRemoteDiff {
+                        dh_pub_key: ephemeral_public_key_bytes,
+                        diff,
                     },
-                )
-                .await?;
+                },
+            ).await?;
 
-            // extract exported and encrypted snapshot data
-            let (exported, remote_public_key_bytes) = match result {
-                StrongholdNetworkResult::Exported(inner) => {
-                    let (exported, remote_public_key_bytes) = inner.expect("Export of remote snapshot failed");
-                    (exported, remote_public_key_bytes)
-                }
-                _ => return Err(ClientError::Inner("Getting remote snapshot export failed".to_string())),
-            };
+        // extract exported and encrypted snapshot data
+        let (exported, remote_public_key_bytes) = match result {
+            StrongholdNetworkResult::Exported(inner) => {
+                let (exported, remote_public_key_bytes) = inner.expect("Export of remote snapshot failed");
+                (exported, remote_public_key_bytes)
+            }
+            _ => return Err(ClientError::Inner("Getting remote snapshot export failed".to_string())),
+        };
 
-            let remote_public_key = x25519::PublicKey::from_bytes(remote_public_key_bytes);
+        let remote_public_key = x25519::PublicKey::from_bytes(remote_public_key_bytes);
 
-            // import encrypted snapshot data to our own
-            snapshot
-                .import_from_serialized_state(exported, random_key_location, remote_public_key, config)
-                .expect("Could not import serialized state");
-        });
+        // import encrypted snapshot data to our own
+        snapshot
+            .import_from_serialized_state(exported, random_key_location, remote_public_key, config)
+            .expect("Could not import serialized state");
 
         Ok(())
     }

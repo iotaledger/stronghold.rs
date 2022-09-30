@@ -38,11 +38,12 @@ bincode = { version = "1.3" }
 pin-project = { version = "1.0.10", optional = true }
 futures = { version = "0.3.21", optional = true }
 stronghold_p2p = { package = "stronghold-p2p", path = "../p2p", version = "0.4.2", optional = true }
-stronghold_stm = { package = "stronghold-stm", path = "../stm/", version = "0.4.3" }
+# stronghold_stm = { package = "stronghold-stm", path = "../stm/", version = "0.4.3" }
 engine = { package = "stronghold_engine", path = "../engine", version = "0.5.1" }
 stronghold_utils = { package = "stronghold-utils", path = "../utils/", version = "0.4.1" }
 stronghold_derive = { package = "stronghold-derive", path = "../derive", version = "0.3.1" }
-
+log = "0.4.14"
+                  
 [dev-dependencies]
 tokio = { version = "1.15.0", features = [ "full" ] }
 criterion = { version = "0.3", features = [ "async_tokio" ] }

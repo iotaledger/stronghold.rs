@@ -8,6 +8,7 @@ use stm::stm::{
     stm::{Stm, TxResult},
     transaction::Transaction,
     tvar::TVar,
+    shared_value::SharedValue::{self, *}
 };
 use stronghold_stm as stm;
 use threadpool::ThreadPool;
@@ -25,9 +26,9 @@ fn test_stm_basic() {
 
     let stm = Stm::default();
 
-    let bank_alice = stm.create(10usize);
-    let bank_bob = stm.create(100);
-    let bank_charly = stm.create(0);
+    let bank_alice = stm.create(SharedUsize(10));
+    let bank_bob = stm.create(SharedUsize(100));
+    let bank_charly = stm.create(SharedUsize(0));
 
     let ba = bank_alice.clone();
     let bb = bank_bob.clone();
@@ -35,7 +36,7 @@ fn test_stm_basic() {
 
     let transfer_bob_charly = 30;
     let alice_bonus = 40;
-    let result = stm.read_write(move |tx: &mut Transaction<_>| {
+    let result = stm.read_write(move |tx: &mut Transaction| {
         let mut amt_alice = tx.load(&ba)?;
         let mut amt_bob = tx.load(&bb)?;
         let mut amt_charly = tx.load(&bc)?;
@@ -43,9 +44,9 @@ fn test_stm_basic() {
         amt_bob -= transfer_bob_charly;
         amt_charly += transfer_bob_charly;
 
-        tx.store(&ba, amt_alice)?;
-        tx.store(&bb, amt_bob)?;
-        tx.store(&bc, amt_charly)?;
+        tx.store(&ba, SharedUsize(amt_alice))?;
+        tx.store(&bb, SharedUsize(amt_bob))?;
+        tx.store(&bc, SharedUsize(amt_charly))?;
 
         Ok(())
     });
@@ -74,7 +75,7 @@ fn test_stm_threaded_one_tvar() {
 
     let mut expected: HashSet<String> = (0..entries).map(|e: usize| format!("{:04}", e)).collect();
 
-    let set: TVar<HashSet<String>> = stm.create(HashSet::new());
+    let set = stm.create(SharedHashSetOfString(HashSet::new()));
     let pool = ThreadPool::new(8);
 
     let mut removal = HashSet::new();
@@ -97,16 +98,16 @@ fn test_stm_threaded_one_tvar() {
             let result = {
                 match read_percent {
                     false => {
-                        let result = stm_a.read_write(move |tx: &mut Transaction<_>| {
+                        let result = stm_a.read_write(move |tx: &mut Transaction| {
                             info!(
                                 "TX({}):\n?????START?????\nGlobal Clock: {}\nSet: {:?}",
                                 tx.id,
                                 stm_debug.get_clock(),
                                 set_a
                             );
-                            let mut inner = tx.load(&set_a)?;
+                            let mut inner: HashSet<String> = tx.load(&set_a)?;
                             inner.insert(value.clone());
-                            tx.store(&set_a, inner.clone())?;
+                            tx.store(&set_a, SharedHashSetOfString(inner.clone()))?;
                             Ok(())
                         });
                         if let Ok(ref res) = result {
@@ -122,8 +123,8 @@ fn test_stm_threaded_one_tvar() {
                         result
                     }
 
-                    true => stm_a.read_only(move |tx: &mut Transaction<_>| {
-                        let _inner = tx.load(&set_a);
+                    true => stm_a.read_only(move |tx: &mut Transaction| {
+                        let _inner: HashSet<String> = tx.load(&set_a)?;
                         Ok(())
                     }),
                 }
@@ -159,26 +160,26 @@ fn test_multiple_readers_single_writer_single_thread() {
 
     let stm = Stm::default();
 
-    let tvar: TVar<usize> = stm.create(6usize);
+    let tvar = stm.create(SharedUsize(6usize));
 
     let tvar1 = tvar.clone();
     let stm1 = stm.clone();
 
     assert!(stm1
-        .read_write(move |tx: &mut Transaction<_>| {
-            let data = tx.load(&tvar1)?;
-            tx.store(&tvar1, data + 9)?;
-            Ok(())
-        })
-        .is_ok());
+            .read_write(move |tx: &mut Transaction| {
+                let data: usize = tx.load(&tvar1)?;
+                tx.store(&tvar1, SharedUsize(data + 9))?;
+                Ok(())
+            })
+            .is_ok());
 
     for _ in 0..10000 {
         let tvar1 = tvar.clone();
         let stm1 = stm.clone();
 
         assert!(stm1
-            .read_only(move |tx: &mut Transaction<_>| {
-                let data = tx.load(&tvar1)?;
+            .read_only(move |tx: &mut Transaction| {
+                let data: usize = tx.load(&tvar1)?;
                 if data == EXPECTED {
                     Ok(())
                 } else {
@@ -188,7 +189,7 @@ fn test_multiple_readers_single_writer_single_thread() {
             .is_ok());
     }
 
-    let value = tvar.take().unwrap();
+    let value: usize = tvar.take().unwrap();
     assert_eq!(value, EXPECTED);
 }
 
@@ -198,15 +199,15 @@ async fn test_mutliple_readers_single_writer_async() {
 
     let stm = Stm::default();
 
-    let tvar: TVar<usize> = stm.create(6usize);
+    let tvar = stm.create(SharedUsize(6usize));
 
     let tvar1 = tvar.clone();
     let stm1 = stm.clone();
 
     let j0 = tokio::spawn(async move {
-        stm1.read_write(move |tx: &mut Transaction<_>| {
-            let data = tx.load(&tvar1)?;
-            tx.store(&tvar1, data + 9)?;
+        stm1.read_write(move |tx: &mut Transaction| {
+            let data: usize = tx.load(&tvar1)?;
+            tx.store(&tvar1, SharedUsize(data + 9))?;
             Ok(())
         })
     });
@@ -217,8 +218,8 @@ async fn test_mutliple_readers_single_writer_async() {
         let stm1 = stm.clone();
 
         let j1 = tokio::spawn(async move {
-            stm1.read_only(move |tx: &mut Transaction<_>| {
-                let data = tx.load(&tvar1)?;
+            stm1.read_only(move |tx: &mut Transaction| {
+                let data: usize = tx.load(&tvar1)?;
                 if data == EXPECTED {
                     Ok(())
                 } else {
@@ -234,72 +235,74 @@ async fn test_mutliple_readers_single_writer_async() {
         j.await.expect("Failed to join reader thread").unwrap();
     }
 
-    let value = tvar.take().unwrap();
+    let value: usize = tvar.take().unwrap();
     assert_eq!(value, EXPECTED);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn test_nested_tvars() {
-    const NB_TVARS: usize = 10000;
-    const NB_THREADS: usize = 50;
+// We don't handle nested tvars currently
 
-    let stm_element = Stm::default();
-    let stm_vec = Stm::default();
-    let mut init_v: Vec<TVar<usize>> = vec![];
-    for _ in 0..NB_TVARS {
-        init_v.push(stm_element.create(0));
-    }
-    let tvar_vec = stm_vec.create(init_v);
+// #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+// async fn test_nested_tvars() {
+//     const NB_TVARS: usize = 10000;
+//     const NB_THREADS: usize = 50;
 
-    let mut threads = vec![];
+//     let stm_element = Stm::default();
+//     let stm_vec = Stm::default();
+//     let mut init_v: Vec<TVar> = vec![];
+//     for _ in 0..NB_TVARS {
+//         init_v.push(stm_element.create(0));
+//     }
+//     let tvar_vec = stm_vec.create(init_v);
 
-    // One thread delete half the list
-    let stm_v = stm_vec.clone();
-    let tvar_v = tvar_vec.clone();
-    let t = tokio::spawn(async move {
-        let stm_vv = stm_v.clone();
-        for _ in 0..(NB_TVARS/2) {
-            let tvar_vv = tvar_v.clone();
-            stm_vv.read_write(move |tx_v: &mut Transaction<_>| {
-                let mut v = tx_v.load(&tvar_vv)?;
-                v.pop();
-                tx_v.store(&tvar_vv, v)?;
-                Ok(())
-            })?;
-        }
-        Ok::<(), TxError>(())
-    });
-    threads.push(t);
+//     let mut threads = vec![];
 
-    for _ in 0..NB_THREADS {
-        let stm_elmt = stm_element.clone();
-        let stm_v = stm_vec.clone();
-        let tvar_v = tvar_vec.clone();
-        let t = tokio::spawn(async move {
-            stm_v.read_only(move |tx_v: &mut Transaction<_>| {
-                let v = tx_v.load(&tvar_v)?;
-                for tvar_elmt in v.iter() {
-                    stm_elmt.read_write(move |tx_elmt: &mut Transaction<_>| {
-                        let mut elmt = tx_elmt.load(tvar_elmt)?;
-                        elmt += 1;
-                        tx_elmt.store(tvar_elmt, elmt)?;
-                        Ok(())
-                    })?;
-                }
-                Ok(())
-            })?;
-            Ok::<(), TxError>(())
-        });
-        threads.push(t);
-    }
+//     // One thread delete half the list
+//     let stm_v = stm_vec.clone();
+//     let tvar_v = tvar_vec.clone();
+//     let t = tokio::spawn(async move {
+//         let stm_vv = stm_v.clone();
+//         for _ in 0..(NB_TVARS/2) {
+//             let tvar_vv = tvar_v.clone();
+//             stm_vv.read_write(move |tx_v: &mut Transaction<_>| {
+//                 let mut v = tx_v.load(&tvar_vv)?;
+//                 v.pop();
+//                 tx_v.store(&tvar_vv, v)?;
+//                 Ok(())
+//             })?;
+//         }
+//         Ok::<(), TxError>(())
+//     });
+//     threads.push(t);
 
-    for t in threads.into_iter() {
-        t.await.expect("Failed to join").unwrap();
-    }
-    let v = tvar_vec.take().unwrap();
-    let v: Vec<usize> = v.into_iter().map(|i| i.take().unwrap()).collect();
-    assert_eq!(v, vec![NB_THREADS; NB_TVARS/2]);
-}
+//     for _ in 0..NB_THREADS {
+//         let stm_elmt = stm_element.clone();
+//         let stm_v = stm_vec.clone();
+//         let tvar_v = tvar_vec.clone();
+//         let t = tokio::spawn(async move {
+//             stm_v.read_only(move |tx_v: &mut Transaction<_>| {
+//                 let v = tx_v.load(&tvar_v)?;
+//                 for tvar_elmt in v.iter() {
+//                     stm_elmt.read_write(move |tx_elmt: &mut Transaction<_>| {
+//                         let mut elmt = tx_elmt.load(tvar_elmt)?;
+//                         elmt += 1;
+//                         tx_elmt.store(tvar_elmt, elmt)?;
+//                         Ok(())
+//                     })?;
+//                 }
+//                 Ok(())
+//             })?;
+//             Ok::<(), TxError>(())
+//         });
+//         threads.push(t);
+//     }
+
+//     for t in threads.into_iter() {
+//         t.await.expect("Failed to join").unwrap();
+//     }
+//     let v = tvar_vec.take().unwrap();
+//     let v: Vec<usize> = v.into_iter().map(|i| i.take().unwrap()).collect();
+//     assert_eq!(v, vec![NB_THREADS; NB_TVARS/2]);
+// }
 
 
 // Additional tests taken from the paper:
@@ -313,7 +316,7 @@ async fn test_paper_1() {
 
     let stm = Stm::default();
     let init_v = vec![String::from(msg_in_the_list); NB_MSG];
-    let tvar: TVar<Vec<String>> = stm.create(init_v);
+    let tvar: TVar = stm.create(SharedVectorOfString(init_v));
 
     // objects for thread1
     let tvar1 = tvar.clone();
@@ -328,8 +331,8 @@ async fn test_paper_1() {
         loop {
             // Iter through the list and check content
             let tvar = tvar1.clone();
-            let is_empty: TxResult<bool> = stm1.read_only(move |tx: &mut Transaction<_>| {
-                let v = tx.load(&tvar)?;
+            let is_empty: TxResult<bool> = stm1.read_only(move |tx: &mut Transaction| {
+                let v: Vec<String> = tx.load(&tvar)?;
                 for s in v.iter() {
                     assert_eq!(*s, String::from(msg_in_the_list));
                 }
@@ -347,16 +350,16 @@ async fn test_paper_1() {
     let t2 = tokio::spawn(async move {
         for _ in 0..NB_MSG {
             let tvar = tvar2.clone();
-            stm2.read_write(move |tx: &mut Transaction<_>| {
-                let mut v = tx.load(&tvar)?;
+            stm2.read_write(move |tx: &mut Transaction| {
+                let mut v: Vec<String> = tx.load(&tvar)?;
                 let rand_index = rand::thread_rng().gen_range(0..v.len());
                 let mut s = v.remove(rand_index);
                 s.clear();
-                tx.store(&tvar, v)?;
+                tx.store(&tvar, SharedVectorOfString(v))?;
                 Ok(())
             })?;
             // Trying to free the tvar should result in an error
-            assert!(tvar2.clone().take().is_err());
+            assert!(tvar2.clone().take::<Vec<String>>().is_err());
         }
         Ok::<(), TxError>(())
     });
@@ -364,7 +367,7 @@ async fn test_paper_1() {
     t1.await.expect("Failed to join").unwrap();
     t2.await.expect("Failed to join").unwrap();
 
-    let value = tvar.take().unwrap();
+    let value: Vec<String> = tvar.take().unwrap();
     assert!(value.is_empty());
 }
 
@@ -377,7 +380,7 @@ async fn test_paper_2() {
 
     let stm = Stm::default();
     let init_v: Vec<usize> = vec![0; SIZE];
-    let tvar = stm.create(init_v);
+    let tvar = stm.create(SharedVectorOfUsize(init_v));
 
     let mut threads = Vec::new();
 
@@ -388,12 +391,12 @@ async fn test_paper_2() {
         let t = tokio::spawn(async move {
             for _ in 0..NB_ITER {
                 let tvar2 = tvar1.clone();
-                stm1.read_write(move |tx: &mut Transaction<_>| {
-                    let mut vec = tx.load(&tvar2)?;
+                stm1.read_write(move |tx: &mut Transaction| {
+                    let mut vec: Vec<usize> = tx.load(&tvar2)?;
                     for v in vec.iter_mut() {
                         *v += 1;
                     }
-                    tx.store(&tvar2, vec)?;
+                    tx.store(&tvar2, SharedVectorOfUsize(vec))?;
                     Ok(())
                 })?;
             }
@@ -406,7 +409,7 @@ async fn test_paper_2() {
         t.await.expect("Failed to join").unwrap();
     }
 
-    let value = tvar.take().unwrap();
+    let value: Vec<usize> = tvar.take().unwrap();
     assert_eq!(value, vec![NB_THREADS * NB_ITER; SIZE]);
 }
 
@@ -418,13 +421,13 @@ async fn test_paper_3() {
     const NB_THREADS: usize = 10;
 
     let stm = Stm::default();
-    let mut init_v: Vec<TVar<usize>> = vec![];
+    let mut init_v: Vec<TVar> = vec![];
     for _ in 0..NB_TVAR {
-        init_v.push(stm.create(0));
+        init_v.push(stm.create(SharedUsize(0)));
     }
 
     // Creating a vector containing the tvars for each thread
-    let mut vectors: Vec<Vec<TVar<usize>>> = vec![];
+    let mut vectors: Vec<Vec<TVar>> = vec![];
     for _ in 0..NB_THREADS {
         let mut vector = vec![];
         for tvar in init_v.iter() {
@@ -438,10 +441,10 @@ async fn test_paper_3() {
     for vector in vectors.into_iter() {
         let stm1 = stm.clone();
         let t = tokio::spawn(async move {
-            stm1.read_write(move |tx: &mut Transaction<_>| {
+            stm1.read_write(move |tx: &mut Transaction| {
                 for tvar in vector.iter() {
-                    let v = tx.load(tvar)?;
-                    tx.store(tvar, v + 1)?;
+                    let v: usize = tx.load(tvar)?;
+                    tx.store(tvar, SharedUsize(v + 1))?;
                 }
                 Ok(())
             })?;
@@ -455,7 +458,7 @@ async fn test_paper_3() {
     }
 
     for tvar in init_v.into_iter() {
-        let value = tvar.take().expect("wtf");
+        let value: usize = tvar.take().expect("wtf");
         assert_eq!(value, NB_THREADS);
     }
 }

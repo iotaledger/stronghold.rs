@@ -8,3 +8,4 @@ mod fresh;
 mod network_tests;
 mod procedure_tests;
 mod store_tests;
+mod client_tests;

@@ -3,6 +3,7 @@
 
 #![allow(clippy::type_complexity, clippy::module_inception)]
 
+#[macro_use]
 pub mod error;
 pub mod stm;
 pub mod transaction;

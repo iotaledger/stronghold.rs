@@ -26,3 +26,15 @@ pub enum TxError {
     #[error("Shared value has been casted as the wrong type")]
     SharedValueWrongTypeConversion,
 }
+
+// Macro enabling to handle Result easier in a transaction
+#[macro_export]
+macro_rules! tx_unwrap {
+    ($res:expr) => {
+        match $res {
+            Ok(v) => v,
+            Err(e) => { return Ok(Err(e)); },
+        }
+    };
+}
+
