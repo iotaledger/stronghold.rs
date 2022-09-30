@@ -45,6 +45,11 @@ impl Stronghold {
         Self::default()
     }
 
+    /// Returns an atomic reference to the [`Store`]
+    pub fn store(&self) -> Store {
+        self.store.clone()
+    }
+
     /// Load the state of a [`Snapshot`] at given `snapshot_path`.
     /// The [`Snapshot`] is secured in memory and may be used to load further
     /// clients with [`Stronghold::load_client`].
