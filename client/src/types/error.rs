@@ -5,7 +5,9 @@ use std::{any::Any, convert::Infallible, fmt::Debug, sync::TryLockError};
 
 use engine::{
     snapshot::{ReadError as EngineReadError, WriteError as EngineWriteError},
-    vault::{BoxProvider, RecordError as EngineRecordError, RecordId, VaultError as EngineVaultError, VaultId},
+    vault::{
+        BoxProvider, ClientId, RecordError as EngineRecordError, RecordId, VaultError as EngineVaultError, VaultId,
+    },
 };
 use serde::{de::Error, Deserialize, Serialize};
 use thiserror::Error as DeriveError;
@@ -51,6 +53,9 @@ pub enum ClientError {
 
     #[error("Key Location for Snapshot not present")]
     SnapshotKeyLocationMissing,
+
+    #[error("Client with id {0:?} has already been loaded before. Can not be loaded twice.")]
+    ClientAlreadyLoaded(ClientId),
 }
 
 impl<T> From<TryLockError<T>> for ClientError {

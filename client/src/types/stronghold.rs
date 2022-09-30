@@ -51,11 +51,12 @@ impl Stronghold {
     }
 
     /// Load the state of a [`Snapshot`] at given `snapshot_path`.
+    ///
     /// The [`Snapshot`] is secured in memory and may be used to load further
     /// clients with [`Stronghold::load_client`].
     /// Load a [`Client`] at `client_path` from the snapshot.
-    ///
-    /// # Example
+    /// The function returns an error if the client path is not in the snapshot
+    /// or a client with the same id has already been loaded before.
     pub fn load_client_from_snapshot<P>(
         &self,
         client_path: P,
@@ -67,6 +68,12 @@ impl Stronghold {
     {
         let mut client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
+
+        // If a client has already been loaded returns an error
+        let mut clients = self.clients.try_write()?;
+        if clients.contains_key(&client_id) {
+            return Err(ClientError::ClientAlreadyLoaded(client_id));
+        }
 
         // load the snapshot from disk
         self.load_snapshot(keyprovider, snapshot_path)?;
@@ -82,7 +89,6 @@ impl Stronghold {
         client.restore(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
         clients.insert(client_id, client.clone());
 
         Ok(client)
@@ -90,13 +96,20 @@ impl Stronghold {
 
     /// Loads a client from [`Snapshot`] data
     ///
-    /// # Example
+    /// The function returns an error if the client path is not in the snapshot
+    /// or a client with the same id has already been loaded before.
     pub fn load_client<P>(&self, client_path: P) -> Result<Client, ClientError>
     where
         P: AsRef<[u8]>,
     {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         let mut client = Client::default();
+
+        // If a client has already been loaded returns an error
+        let mut clients = self.clients.try_write()?;
+        if clients.contains_key(&client_id) {
+            return Err(ClientError::ClientAlreadyLoaded(client_id));
+        }
 
         let snapshot = self.snapshot.try_read()?;
 
@@ -113,7 +126,6 @@ impl Stronghold {
         client.restore(client_state, client_id)?;
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
         clients.insert(client_id, client.clone());
 
         Ok(client)
@@ -132,6 +144,15 @@ impl Stronghold {
             .get(&client_id)
             .cloned()
             .ok_or(ClientError::ClientDataNotPresent)
+    }
+
+    /// Unload the client from the clients currently managed by
+    /// the [`Stronghold`] instance
+    ///
+    /// This does not remove the client from the [`Snapshot`]
+    pub fn unload_client(&self, client: Client) -> Result<Client, ClientError> {
+        let mut clients = self.clients.try_write()?;
+        clients.remove(&client.id).ok_or(ClientError::ClientDataNotPresent)
     }
 
     /// Purges a [`Client`] by wiping all state and remove it from
@@ -358,8 +379,9 @@ impl Stronghold {
     /// snapshot file. Use [`Self::load_client_from_snapshot`] to reload any [`Client`] and
     /// [`Snapshot`] state
     pub fn clear(&self) -> Result<(), ClientError> {
-        for (_, c) in self.clients.try_write()?.iter() {
-            c.clear()?;
+        let mut clients = self.clients.try_write()?;
+        for (_, client) in clients.drain() {
+            client.clear()?;
         }
         self.snapshot.try_write()?.clear()?;
         self.store.clear()?;

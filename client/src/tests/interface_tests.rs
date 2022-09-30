@@ -174,9 +174,8 @@ fn test_stronghold_purge_client() {
 
     assert!(client.record_exists(&output_location).unwrap());
     assert!(client2.record_exists(&output_location).unwrap());
+    assert!(stronghold.unload_client(client2).is_ok());
 
-    // Reload client2 from the snapshot state.
-    std::mem::drop(client2);
     let client2 = stronghold.load_client(&client_path2).unwrap();
 
     stronghold.purge_client(client).unwrap();
@@ -334,6 +333,8 @@ fn test_load_client_from_snapshot() {
     let result = stronghold.commit_with_keyprovider(&snapshot, &key_provider);
     assert!(result.is_ok(), "Commit failed {:?}", result);
 
+    assert!(stronghold.unload_client(client).is_ok());
+
     // reload from snapshot
     assert!(stronghold
         .load_client_from_snapshot(client_path, &key_provider, &snapshot)
@@ -344,6 +345,7 @@ fn test_load_client_from_snapshot() {
 fn test_load_multiple_clients_from_snapshot() {
     let number_of_clients = 10;
     let client_path_vec: Vec<Vec<u8>> = (0..number_of_clients).map(|_| fixed_random_bytes(256)).collect();
+    let mut clients = vec![];
 
     let stronghold = Stronghold::default();
 
@@ -362,11 +364,16 @@ fn test_load_multiple_clients_from_snapshot() {
     };
 
     client_path_vec.iter().for_each(|path| {
-        let _ = stronghold.create_client(path.clone());
+        let client = stronghold.create_client(path.clone()).unwrap();
+        clients.push(client);
     });
 
     let result = stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider);
     assert!(result.is_ok(), "Failed to commit clients state {:?}", result);
+
+    for client in clients.into_iter() {
+        assert!(stronghold.unload_client(client).is_ok());
+    }
 
     client_path_vec.iter().for_each(|path| {
         let result = stronghold.load_client_from_snapshot(path, &keyprovider, &snapshot_path);
@@ -421,6 +428,8 @@ fn test_create_snapshot_file_in_custom_directory() {
     assert!(vault.write_secret(location, payload.clone()).is_ok());
 
     assert!(stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider).is_ok());
+
+    assert!(stronghold.unload_client(client).is_ok());
 
     let client2 = stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path);
     assert!(client2.is_ok(), "Failed to load client from snapshot ({:?})", client2);
@@ -668,4 +677,37 @@ fn test_stronghold_with_key_location_for_snapshot() {
         stronghold.load_client_from_snapshot(client_path, &key_provider, &SnapshotPath::from_path(snapshot_path));
 
     assert!(client2.is_ok());
+}
+
+#[test]
+fn test_load_unload_client() {
+    let stronghold = Stronghold::default();
+    let client_path = "my-awesome-client-path";
+    let client = stronghold.create_client(client_path).expect("Failed to create client");
+
+    assert!(stronghold.load_client(client_path).is_err());
+
+    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    assert!(result.is_ok());
+    let key_provider = result.unwrap();
+
+    let filename = base64::encode(fixed_random_bytes(32));
+    let filename = filename.replace('/', "n");
+    let mut snapshot_path = std::env::temp_dir();
+    snapshot_path.push(filename);
+
+    let defer = Defer::from((snapshot_path.clone(), |path: &'_ PathBuf| {
+        let _ = std::fs::remove_file(path);
+    }));
+    let snapshot = SnapshotPath::from_path(&*defer);
+
+    let result = stronghold.commit_with_keyprovider(&snapshot, &key_provider);
+    assert!(result.is_ok(), "Commit failed {:?}", result);
+
+    assert!(stronghold
+        .load_client_from_snapshot(client_path, &key_provider, &snapshot)
+        .is_err());
+
+    assert!(stronghold.unload_client(client).is_ok());
+    assert!(stronghold.load_client(client_path).is_ok());
 }
