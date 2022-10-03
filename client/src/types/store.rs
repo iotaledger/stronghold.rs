@@ -11,7 +11,6 @@ use std::{
 
 use crate::ClientError;
 use engine::store::Cache;
-use rlu::Read;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 
 // The [`StoreGuard`] wraps the [`RwLocKReadGuard`] with an associated key. The
