@@ -661,3 +661,21 @@ fn test_stronghold_with_key_location_for_snapshot() {
 
     assert!(client2.is_ok());
 }
+
+#[test]
+fn test_access_store_from_stronghold_type() {
+    let stronghold = Stronghold::default();
+
+    let store = stronghold.store();
+    let key = fixed_random_bytes(32);
+    let value = fixed_random_bytes(32);
+
+    let _ = store.insert(key.clone(), value.clone(), None);
+
+    let store2 = stronghold.store();
+    let result = store2.get(&key);
+    assert!(result.is_ok());
+
+    let r2 = result.unwrap();
+    assert_eq!(r2.unwrap(), value);
+}

@@ -38,6 +38,12 @@ pub struct Stronghold {
 }
 
 impl Stronghold {
+    /// Returns an atomic reference to the [`Store`]. Access and modifications
+    /// to the Store is session based.
+    pub fn store(&self) -> Store {
+        self.store.clone()
+    }
+
     /// Drop all references
     ///
     /// # Example
