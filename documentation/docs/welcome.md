@@ -32,7 +32,7 @@ The runtime operation uses Clients. You can think of Clients as a context-based 
 
 Stronghold uses Snapshot facilities to persist the runtime. The Snapshot is actually twofold. At the lowest level, the Snapshot is a highly encrypted file represented by an in-memory instance of Snapshot itself, which is encrypted and protected via the same means as the Vault.
 
-Additionally to the secure `Vault` type, Stronghold provides an eviciting cache to store non-sensitive data called the `Store`. Use the `Store` to keep session based configuration data. 
+Additionally to the secure secret database [Vault](reference/structure/engine/vault), Stronghold provides an evicting cache to store non-sensitive data called the [Store](reference/structure/engine/store). Use the Store to keep session-based configuration data. 
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
