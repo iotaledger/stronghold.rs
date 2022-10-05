@@ -26,7 +26,11 @@ revealed, but can be used according to best practices.
 
 You can think of Stronghold as an isolated container for secrets. The secret can be a private key or other bytes of data that should never be exposed. You can interact with Stronghold using procedures to [generate new keys](how_tos/cli/generate_key_pair), [store data in the vault](how_tos/cli/store_read_write), [derive keys](how_tos/cli/derive_slip_10), or work with the data. The difference to a "traditional" password store is that you can never access the secret data directly. You will need to use procedures. For example, if you need to sign data with your private key, you must call a procedure.
 
-Generally speaking there are two states where the secret data remains. The runtime operation makes use of Clients. Clients can be thought of as a context-based secure data container with all the functionality to work with sensitive data. In order to persist the runtime data, there are the Snapshot facilities. The Snapshot is actually twofold. At the lowest level, the Snapshot is a highly encrypted file which is being represented by an in-memory instance of Snapshot itself, which itself is encrypted and protected via the same means as the Vault.
+Generally speaking, there are two states where the secret data remains, [Clients](reference/structure/client) and the [Snapshot](reference/structure/engine/snapshot) facilities.
+
+The runtime operation uses Clients. You can think of Clients as a context-based secure data container that includes all the functionality you need to work with sensitive data. 
+
+Stronghold uses Snapshot facilities to persist the runtime. The Snapshot is actually twofold. At the lowest level, the Snapshot is a highly encrypted file represented by an in-memory instance of Snapshot itself, which is encrypted and protected via the same means as the Vault.
 
 Additionally to the secure `Vault` type, Stronghold provides an eviciting cache to store non-sensitive data called the `Store`. Use the `Store` to keep session based configuration data. 
 
