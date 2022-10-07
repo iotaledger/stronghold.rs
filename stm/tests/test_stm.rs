@@ -5,10 +5,10 @@ use rand::{distributions::Bernoulli, prelude::Distribution, Rng};
 use std::collections::HashSet;
 use stm::stm::{
     error::TxError,
+    shared_value::SharedValue::*,
     stm::{Stm, TxResult},
     transaction::Transaction,
     tvar::TVar,
-    shared_value::SharedValue::{self, *}
 };
 use stronghold_stm as stm;
 use threadpool::ThreadPool;
@@ -166,12 +166,12 @@ fn test_multiple_readers_single_writer_single_thread() {
     let stm1 = stm.clone();
 
     assert!(stm1
-            .read_write(move |tx: &mut Transaction| {
-                let data: usize = tx.load(&tvar1)?;
-                tx.store(&tvar1, SharedUsize(data + 9))?;
-                Ok(())
-            })
-            .is_ok());
+        .read_write(move |tx: &mut Transaction| {
+            let data: usize = tx.load(&tvar1)?;
+            tx.store(&tvar1, SharedUsize(data + 9))?;
+            Ok(())
+        })
+        .is_ok());
 
     for _ in 0..10000 {
         let tvar1 = tvar.clone();
@@ -303,7 +303,6 @@ async fn test_mutliple_readers_single_writer_async() {
 //     let v: Vec<usize> = v.into_iter().map(|i| i.take().unwrap()).collect();
 //     assert_eq!(v, vec![NB_THREADS; NB_TVARS/2]);
 // }
-
 
 // Additional tests taken from the paper:
 // [Testing patterns for software transactional memory engines](https://www.researchgate.net/publication/220854689_Testing_patterns_for_software_transactional_memory_engines)

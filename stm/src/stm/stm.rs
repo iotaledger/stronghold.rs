@@ -1,13 +1,11 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stm::{error::TxError, transaction::Transaction, tvar::*, shared_value::SharedValue};
+use crate::stm::{error::TxError, shared_value::SharedValue, transaction::Transaction, tvar::*};
 use log::*;
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 // TODO:
@@ -155,8 +153,7 @@ impl Stm {
     }
 
     /// This will create a new transactional variable [`TVar`].
-    pub fn create(&self, val: SharedValue) -> TVar
-    {
+    pub fn create(&self, val: SharedValue) -> TVar {
         TVar::new(val, self.get_clock())
     }
 }

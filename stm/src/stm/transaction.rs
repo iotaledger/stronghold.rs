@@ -1,14 +1,13 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stm::{error::TxError, tvar::*, shared_value::SharedValue};
+use crate::stm::{error::TxError, shared_value::SharedValue, tvar::*};
 use std::{
     collections::{HashMap, HashSet},
     sync::MutexGuard,
 };
 
-pub struct Transaction
-{
+pub struct Transaction {
     /// Transaction id
     pub id: usize,
 
@@ -24,8 +23,7 @@ pub struct Transaction
     tvars_new_values: HashMap<TVar, SharedValue>,
 }
 
-impl Transaction
-{
+impl Transaction {
     pub fn new(version: usize, id: usize) -> Self {
         Self {
             version,
@@ -48,14 +46,16 @@ impl Transaction
     /// for version consistency. If the value is present in a write set, this to-be-written value
     /// will be returned.
     pub fn load<T>(&mut self, tvar: &TVar) -> Result<T, TxError>
-    where T: TryFrom<SharedValue, Error=TxError> + Clone {
+    where
+        T: TryFrom<SharedValue, Error = TxError> + Clone,
+    {
         self.tvars_used.insert(tvar.clone());
 
         // If the value was updated before in the transaction
         let was_tvar_used = self.tvars_new_values.contains_key(tvar);
         if was_tvar_used {
             let tvar_value = self.tvars_new_values.get(tvar).unwrap();
-            return Ok(T::try_from(tvar_value.clone())?);
+            return T::try_from(tvar_value.clone());
         }
 
         // Else take the value from the tvar

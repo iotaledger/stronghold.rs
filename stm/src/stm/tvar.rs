@@ -1,8 +1,7 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::stm::error::TxError;
-use crate::stm::shared_value::*;
+use crate::stm::{error::TxError, shared_value::*};
 
 use std::{
     fmt::Debug,
@@ -59,7 +58,7 @@ impl TVar {
     // Get data without holding the mutex
     pub fn try_get_data<T>(&self) -> Result<T, TxError>
     where
-        T: TryFrom<SharedValue, Error=TxError> + Clone,
+        T: TryFrom<SharedValue, Error = TxError> + Clone,
     {
         let guard = self.try_lock()?.clone();
         let data = T::try_from(guard.value)?;

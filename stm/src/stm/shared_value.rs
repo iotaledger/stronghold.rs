@@ -1,6 +1,8 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::stm::error::TxError;
-use std::fmt::Debug;
-use std::collections::{HashSet};
+use std::{collections::HashSet, fmt::Debug};
 
 /// The different types that can be encapsulated in a TVAr
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -17,16 +19,16 @@ use SharedValue::*;
 #[macro_export]
 macro_rules! impl_try_from {
     ( $type:ty, $variant:ident ) => {
-            impl TryFrom<SharedValue> for $type {
-                type Error = TxError;
+        impl TryFrom<SharedValue> for $type {
+            type Error = TxError;
 
-                fn try_from(value: SharedValue) -> Result<Self, Self::Error> {
-                    match value {
-                        $variant(v) => Ok(v),
-                        _ => Err(TxError::SharedValueWrongTypeConversion)
-                    }
+            fn try_from(value: SharedValue) -> Result<Self, Self::Error> {
+                match value {
+                    $variant(v) => Ok(v),
+                    _ => Err(TxError::SharedValueWrongTypeConversion),
                 }
             }
+        }
     };
 }
 
