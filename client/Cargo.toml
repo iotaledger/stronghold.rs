@@ -55,6 +55,7 @@ log = { version = "0.4.14" }
 base64 = { version = "0.13.0" }
 regex = { version = "1.5.5" }
 libc = { version = "0.2" }
+threadpool = { version = "1.8" }
 
 [[bench]]
 name = "config"
