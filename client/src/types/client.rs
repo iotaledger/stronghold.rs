@@ -199,15 +199,8 @@ impl Client {
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
         *keystore = new_keystore;
-        drop(keystore);
-
-        // reload db
         *view = db;
-        drop(view);
-
-        // reload store
         *store = st;
-        drop(store);
 
         Ok(())
     }
