@@ -104,6 +104,9 @@ impl Client {
     /// If `select_records` is `Some` only the specified records are copied, else a full sync
     /// is performed. If a record already exists at the target, the [`MergePolicy`] applies.
     ///
+    /// # Warning
+    /// This function is susceptible to data race, use it with caution
+    ///
     /// # Example
     pub fn sync_vaults(
         &self,
@@ -142,6 +145,8 @@ impl Client {
     }
 
     /// Synchronize the client with another one so that records are copied from `other` to `self`.
+    /// # Warning
+    /// This function is susceptible to data race, use it with caution
     ///
     /// # Example
     pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
