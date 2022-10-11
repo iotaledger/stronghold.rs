@@ -378,7 +378,7 @@ fn test_load_multiple_clients_from_snapshot() {
 fn test_load_client_from_non_existing_snapshot() {
     let client_path = "my-awesome-client-path";
     let stronghold = Stronghold::default();
-    let snapshot_path = SnapshotPath::named("idkfa.snapshot");
+    let snapshot_path = SnapshotPath::named(base64::encode(fixed_random_bytes(8)));
     let password = rand::fixed_bytestring(32);
     let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
 
@@ -402,7 +402,11 @@ fn test_create_snapshot_file_in_custom_directory() {
     let location = Location::const_generic(vault_path.clone(), record_path.clone());
     let stronghold = Stronghold::default();
     let mut temp_dir = std::env::temp_dir();
-    temp_dir = temp_dir.join("idkfa.snapshot");
+
+    let mut temp_name = base64::encode(fixed_random_bytes(8));
+    temp_name.push_str(".snapshot");
+
+    temp_dir = temp_dir.join(temp_name);
 
     let snapshot_path = SnapshotPath::from_path(temp_dir.as_path());
     let password = rand::fixed_bytestring(32);
@@ -443,8 +447,12 @@ fn test_clear_stronghold_state() {
     let store_key = rand::fixed_bytestring(32);
     let store_data = rand::fixed_bytestring(1024);
 
+    let mut temp_name = base64::encode(fixed_random_bytes(8));
+    temp_name.push_str(".snapshot");
+
     let mut temp_dir = std::env::temp_dir();
-    temp_dir = temp_dir.join("idkfa.snapshot");
+
+    temp_dir = temp_dir.join(temp_name);
     let defer = Defer::from((temp_dir, |path: &'_ PathBuf| {
         println!("Delete temporary snapshot file");
         let _ = std::fs::remove_file(path);
