@@ -17,8 +17,8 @@ use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
 
 /// Writes a single [`Client`] into snapshot
-/// We use a macro instead of a function so that locks on snapshot
-/// and clients are taken before and stay alive during the macro
+/// We use a macro instead of a function due to locks lifetime
+/// ending at the end of a function
 /// # Example
 macro_rules! write_with_clientid {
     ($client_id:expr, $snapshot:expr, $clients:expr) => {{
