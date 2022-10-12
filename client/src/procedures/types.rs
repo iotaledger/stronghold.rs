@@ -36,7 +36,7 @@ pub trait Runner {
 
     fn revoke_data(&self, location: &Location) -> Result<(), RecordError>;
 
-    fn garbage_collect(&self, vault_id: VaultId) -> bool;
+    fn garbage_collect(&self, vault_id: VaultId) -> Result<bool, VaultError<FatalProcedureError>>;
 }
 
 /// Products of a procedure.

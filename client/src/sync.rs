@@ -100,8 +100,8 @@ pub(crate) trait SyncClients<'a> {
         &'a self,
         vaults: Option<Vec<VaultId>>,
     ) -> Result<ClientHierarchy<(RecordId, BlobId)>, ClientError> {
-        let db = self.get_db()?;
         let key_provider = self.get_key_provider()?;
+        let db = self.get_db()?;
         let vaults = vaults.unwrap_or_else(|| db.list_vaults());
         let mut hierarchy = HashMap::new();
         for vid in vaults {
@@ -131,8 +131,8 @@ pub(crate) trait SyncClients<'a> {
         other: ClientHierarchy<(RecordId, BlobId)>,
         config: &SyncClientsConfig,
     ) -> Result<ClientHierarchy<RecordId>, ClientError> {
-        let db = self.get_db()?;
         let key_provider = self.get_key_provider()?;
+        let db = self.get_db()?;
         let mut diff = HashMap::new();
         for (vid, list) in other {
             if let Some(select_vaults) = config.select_vaults.as_ref() {

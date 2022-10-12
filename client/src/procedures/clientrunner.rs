@@ -40,8 +40,7 @@ impl Runner for Client {
             Ok(())
         };
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let db = self.db.try_read().map_err(|e| e.to_string()).expect("");
+        let db = self.db.read().map_err(|_| VaultError::LockPoisoned)?;
 
         let res = db.get_guards(ids, execute_procedure);
 
@@ -72,11 +71,8 @@ impl Runner for Client {
 
         let random_hint = RecordHint::new(rand::variable_bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
-
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
+        let mut keystore = self.keystore.write().map_err(|_| VaultError::LockPoisoned)?;
+        let mut db = self.db.write().map_err(|_| VaultError::LockPoisoned)?;
 
         if !keystore.vault_exists(target_vid) {
             let key1 = keystore
@@ -107,11 +103,8 @@ impl Runner for Client {
     fn write_to_vault(&self, location: &Location, value: Vec<u8>) -> Result<(), RecordError> {
         let (vault_id, record_id) = location.resolve();
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
-
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
+        let mut keystore = self.keystore.write().map_err(|_| RecordError::LockPoisoned)?;
+        let mut db = self.db.write().map_err(|_| RecordError::LockPoisoned)?;
 
         if !keystore.vault_exists(vault_id) {
             // The error type mapped to the possible key creation error is semantically incorrect
@@ -132,11 +125,8 @@ impl Runner for Client {
     fn revoke_data(&self, location: &Location) -> Result<(), RecordError> {
         let (vault_id, record_id) = location.resolve();
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
-
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
+        let mut keystore = self.keystore.write().map_err(|_| RecordError::LockPoisoned)?;
+        let mut db = self.db.write().map_err(|_| RecordError::LockPoisoned)?;
 
         if let Some(key) = keystore.take_key(vault_id) {
             let res = db.revoke_record(&key, vault_id, record_id);
@@ -150,22 +140,19 @@ impl Runner for Client {
         Ok(())
     }
 
-    fn garbage_collect(&self, vault_id: VaultId) -> bool {
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
-
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut db = self.db.try_write().map_err(|e| e.to_string()).expect("");
+    fn garbage_collect(&self, vault_id: VaultId) -> Result<bool, VaultError<FatalProcedureError>> {
+        let mut keystore = self.keystore.write().map_err(|_| VaultError::LockPoisoned)?;
+        let mut db = self.db.write().map_err(|_| VaultError::LockPoisoned)?;
 
         let key = match keystore.take_key(vault_id) {
             Some(key) => key,
-            None => return false,
+            None => return Ok(false),
         };
         db.garbage_collect_vault(&key, vault_id);
         keystore
             .get_or_insert_key(vault_id, key)
             .expect("Inserting key into vault failed");
-        true
+        Ok(true)
     }
 }
 
@@ -177,8 +164,7 @@ impl Client {
     ) -> Result<[ResolvedLocation; N], VaultError<FatalProcedureError>> {
         let mut ids: Vec<(Key<Provider>, VaultId, RecordId)> = Vec::with_capacity(N);
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let keystore = self.keystore.try_read().map_err(|e| e.to_string()).expect("");
+        let keystore = self.keystore.read().map_err(|_| VaultError::LockPoisoned)?;
 
         for location in locations {
             let (vault_id, record_id) = location.resolve();
@@ -197,8 +183,8 @@ impl Client {
     {
         let (vault_id, record_id) = location.resolve();
 
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let mut keystore = self.keystore.try_write().map_err(|e| e.to_string()).expect("");
+        let mut keystore = self.keystore.write().map_err(|_| VaultError::LockPoisoned)?;
+        let db = self.db.read().map_err(|_| VaultError::LockPoisoned)?;
 
         let key = keystore.take_key(vault_id).ok_or(VaultError::VaultNotFound(vault_id))?;
 
@@ -207,8 +193,6 @@ impl Client {
             ret = Some(f(guard)?);
             Ok(())
         };
-        // FIXME: THIS SHOULD RETURN AN ACTUAL ERROR!
-        let db = self.db.try_read().map_err(|e| e.to_string()).expect("");
 
         let res = db.get_guard(&key, vault_id, record_id, execute_procedure);
 

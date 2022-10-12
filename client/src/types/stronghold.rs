@@ -11,10 +11,39 @@ use engine::vault::ClientId;
 use std::{
     collections::{hash_map::Entry, HashMap},
     ops::Deref,
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use stronghold_utils::GuardDebug;
 use zeroize::Zeroize;
+
+/// Writes a single [`Client`] into snapshot
+/// We use a macro instead of a function so that locks on snapshot
+/// and clients are taken before and stay alive during the macro
+/// # Example
+macro_rules! write_with_clientid {
+    ($client_id:expr, $snapshot:expr, $clients:expr) => {{
+        let client = match ($clients).get(&($client_id)) {
+            Some(client) => client,
+            None => return Err(ClientError::ClientDataNotPresent),
+        };
+
+        let mut keystore_guard = client.keystore.write()?;
+
+        let view = client.db.read()?;
+        let store = client.store.cache.read()?;
+
+        // we need some compatibility code here. Keyprovider stores encrypted vec
+        // by snapshot requires a mapping to Key<Provider>
+
+        let keystore = keystore_guard.get_data();
+
+        // This might be critical, as keystore gets copied into Boxed types, but still safe
+        // we also use cloned data, which might not be ideal.
+        ($snapshot)
+            .add_data(($client_id), (keystore, (*view).clone(), (*store).clone()))
+            .map_err(|e| ClientError::Inner(e.to_string()))?;
+    }};
+}
 
 /// The Stronghold is a secure storage for sensitive data. Secrets that are stored inside
 /// a Stronghold can never be read, but only be accessed via cryptographic procedures. Data inside
@@ -78,7 +107,8 @@ impl Stronghold {
         // load the snapshot from disk
         self.load_snapshot(keyprovider, snapshot_path)?;
 
-        let snapshot = self.snapshot.try_read()?;
+        let snapshot = self.snapshot.read()?;
+        let mut clients = self.clients.write()?;
 
         let client_state: ClientState = snapshot
             .get_state(client_id)
@@ -105,13 +135,13 @@ impl Stronghold {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
         let mut client = Client::default();
 
+        let snapshot = self.snapshot.read()?;
+        let mut clients = self.clients.write()?;
+
         // If a client has already been loaded returns an error
-        let mut clients = self.clients.try_write()?;
         if clients.contains_key(&client_id) {
             return Err(ClientError::ClientAlreadyLoaded(client_id));
         }
-
-        let snapshot = self.snapshot.try_read()?;
 
         if !snapshot.has_data(client_id) {
             return Err(ClientError::ClientDataNotPresent);
@@ -139,7 +169,7 @@ impl Stronghold {
         P: AsRef<[u8]>,
     {
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
-        let clients = self.clients.try_read()?;
+        let clients = self.clients.read()?;
         clients
             .get(&client_id)
             .cloned()
@@ -160,10 +190,10 @@ impl Stronghold {
     ///
     /// # Example
     pub fn purge_client(&self, client: Client) -> Result<(), ClientError> {
-        let mut clients = self.clients.try_write()?;
+        let mut snapshot = self.snapshot.write()?;
+        let mut clients = self.clients.write()?;
         clients.remove(client.id());
 
-        let mut snapshot = self.snapshot.try_write()?;
         snapshot
             .purge_client(*client.id())
             .map_err(|e| ClientError::Inner(e.to_string()))
@@ -174,7 +204,7 @@ impl Stronghold {
     ///
     /// # Example
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
-        let mut snapshot = self.snapshot.try_write()?;
+        let mut snapshot = self.snapshot.write()?;
 
         if !snapshot_path.exists() {
             let path = snapshot_path
@@ -199,15 +229,6 @@ impl Stronghold {
         Ok(())
     }
 
-    /// Returns a reference to the local [`Snapshot`]
-    ///
-    /// # Example
-    pub fn get_snapshot(&self) -> Result<RwLockWriteGuard<Snapshot>, ClientError> {
-        let snapshot = self.snapshot.try_write()?;
-
-        Ok(snapshot)
-    }
-
     /// Stores the key to write to the [`Snapshot`] at [`Location`]. This operation zeroizes the key
     /// after successful insertion
     pub fn store_snapshot_key_at_location(&self, key: KeyProvider, location: Location) -> Result<(), ClientError> {
@@ -216,12 +237,12 @@ impl Stronghold {
         let mut key_location = self.key_location.write().map_err(|e| ClientError::LockAcquireFailed)?;
         key_location.replace(location.clone());
 
-        let mut snapshot = self.get_snapshot()?;
         let mut kkey = [0u8; 32];
 
         let key = key.borrow();
         kkey.copy_from_slice(key.as_ref());
 
+        let mut snapshot = self.snapshot.write()?;
         snapshot.store_secret_key(kkey, location)?;
 
         Ok(())
@@ -241,7 +262,7 @@ impl Stronghold {
         };
 
         // insert client as ref into Strongholds client ref
-        let mut clients = self.clients.try_write()?;
+        let mut clients = self.clients.write()?;
         clients.insert(client_id, client.clone());
 
         Ok(client)
@@ -254,8 +275,6 @@ impl Stronghold {
         snapshot_path: &SnapshotPath,
         keyprovider: &KeyProvider,
     ) -> Result<(), ClientError> {
-        let clients = self.clients.try_read()?;
-
         if !snapshot_path.exists() {
             let path = snapshot_path.as_path().parent().ok_or_else(|| {
                 ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
@@ -267,14 +286,14 @@ impl Stronghold {
             }
         }
 
+        let mut snapshot = self.snapshot.write()?;
+        let clients = self.clients.read()?;
+
         let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
-        drop(clients);
 
         for client_id in ids {
-            self.write(client_id)?;
+            write_with_clientid!(client_id, snapshot, clients);
         }
-
-        let snapshot = self.snapshot.try_read()?;
 
         // CRITICAL SECTION
         let buffer = keyprovider
@@ -294,8 +313,6 @@ impl Stronghold {
     ///
     /// # Example
     pub fn commit(&self, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
-        let clients = self.clients.try_read()?;
-
         if !snapshot_path.exists() {
             let path = snapshot_path.as_path().parent().ok_or_else(|| {
                 ClientError::SnapshotFileMissing("Parent directory of snapshot file does not exist".to_string())
@@ -307,14 +324,13 @@ impl Stronghold {
             }
         }
 
+        let mut snapshot = self.snapshot.write()?;
+        let clients = self.clients.read()?;
         let ids: Vec<ClientId> = clients.iter().map(|(id, _)| *id).collect();
-        drop(clients);
 
         for client_id in ids {
-            self.write(client_id)?;
+            write_with_clientid!(client_id, snapshot, clients);
         }
-
-        let snapshot = self.snapshot.try_read()?;
 
         // CRITICAL SECTION
         let loc = self.key_location.read().map_err(|_| ClientError::LockAcquireFailed)?;
@@ -338,54 +354,51 @@ impl Stronghold {
     where
         P: AsRef<[u8]>,
     {
+        let mut snapshot = self.snapshot.write()?;
+        let clients = self.clients.read()?;
+
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
-        self.write(client_id)
-    }
-
-    /// Writes a single [`Client`] into snapshot
-    ///
-    /// # Example
-    fn write(&self, client_id: ClientId) -> Result<(), ClientError> {
-        let mut snapshot = self.snapshot.try_write()?;
-        let clients = self.clients.try_read()?;
-
-        let client = match clients.get(&client_id) {
-            Some(client) => client,
-            None => return Err(ClientError::ClientDataNotPresent),
-        };
-
-        let mut keystore_guard = client.keystore.try_write()?;
-
-        let view = client.db.try_read()?;
-        let store = client.store.cache.try_read()?;
-
-        // we need some compatibility code here. Keyprovider stores encrypted vec
-        // by snapshot requires a mapping to Key<Provider>
-
-        let keystore = keystore_guard.get_data();
-        drop(keystore_guard);
-
-        // This might be critical, as keystore gets copied into Boxed types, but still safe
-        // we also use cloned data, which might not be ideal.
-        snapshot
-            .add_data(client_id, (keystore, (*view).clone(), (*store).clone()))
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-
+        write_with_clientid!(client_id, snapshot, clients);
         Ok(())
     }
+
+    // fn write(&self, client_id: ClientId, mut snapshot: RwLockWriteGuard<Snapshot>, clients:
+    // RwLockReadGuard<HashMap<ClientId, Client>>) -> Result<(RwLockWriteGuard<Snapshot>,
+    // RwLockReadGuard<HashMap<ClientId, Client>>), ClientError> {     let client = match clients.get(&client_id) {
+    //         Some(client) => client,
+    //         None => return Err(ClientError::ClientDataNotPresent),
+    //     };
+
+    //     let mut keystore_guard = client.keystore.try_write()?;
+
+    //     let view = client.db.try_read()?;
+    //     let store = client.store.cache.try_read()?;
+
+    //     // we need some compatibility code here. Keyprovider stores encrypted vec
+    //     // by snapshot requires a mapping to Key<Provider>
+
+    //     let keystore = keystore_guard.get_data();
+
+    //     // This might be critical, as keystore gets copied into Boxed types, but still safe
+    //     // we also use cloned data, which might not be ideal.
+    //     snapshot
+    //         .add_data(client_id, (keystore, (*view).clone(), (*store).clone()))
+    //         .map_err(|e| ClientError::Inner(e.to_string()))?;
+
+    //     Ok((snapshot, clients))
+    // }
 
     /// Calling this function clears the runtime state of all [`Client`]s and the in-memory
     /// [`Snapshot`] state. This does not affect the persisted [`Client`] state inside a
     /// snapshot file. Use [`Self::load_client_from_snapshot`] to reload any [`Client`] and
     /// [`Snapshot`] state
     pub fn clear(&self) -> Result<(), ClientError> {
-        let mut clients = self.clients.try_write()?;
+        self.snapshot.write()?.clear()?;
+        let mut clients = self.clients.write()?;
+        self.store.clear()?;
         for (_, client) in clients.drain() {
             client.clear()?;
         }
-        self.snapshot.try_write()?.clear()?;
-        self.store.clear()?;
-
         Ok(())
     }
 }
