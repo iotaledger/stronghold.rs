@@ -38,7 +38,6 @@ hkdf = { version = "0.12" }
 bincode = { version = "1.3" }
 pin-project = { version = "1.0.10", optional = true }
 futures = { version = "0.3.21", optional = true }
-rlu = { package = "stronghold-rlu", path = "../rlu/", version = "0.4.0" }
 engine = { package = "stronghold_engine", path = "../engine", version = "0.5.3" }
 stronghold_utils = { package = "stronghold-utils", path = "../utils/", version = "0.4.1" }
 stronghold_derive = { package = "stronghold-derive", path = "../derive", version = "0.3.1" }

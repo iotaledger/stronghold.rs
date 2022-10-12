@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{var::InnerVarCopy, BusyBreaker, InnerVar, RLULog, RLUVar, Read, ReadGuard, Write, WriteGuard};
+use crate::rlu::{var::InnerVarCopy, BusyBreaker, InnerVar, RLULog, RLUVar, Read, ReadGuard, Write, WriteGuard};
 
 /// Global return type
 pub type Result<T> = core::result::Result<T, TransactionError>;
@@ -86,8 +86,8 @@ where
 }
 
 /// Additional configuration for [`RLU`]. The internal execution
-/// can be either [`crate::RLUStrategy::Abort`], if operation failed, [`crate::RLUStrategy::Retry`] again
-/// an unlimited number of times, or [`crate::RLUStrategy::RetryWithBreaker`] with a busy breaker.
+/// can be either [`crate::rlu::RLUStrategy::Abort`], if operation failed, [`crate::rlu::RLUStrategy::Retry`] again
+/// an unlimited number of times, or [`crate::rlu::RLUStrategy::RetryWithBreaker`] with a busy breaker.
 #[derive(Clone)]
 pub enum RLUStrategy {
     /// Abort execution on failure

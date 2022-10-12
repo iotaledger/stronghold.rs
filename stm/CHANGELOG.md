@@ -1,16 +1,5 @@
 # Changelog
 
-## \[0.4.5]
-
-- upgrade dev-dependency for criterion
-  - [f41e5dd7](https://www.github.com/iotaledger/stronghold.rs/commit/f41e5dd7b56bba30cf5e25ed9475cddef6f8b8e3) version: bump dev dependency of criterion to 0.4.0 on 2022-09-13
-
-## \[0.4.4]
-
-- bump dependency on crypto.rs to latest version
-  - [5aee6c28](https://www.github.com/iotaledger/stronghold.rs/commit/5aee6c283a92eeee9f738b421f3c24f9e726ca7f) dep: upgrade dependency on crypto.rs on 2022-09-09
-  - [1dc143d0](https://www.github.com/iotaledger/stronghold.rs/commit/1dc143d0e0373bd43ad21cf76985c0e1ca4989fd) feat: remove stronghold-native from version updates on 2022-09-09
-
 ## \[0.4.3]
 
 - split random byte string into fixed and variable sized
