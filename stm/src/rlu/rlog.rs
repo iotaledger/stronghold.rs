@@ -56,11 +56,11 @@ where
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Option<T>> {
-        self.alloc.iter()
+        (&self.alloc).iter()
     }
 
     pub fn drain(&mut self) -> impl Iterator<Item = Option<T>> + '_ {
-        self.alloc.iter_mut().map(|n| n.take())
+        (&mut self.alloc).iter_mut().map(|n| n.take())
     }
 }
 
@@ -167,7 +167,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::RLULog;
+    use crate::rlu::RLULog;
     use rand_utils::random::{string, usize};
 
     fn rand_string() -> String {

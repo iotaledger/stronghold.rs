@@ -39,8 +39,8 @@ module.exports = {
             },
             {
                 type: 'doc',
-                id: 'explanations/transactional-concurrency',
-                label: 'Transactional Memory and Transactional Concurrency'
+                id: 'explanations/concurrency',
+                label: 'Concurrency in Stronghold'
             },
             {
                 type: 'doc',

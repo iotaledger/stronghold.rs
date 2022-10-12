@@ -1,6 +1,6 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-use crate::{var::InnerVarCopy, InnerVar, RluContext};
+use crate::rlu::{var::InnerVarCopy, InnerVar, RluContext};
 use log::*;
 use std::{
     ops::{Deref, DerefMut},
@@ -99,7 +99,9 @@ where
                         Some(locked_id) => locked_id.load(Ordering::SeqCst),
                         None => 0,
                     };
+
                     let data = m.deref();
+
                     let copy = InnerVarCopy {
                         locked_thread_id: Some(AtomicUsize::new(locked_id)),
                         data: Arc::new(RwLock::new(data.clone())),

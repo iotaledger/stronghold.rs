@@ -5,14 +5,14 @@
 use lazy_static::__Deref;
 use log::*;
 use rand_utils::random as rnd;
-use rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
 use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{atomic::AtomicUsize, Arc, Mutex, RwLock},
     time::Duration,
 };
-use stronghold_rlu as rlu;
+use stm::rlu::{BusyBreaker, RLUStrategy, RLUVar, Read, RluContext, TransactionError, Write, RLU};
+use stronghold_stm as stm;
 
 /// This function will run before any of the tests
 // #[ignore]
@@ -25,6 +25,7 @@ use stronghold_rlu as rlu;
 //         .try_init();
 // }
 
+#[ignore]
 #[test]
 fn reference_impl() {
     let mut map = HashMap::new();
@@ -59,6 +60,7 @@ fn reference_impl() {
         .is_ok());
 }
 
+#[ignore]
 #[test]
 fn reference_concurrent() {
     let map = HashMap::new();
@@ -89,7 +91,7 @@ fn reference_concurrent() {
         });
 
         // this effectively serializes the write / read operation, which is not intended
-        std::thread::sleep(Duration::from_millis(10));
+        // std::thread::sleep(Duration::from_millis(10));
 
         let j1 = std::thread::spawn(move || {
             r2.execute(|ctx| {
@@ -132,6 +134,7 @@ fn reference_concurrent() {
     }
 }
 
+#[ignore]
 #[test]
 fn test_multiple_readers_single_writer() {
     const EXPECTED: usize = 15usize;

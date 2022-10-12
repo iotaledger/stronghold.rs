@@ -6,7 +6,7 @@
 //! The most basic abstraction for implementing types of RLU consists of two traits [`Read`] and [`Write`].
 //! Either provide a function to `get()` or `get_mut` of data respectively.
 
-use crate::{RLUVar, ReadGuard, Result, WriteGuard};
+use crate::rlu::{RLUVar, ReadGuard, Result, WriteGuard};
 
 /// [`Read<T>`] provides immutable read access to the synchronized data
 /// via the current managing context.
@@ -24,7 +24,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use stronghold_rlu::*;
+    /// use stronghold_stm::rlu::*;
     ///
     /// // create simple value, that should be managed by RLU
     /// let value = 6usize;
@@ -62,7 +62,7 @@ where
     ///
     /// # Example
     /// ```
-    /// use stronghold_rlu::*;
+    /// use stronghold_stm::rlu::*;
     ///
     /// // create simple value, that should be managed by RLU
     /// let value = 6usize;
