@@ -92,6 +92,6 @@ The biggest issue is that those locks are generally difficult to use correctly a
 
 One of the most problematic situations with locks is a __deadlock__.
 Deadlocks happen when the whole system cannot advance anymore because different threads require some locks to advance their computation, but these locks are kept and blocked by other threads in a similar situation.
-Models like the [actor system](the-actor-model) or the [STM](#software-transactional-memory-stm-with-transactional-locking-2-tl2) use locks as little as possible.
+Models like the [actor system](#the-actor-model) or the [STM](#software-transactional-memory-stm-with-transactional-locking-2-tl2) use locks as little as possible.
 
 In our case, Stronghold’s API is relatively straightforward, so we're exploring the idea of using basic locks instead of a resource-heavy concurrent framework.
