@@ -94,12 +94,10 @@
         "stronghold-derive"
       ]
     },
-    "stronghold-rlu": {
-      "path": "./rlu/",
+    "stronghold-stm": {
+      "path": "./stm/",
       "manager": "rust",
-      "dependencies": [
-        "stronghold-engine"
-      ]
+      "dependencies": []
     },
     "iota-stronghold": {
       "path": "./client/",
