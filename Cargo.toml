@@ -6,7 +6,7 @@ members = [
   "client",
   "utils",
   "derive",
-  "stm"
+  # "stm"
 ]
 exclude = [
   "products/commandline",
