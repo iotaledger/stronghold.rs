@@ -153,6 +153,10 @@ module.exports = {
                     type: 'doc',
                     id: 'reference/specs/engineering',
                     label: 'Engineering'
+                }, {
+                    type: 'doc',
+                    id: 'reference/specs/threat-modeling',
+                    label: 'Threat Modeling'
                 },]
             },]
     },
