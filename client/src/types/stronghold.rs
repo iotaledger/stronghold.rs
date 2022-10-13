@@ -44,6 +44,35 @@ macro_rules! write_with_clientid {
     }};
 }
 
+/// Load a snapshot from a path 
+/// We use a macro instead of a function due to locks lifetime
+/// ending at the end of a function
+/// # Example
+macro_rules! load_snapshot {
+    ($snapshot:expr, $snapshot_path:expr, $keyprovider:expr) => {{
+        {
+            if !($snapshot_path).exists() {
+                let path = ($snapshot_path)
+                    .as_path()
+                    .to_str()
+                    .ok_or_else(|| ClientError::Inner("Cannot display path as string".to_string()))?;
+
+                return Err(ClientError::SnapshotFileMissing(path.to_string()));
+            }
+
+            // CRITICAL SECTION
+            let buffer = ($keyprovider)
+                .try_unlock()
+                .map_err(|e| ClientError::Inner(format!("{:?}", e)))?;
+            let buffer_ref = buffer.borrow().deref().try_into().unwrap();
+
+            *($snapshot) = Snapshot::read_from_snapshot(($snapshot_path), buffer_ref, None)
+                .map_err(|e| ClientError::Inner(e.to_string()))?;
+            // END CRITICAL SECTION
+        }
+    }};
+}
+
 /// The Stronghold is a secure storage for sensitive data. Secrets that are stored inside
 /// a Stronghold can never be read, but only be accessed via cryptographic procedures. Data inside
 /// a Stronghold is heavily protected by the `Runtime` by either being encrypted at rest, having
@@ -97,11 +126,10 @@ impl Stronghold {
         let mut client = Client::default();
         let client_id = ClientId::load_from_path(client_path.as_ref(), client_path.as_ref());
 
-        // load the snapshot from disk
-        self.load_snapshot(keyprovider, snapshot_path)?;
-
-        let snapshot = self.snapshot.read()?;
+        let mut snapshot = self.snapshot.write()?;
         let mut clients = self.clients.write()?;
+
+        load_snapshot!(snapshot, snapshot_path, keyprovider);
 
         // If a client has already been loaded returns an error
         if clients.contains_key(&client_id) {
@@ -111,7 +139,6 @@ impl Stronghold {
         let client_state: ClientState = snapshot
             .get_state(client_id)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
 
         // Load the client state
         client.restore(client_state, client_id)?;
@@ -148,7 +175,6 @@ impl Stronghold {
         let client_state: ClientState = snapshot
             .get_state(client_id)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
 
         // Load the client state
         client.restore(client_state, client_id)?;
@@ -203,27 +229,7 @@ impl Stronghold {
     /// # Example
     pub fn load_snapshot(&self, keyprovider: &KeyProvider, snapshot_path: &SnapshotPath) -> Result<(), ClientError> {
         let mut snapshot = self.snapshot.write()?;
-
-        if !snapshot_path.exists() {
-            let path = snapshot_path
-                .as_path()
-                .to_str()
-                .ok_or_else(|| ClientError::Inner("Cannot display path as string".to_string()))?;
-
-            return Err(ClientError::SnapshotFileMissing(path.to_string()));
-        }
-
-        // CRITICAL SECTION
-        let buffer = keyprovider
-            .try_unlock()
-            .map_err(|e| ClientError::Inner(format!("{:?}", e)))?;
-        let buffer_ref = buffer.borrow().deref().try_into().unwrap();
-
-        *snapshot = Snapshot::read_from_snapshot(snapshot_path, buffer_ref, None)
-            .map_err(|e| ClientError::Inner(e.to_string()))?;
-        drop(snapshot);
-        // END CRITICAL SECTION
-
+        load_snapshot!(snapshot, snapshot_path, keyprovider);
         Ok(())
     }
 
