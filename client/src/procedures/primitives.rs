@@ -251,7 +251,7 @@ impl Procedure for RevokeData {
     fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         runner.revoke_data(&self.location)?;
         if self.should_gc {
-            runner.garbage_collect(self.location.resolve().0);
+            runner.garbage_collect(self.location.resolve().0)?;
         }
         Ok(())
     }
@@ -268,7 +268,7 @@ impl Procedure for GarbageCollect {
 
     fn execute<R: Runner>(self, runner: &R) -> Result<Self::Output, ProcedureError> {
         let vault_id = derive_vault_id(self.vault_path);
-        runner.garbage_collect(vault_id);
+        runner.garbage_collect(vault_id)?;
         Ok(())
     }
 }

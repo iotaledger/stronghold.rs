@@ -56,7 +56,7 @@ impl Store {
         value: Vec<u8>,
         lifetime: Option<Duration>,
     ) -> Result<Option<Vec<u8>>, ClientError> {
-        let mut guard = self.cache.try_write()?;
+        let mut guard = self.cache.write()?;
         Ok(guard.insert(key.to_vec(), value, lifetime))
     }
 
@@ -74,7 +74,7 @@ impl Store {
     /// assert!(store.get(&key).unwrap().is_some());
     /// ```
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
-        let guard = self.cache.try_read().map_err(|_| ClientError::LockAcquireFailed)?;
+        let guard = self.cache.read()?;
 
         // Problem: The returned rwread guard is local to this function, hence we can't return a borrowed ref
         // to the inner value. we could return the guard itself, but would rely on the user to deref the rwguard
@@ -100,7 +100,7 @@ impl Store {
     ///     .is_none());
     /// ```
     pub fn delete(&self, key: &[u8]) -> Result<Option<Vec<u8>>, ClientError> {
-        let mut guard = self.cache.try_write()?;
+        let mut guard = self.cache.write()?;
         Ok(guard.remove(&key.to_vec()))
     }
 
@@ -116,7 +116,7 @@ impl Store {
     /// assert!(store.contains_key(&key).unwrap());
     /// ```
     pub fn contains_key(&self, key: &[u8]) -> Result<bool, ClientError> {
-        let guard = self.cache.try_read()?;
+        let guard = self.cache.read()?;
         Ok(guard.get(&key.to_vec()).is_some())
     }
 
@@ -132,7 +132,7 @@ impl Store {
     /// store.reload(cache);
     /// ```
     pub fn reload(&self, cache: Cache<Vec<u8>, Vec<u8>>) -> Result<(), ClientError> {
-        let mut inner = self.cache.try_write()?;
+        let mut inner = self.cache.write()?;
         *inner = cache;
         Ok(())
     }
@@ -155,13 +155,13 @@ impl Store {
     /// assert_eq!(actual, expected);
     /// ```
     pub fn keys(&self) -> Result<Vec<Vec<u8>>, ClientError> {
-        let inner = self.cache.try_read()?;
+        let inner = self.cache.read()?;
         Ok(inner.keys())
     }
 
     /// Clear the [`Store`]
     pub fn clear(&self) -> Result<(), ClientError> {
-        self.cache.try_write()?.clear();
+        self.cache.write()?.clear();
         Ok(())
     }
 }

@@ -1,7 +1,12 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{any::Any, convert::Infallible, fmt::Debug, sync::TryLockError};
+use std::{
+    any::Any,
+    convert::Infallible,
+    fmt::Debug,
+    sync::{PoisonError, TryLockError},
+};
 
 use engine::{
     snapshot::{ReadError as EngineReadError, WriteError as EngineWriteError},
@@ -60,6 +65,12 @@ pub enum ClientError {
 
 impl<T> From<TryLockError<T>> for ClientError {
     fn from(_: TryLockError<T>) -> Self {
+        ClientError::LockAcquireFailed
+    }
+}
+
+impl<T> From<PoisonError<T>> for ClientError {
+    fn from(_: PoisonError<T>) -> Self {
         ClientError::LockAcquireFailed
     }
 }

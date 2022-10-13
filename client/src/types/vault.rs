@@ -62,7 +62,7 @@ impl ClientVault {
     ///
     /// # Example
     pub fn cleanup(&self) -> Result<bool, ClientError> {
-        let result = self.client.garbage_collect(self.id());
+        let result = self.client.garbage_collect(self.id())?;
 
         Ok(result)
     }

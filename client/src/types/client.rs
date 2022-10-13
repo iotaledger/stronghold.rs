@@ -1,10 +1,5 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
-
-// This overrides clippy's warning to hold a non-async lock across await points
-// and should be removed as soon as possible.
-#![allow(clippy::await_holding_lock)]
-
 use super::{location, snapshot};
 
 use crate::{
@@ -84,7 +79,7 @@ impl Client {
         P: AsRef<[u8]>,
     {
         let vault_id = derive_vault_id(vault_path);
-        let keystore = self.keystore.try_read()?;
+        let keystore = self.keystore.read()?;
 
         Ok(keystore.vault_exists(vault_id))
     }
@@ -95,7 +90,7 @@ impl Client {
     /// # Example
     pub fn record_exists(&self, location: &Location) -> Result<bool, ClientError> {
         let (vault_id, record_id) = location.resolve();
-        let db = self.db.try_read()?;
+        let db = self.db.read()?;
         let contains_record = db.contains_record(vault_id, record_id);
         Ok(contains_record)
     }
@@ -103,6 +98,9 @@ impl Client {
     /// Synchronize two vaults of the client so that records are copied from `source` to `target`.
     /// If `select_records` is `Some` only the specified records are copied, else a full sync
     /// is performed. If a record already exists at the target, the [`MergePolicy`] applies.
+    ///
+    /// # Warning
+    /// This function is susceptible to data race, use it with caution
     ///
     /// # Example
     pub fn sync_vaults(
@@ -126,8 +124,9 @@ impl Client {
         let hierarchy = self.get_hierarchy(config.select_vaults.clone())?;
         let diff = self.get_diff(hierarchy, &config)?;
         let exported = self.export_entries(diff)?;
-        let mut db = self.db.try_write()?;
-        let mut key_store = self.keystore.try_write()?;
+
+        let mut key_store = self.keystore.write()?;
+        let mut db = self.db.write()?;
 
         for (vid, records) in exported {
             let mapped_vid = config.map_vaults.remove(&vid).unwrap_or(vid);
@@ -141,6 +140,8 @@ impl Client {
     }
 
     /// Synchronize the client with another one so that records are copied from `other` to `self`.
+    /// # Warning
+    /// This function is susceptible to data race, use it with caution
     ///
     /// # Example
     pub fn sync_with(&self, other: &Self, config: SyncClientsConfig) -> Result<(), ClientError> {
@@ -160,16 +161,14 @@ impl Client {
             let mapped_vid = config.map_vaults.get(&vid).copied().unwrap_or(vid);
             let old_key = other
                 .keystore
-                .try_read()?
+                .read()?
                 .get_key(vid)
                 .ok_or_else(|| ClientError::Inner(format!("Missing Key for vault {:?}", vid)))?;
-            let new_key = self
-                .keystore
-                .try_write()?
-                .get_or_insert_key(mapped_vid, Key::random())?;
-            self.db
-                .try_write()?
-                .import_records(&old_key, &new_key, mapped_vid, records)?
+
+            let mut keystore = self.keystore.write()?;
+            let mut db = self.db.write()?;
+            let new_key = keystore.get_or_insert_key(mapped_vid, Key::random())?;
+            db.import_records(&old_key, &new_key, mapped_vid, records)?
         }
         Ok(())
     }
@@ -190,24 +189,18 @@ impl Client {
         self.id = id;
 
         // reload keystore
-        let mut keystore = self.keystore.try_write()?;
+        let mut keystore = self.keystore.write()?;
+        let mut view = self.db.write()?;
+        let mut store = self.store.cache.write()?;
+
         let mut new_keystore = KeyStore::<Provider>::default();
         new_keystore
             .rebuild_keystore(keys)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
         *keystore = new_keystore;
-        drop(keystore);
-
-        // reload db
-        let mut view = self.db.try_write()?;
         *view = db;
-        drop(view);
-
-        // reload store
-        let mut store = self.store.cache.try_write()?;
         *store = st;
-        drop(store);
 
         Ok(())
     }
@@ -215,13 +208,12 @@ impl Client {
     /// Clears the inner [`Client`] state. This functions should not be called directly
     /// but by calling the function of same name on [`Stronghold`]
     pub(crate) fn clear(&self) -> Result<(), ClientError> {
-        let mut view = self.db.try_write()?;
+        let mut ks = self.keystore.write()?;
+        let mut view = self.db.write()?;
+        let mut store = self.store.cache.write()?;
+
         view.clear();
-
-        let mut store = self.store.cache.try_write()?;
         store.clear();
-
-        let mut ks = self.keystore.try_write()?;
         ks.clear_keys();
 
         Ok(())
@@ -273,12 +265,12 @@ impl<'a> SyncClients<'a> for Client {
     type Db = RwLockReadGuard<'a, DbView<Provider>>;
 
     fn get_db(&'a self) -> Result<Self::Db, ClientError> {
-        let db = self.db.try_read()?;
+        let db = self.db.read()?;
         Ok(db)
     }
 
     fn get_key_provider(&'a self) -> Result<KeyProvider<'a>, ClientError> {
-        let ks = self.keystore.try_read()?;
+        let ks = self.keystore.read()?;
         Ok(KeyProvider::KeyStore(ks))
     }
 }

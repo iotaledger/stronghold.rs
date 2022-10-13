@@ -26,6 +26,9 @@ pub enum VaultError<TProvErr: Debug, TProcErr: Debug = Infallible> {
 
     #[error("procedure error `{0:?}`")]
     Procedure(TProcErr),
+
+    #[error("Lock is poisoned")]
+    LockPoisoned,
 }
 
 #[derive(DeriveError, Debug)]
@@ -41,6 +44,9 @@ pub enum RecordError<TProvErr: Debug> {
 
     #[error("no record with `{0:?}`")]
     RecordNotFound(ChainId),
+
+    #[error("Lock is poisoned")]
+    LockPoisoned,
 }
 
 /// A view over the data inside of a collection of [`Vault`] types.
