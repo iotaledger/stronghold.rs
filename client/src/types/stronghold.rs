@@ -44,7 +44,7 @@ macro_rules! write_with_clientid {
     }};
 }
 
-/// Load a snapshot from a path 
+/// Load a snapshot from a path
 /// We use a macro instead of a function due to locks lifetime
 /// ending at the end of a function
 /// # Example

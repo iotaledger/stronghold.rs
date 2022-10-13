@@ -1,3 +1,6 @@
+// Copyright 2020-2022 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use iota_stronghold::{
     procedures::{GenerateKey, KeyType, PublicKey, StrongholdProcedure},
     KeyProvider, Location, SnapshotPath, Stronghold,
@@ -52,8 +55,7 @@ fn test_stronghold_multithreaded_safety() {
 //   - Save the client state into a snapshot file
 // - Reset the stronghold instance
 // - Load client from snapshot
-// - Check that all the secrets that were generated concurrently before
-//   are present in the saved state
+// - Check that all the secrets that were generated concurrently before are present in the saved state
 #[test]
 fn test_full_stronghold_access_multithreaded() {
     const NB_INPUTS: usize = 100;
