@@ -2582,6 +2582,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/katex@npm:^0.11.0":
+  version: 0.11.1
+  resolution: "@types/katex@npm:0.11.1"
+  checksum: 1e51988b4b386a1b6fa8e22826ab4705bf3e6c9fb03461f2c91d28cb31095232bdeff491069ac9bc74bc4c26110be6a11a41e12ca77a2e4169f3afd8cd349355
+  languageName: node
+  linkType: hard
+
 "@types/keyv@npm:^3.1.1":
   version: 3.1.4
   resolution: "@types/keyv@npm:3.1.4"
@@ -4139,7 +4146,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"commander@npm:^8.3.0":
+"commander@npm:^8.0.0, commander@npm:^8.3.0":
   version: 8.3.0
   resolution: "commander@npm:8.3.0"
   checksum: 0f82321821fc27b83bd409510bb9deeebcfa799ff0bf5d102128b500b7af22872c0c92cb6a0ebc5a4cf19c6b550fba9cedfa7329d18c6442a625f851377bacf0
@@ -5948,6 +5955,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"hast-util-is-element@npm:1.1.0, hast-util-is-element@npm:^1.0.0":
+  version: 1.1.0
+  resolution: "hast-util-is-element@npm:1.1.0"
+  checksum: 30fad3f65e7ab2f0efd5db9e7344d0820b70971988dfe79f62d8447598b2a1ce8a59cd4bfc05ae0d9a1c451b9b53cbe1023743d7eac764d64720b6b73475f62f
+  languageName: node
+  linkType: hard
+
 "hast-util-parse-selector@npm:^2.0.0":
   version: 2.2.5
   resolution: "hast-util-parse-selector@npm:2.2.5"
@@ -5983,6 +5997,17 @@ __metadata:
     xtend: ^4.0.0
     zwitch: ^1.0.0
   checksum: 91a36244e37df1d63c8b7e865ab0c0a25bb7396155602be005cf71d95c348e709568f80e0f891681a3711d733ad896e70642dc41a05b574eddf2e07d285408a8
+  languageName: node
+  linkType: hard
+
+"hast-util-to-text@npm:^2.0.0":
+  version: 2.0.1
+  resolution: "hast-util-to-text@npm:2.0.1"
+  dependencies:
+    hast-util-is-element: ^1.0.0
+    repeat-string: ^1.0.0
+    unist-util-find-after: ^3.0.0
+  checksum: 4e7960b414b7a6b2f0180e4af416cd8ae3c7ba1531d7eaec7e6dc9509daf88308784bbf5b94885384dccc42abcb74cc6cc26755c76914d646f32aa6bc32ea34b
   languageName: node
   linkType: hard
 
@@ -6955,6 +6980,28 @@ __metadata:
     graceful-fs:
       optional: true
   checksum: 7af3b8e1ac8fe7f1eccc6263c6ca14e1966fcbc74b618d3c78a0a2075579487547b94f72b7a1114e844a1e15bb00d440e5d1720bfc4612d790a6f285d5ea8354
+  languageName: node
+  linkType: hard
+
+"katex@npm:^0.13.0":
+  version: 0.13.24
+  resolution: "katex@npm:0.13.24"
+  dependencies:
+    commander: ^8.0.0
+  bin:
+    katex: cli.js
+  checksum: 1b7c8295867073d0db4f6fb41ef1c0e3418b8e23924ff61b446b36134cb74cdadc7242dfbfb922d9c32f0b15eda6160a08cd30948c4e78141966ca2991a1726b
+  languageName: node
+  linkType: hard
+
+"katex@npm:^0.16.2":
+  version: 0.16.2
+  resolution: "katex@npm:0.16.2"
+  dependencies:
+    commander: ^8.0.0
+  bin:
+    katex: cli.js
+  checksum: c0031c2e1287bb13102d733dcc3dada50752cf0d45b48a536c09937633ce8d6b438d18cbf382e64d4d237b957d8b3a8bd6414845720c7a8e1079c352b4ebf487
   languageName: node
   linkType: hard
 
@@ -9355,6 +9402,20 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   languageName: node
   linkType: hard
 
+"rehype-katex@npm:5":
+  version: 5.0.0
+  resolution: "rehype-katex@npm:5.0.0"
+  dependencies:
+    "@types/katex": ^0.11.0
+    hast-util-to-text: ^2.0.0
+    katex: ^0.13.0
+    rehype-parse: ^7.0.0
+    unified: ^9.0.0
+    unist-util-visit: ^2.0.0
+  checksum: b20e24c5326a718581619761057a30d03615519eccd0693ada2c7c710064dceaf08f038ae3a1131550f1f7c47ca54a254ba8e45547da384867e956ceca73f6bf
+  languageName: node
+  linkType: hard
+
 "rehype-parse@npm:^6.0.2":
   version: 6.0.2
   resolution: "rehype-parse@npm:6.0.2"
@@ -9363,6 +9424,16 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
     parse5: ^5.0.0
     xtend: ^4.0.0
   checksum: f9afca7a8038a402d45d2f6eab31b2ce09100c195007c0bf9340b32e31585c6898f1cf0f4e088c08c5e2adade0fbb59e490ec6291e16751b12bd24d7c1e48ba9
+  languageName: node
+  linkType: hard
+
+"rehype-parse@npm:^7.0.0":
+  version: 7.0.1
+  resolution: "rehype-parse@npm:7.0.1"
+  dependencies:
+    hast-util-from-parse5: ^6.0.0
+    parse5: ^6.0.0
+  checksum: c3c914aa9281853290eff6b09e0bed6843934e788b957e25219e91f0bf244a183d2f5e042c7d21543276571f9b49a6bae90f4640b8f885f2773392ffa57baf4b
   languageName: node
   linkType: hard
 
@@ -9418,6 +9489,13 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   dependencies:
     unist-util-visit: 2.0.2
   checksum: d6f69c1a6d9547ac78c8a8b3805bf6547007709b37304250ec35947cdfb214d9d38c52e55deae8f8748c2ae04d8e67d04736370d4460cf95aad919d2f27460f2
+  languageName: node
+  linkType: hard
+
+"remark-math@npm:3":
+  version: 3.0.1
+  resolution: "remark-math@npm:3.0.1"
+  checksum: 690256f27f2b42dadcf41806fec443056e09592454622ae77f03b1a8474e8c83cc7610e694be7e17de92c96cc272c61209e59a6e7a24e3af6ede47d48b185ccd
   languageName: node
   linkType: hard
 
@@ -9493,7 +9571,7 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   languageName: node
   linkType: hard
 
-"repeat-string@npm:^1.5.4":
+"repeat-string@npm:^1.0.0, repeat-string@npm:^1.5.4":
   version: 1.6.1
   resolution: "repeat-string@npm:1.6.1"
   checksum: 1b809fc6db97decdc68f5b12c4d1a671c8e3f65ec4a40c238bc5200e44e85bcc52a54f78268ab9c29fcf5fe4f1343e805420056d1f30fa9a9ee4c2d93e3cc6c0
@@ -10357,9 +10435,13 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   resolution: "stronghold@workspace:."
   dependencies:
     "@iota-community/iota-wiki-cli": "iota-community/iota-wiki-cli#v2"
+    hast-util-is-element: 1.1.0
+    katex: ^0.16.2
     raw-loader: ^4.0.2
+    rehype-katex: 5
     remark-code-import: ^0.3.0
     remark-import-partial: ^0.0.2
+    remark-math: 3
     remark-remove-comments: ^0.2.0
   languageName: unknown
   linkType: soft
@@ -10796,6 +10878,20 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   languageName: node
   linkType: hard
 
+"unified@npm:^9.0.0":
+  version: 9.2.2
+  resolution: "unified@npm:9.2.2"
+  dependencies:
+    bail: ^1.0.0
+    extend: ^3.0.0
+    is-buffer: ^2.0.0
+    is-plain-obj: ^2.0.0
+    trough: ^1.0.0
+    vfile: ^4.0.0
+  checksum: 7c24461be7de4145939739ce50d18227c5fbdf9b3bc5a29dabb1ce26dd3e8bd4a1c385865f6f825f3b49230953ee8b591f23beab3bb3643e3e9dc37aa8a089d5
+  languageName: node
+  linkType: hard
+
 "unique-filename@npm:^1.1.1":
   version: 1.1.1
   resolution: "unique-filename@npm:1.1.1"
@@ -10827,6 +10923,15 @@ plugin-image-zoom@flexanalytics/plugin-image-zoom:
   version: 2.0.3
   resolution: "unist-builder@npm:2.0.3"
   checksum: e946fdf77dbfc320feaece137ce4959ae2da6614abd1623bd39512dc741a9d5f313eb2ba79f8887d941365dccddec7fef4e953827475e392bf49b45336f597f6
+  languageName: node
+  linkType: hard
+
+"unist-util-find-after@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "unist-util-find-after@npm:3.0.0"
+  dependencies:
+    unist-util-is: ^4.0.0
+  checksum: daa9a28f6cdf533a72ce7ec4864dbe0f11f0fd3efd337b54c08a8a9a47cdc8d10a299cd984d7f512a57e97af012df052210a51aab7c9afd6b1e24da3b2d0a714
   languageName: node
   linkType: hard
 
