@@ -11,7 +11,7 @@ The following examples explain how Stronghold works. There are two sets of examp
     - [Create a snapshot](#create-a-snapshot)
     - [Read a Snapshot From Filesystem](#read-a-snapshot-from-filesystem)
     - [Recover a BIP39 Seed with a Mnemonic and Optional Passphrase](#recover-a-bip39-seed-with-a-mnemonic-and-optional-passphrase)
-2) [REPL example](#repl-example): A read-evaluate-print-loop for interactively working with a Stronghold instance
+2) [REPL example](#repl-example): A read-evaluate-print-loop for interactively working with a Stronghold instance.
 
 ---
 ## Command Line Interface
