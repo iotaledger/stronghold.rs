@@ -70,23 +70,25 @@ A circular dependency on the merged graph indicates the possibility of a deadloc
 3. $f_1$ is stuck, because $f_2$ is holding the lock $2$ that it requires.
 4. $f_2$ is stuck, because $f_2$ is holding the lock $1$ that it requires.
 
-
-
 #### Example: Deadlock with 3 functions
-![](assets/deadlock_3_functions.drawio.png)
 
-As the previous example there is a circular dependency of locks 
-between $f_1$, $f_2$ and $f_3$. 
-Example run resulting in a deadlock: 
-1. $f_1$ starts and takes the lock $1$
-2. $f_2$ starts and takes the lock $3$
-3. $f_3$ starts and takes the lock $2$
-4. $f_1$ is stuck because $f_3$ is holding the lock $2$ that it requires
-5. $f_2$ is stuck because $f_1$ is holding the lock $1$ that it requires
-6. $f_3$ is stuck because $f_2$ is holding the lock $3$ that it requires
+![Three function deadlock](assets/deadlock_3_functions.drawio.png)
 
-### Proof backing "_no circular dependency equals to no deadlock_"
-This is a proof on an example for simplicity. The reasoning used in the next part can be applied to any dependency graph of locks to prove the absence of deadlock when there are no circular dependency.
+In the [previous example](#model-of-functions-and-locks), we showed that there is a circular dependency of locks
+between $f_1$, $f_2$ and $f_3$.
+
+##### Example run resulting in a deadlock
+
+1. $f_1$ starts and takes the lock $1$.
+2. $f_2$ starts and takes the lock $3$.
+3. $f_3$ starts and takes the lock $2$.
+4. $f_1$ is stuck, because $f_3$ is holding the lock $2$ that it requires.
+5. $f_2$ is stuck, because $f_1$ is holding the lock $1$ that it requires.
+6. $f_3$ is stuck, because $f_2$ is holding the lock $3$ that it requires.
+
+### Proof backing "_no circular dependency equals no deadlock_"
+
+This is a proof on an example for simplicity. You can apply the reasoning in the next part to any dependency graph of locks to prove the absence of a deadlock when there are no circular dependencies.
 
 #### Example: no deadlock
 ![](assets/no_deadlock.drawio.png)
