@@ -125,6 +125,7 @@ Creating one dependency graph per function would be too complicated. Instead, we
 After the function name, we describe the locks that are acquired or the functions that they call.
 
 #### Functions of the `Stronghold` type
+
 - reset: 
 - store:
 - load_client_from_snapshot: 1 $\rightarrow$ 2 $\rightarrow$ `client`.restore() 
