@@ -15,11 +15,12 @@ This approach has the pros of being simple in theory and fast performance when d
 One of the worst cases would be to have a deadlock in Stronghold, which could block Stronghold and render it unusable.
 To avoid this situation, Stronghold uses deadlock analysis.
 
-## Requirements for multithreaded Strongold
-- Be able to clone the elements parts of the API and use them concurrently. Types reachable through the API that may be cloned and shared between threads 
-  - `Stronghold`
-  - `Client`
-  - `Store`
+### Requirements for a Multithreaded Stronghold
+
+- Be able to clone the element type parts of the API and use them concurrently. The following types ar reachable through the API and may be cloned and shared between threads:
+  - [Stronghold](../reference/structure/overview)
+  - [Client](../reference/structure/client.md)
+  - [Store](../references/enginge/store.md)
 - Use `Mutex` or `RWLock`
 
 ## Analysis of deadlocks
