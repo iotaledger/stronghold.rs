@@ -10,10 +10,10 @@ keywords:
 
 # Deadlock Analysis in Stronghold
 
-Current Stronghold use `RwLock` to enable [concurrency](./concurrency.md).
-This approach has the pros of being simple in theory and has fast performance when done right. The downside is that in practice it is usually really difficult to use locks in concurrent programming and you often encounter _data races_ or _deadlocks_ when using them.
-One of the worst case would to have a deadlock in Stronghold which would have the consequences to block Stronghold and not being able to use it.
-To avoid such situation a deadlock analysis has been used which we present here.
+Stronghold uses `RwLock` to enable [concurrency](./concurrency.md).
+This approach has the pros of being simple in theory and fast performance when done right. The downside is that, in practice, it is usually really difficult to use locks in concurrent programming, and you often encounter _data races_ or _deadlocks_ when using them.
+One of the worst cases would be to have a deadlock in Stronghold, which could block Stronghold and render it unusable.
+To avoid this situation, Stronghold uses deadlock analysis.
 
 ## Requirements for multithreaded Strongold
 - Be able to clone the elements parts of the API and use them concurrently. Types reachable through the API that may be cloned and shared between threads 
