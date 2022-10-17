@@ -150,7 +150,7 @@ You can start REPL from a terminal inside the root folder of Stronghold by runni
 cargo run --example repl
 ```
 
-### Avaiablable Commands
+### Available Commands
 
 You can use the following commands:
 
