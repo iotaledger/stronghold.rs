@@ -99,7 +99,8 @@ We will try to argue that there is indeed no possible deadlock in this configura
 The main idea linking absence of deadlock with absence of circular dependency is that any thread will always eventually get the lock it's waiting for. So, it will eventually terminate its computation thus releasing the locks it acquired.
 
 ##### Definition: deadlock-free lock
-We say a lock is deadlock-free when we can prove that it will never part of a deadlock and will always eventually be released.
+
+A lock is deadlock-free when we can prove that it will never be part of a deadlock and will always eventually be released.
 
 #### Proof of the absence of deadlock using the merged graph
 
