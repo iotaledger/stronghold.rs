@@ -23,8 +23,14 @@ To avoid this situation, Stronghold uses deadlock analysis.
   - [Store](../references/enginge/store.md)
 - Use `Mutex` or `RWLock`
 
-## Analysis of deadlocks
-This is internal thoughts stemming from experience but does not have peer-reviewed paper backing it.
+
+## Deadlocks Analysis
+
+:::note
+
+These are thoughts stemming from experience, but they __do not have a peer-reviewed paper backing them__.
+
+:::
 
 ### Model
 Locks are used to control access to shared memory.
