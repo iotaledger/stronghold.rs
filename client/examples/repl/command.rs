@@ -57,7 +57,7 @@ impl Command for InitCommand {
     }
 
     fn required_parameters(&self) -> Vec<String> {
-        vec!["<client_path>"].iter().map(|s| s.to_string()).collect()
+        vec!["<client_path>"].into_iter().map(ToOwned::to_owned).collect()
     }
 }
 
@@ -65,18 +65,21 @@ impl Command for InitCommand {
 pub struct GenerateKeyCommand;
 impl Command for GenerateKeyCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
 
-        let kt = parse_keytype(&parameters[0])?;
-        let vp = &parameters[1];
-        let rp = &parameters[2];
+        let key_type = parse_keytype(&parameters[0])?;
+        let vault_path = &parameters[1];
+        let record_path = &parameters[2];
         let client = stronghold.get_client(client_path.deref())?;
 
         // execute the procedure
         client.execute_procedure(GenerateKey {
-            ty: kt,
-            output: Location::const_generic(vp.clone().into_bytes(), rp.clone().into_bytes()),
+            ty: key_type,
+            output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
         Ok(TermAction::OkMessage("Key stored sucessfully".to_string()))
@@ -88,8 +91,8 @@ impl Command for GenerateKeyCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<key_type>", "<vault_path>", "<record_path>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -98,13 +101,16 @@ impl Command for GenerateKeyCommand {
 pub struct CheckVaultCommand;
 impl Command for CheckVaultCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
 
         let client = stronghold.get_client(client_path.deref())?;
-        let vp = &parameters[0];
+        let vault_path = &parameters[0];
 
-        match client.vault_exists(vp) {
+        match client.vault_exists(vault_path) {
             Ok(exists) => {
                 println!("Vault exists? {}", if exists { "yes" } else { "no" });
             }
@@ -119,7 +125,7 @@ impl Command for CheckVaultCommand {
     }
 
     fn required_parameters(&self) -> Vec<String> {
-        vec!["<vault_path>"].iter().map(|s| s.to_string()).collect()
+        vec!["<vault_path>"].into_iter().map(ToOwned::to_owned).collect()
     }
 }
 
@@ -127,16 +133,19 @@ impl Command for CheckVaultCommand {
 pub struct CheckRecordCommand;
 impl Command for CheckRecordCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let vp = &parameters[1];
-        let rp = &parameters[2];
+        let vault_path = &parameters[1];
+        let record_path = &parameters[2];
 
         match client.record_exists(&Location::const_generic(
-            vp.clone().into_bytes(),
-            rp.clone().into_bytes(),
+            vault_path.clone().into_bytes(),
+            record_path.clone().into_bytes(),
         )) {
             Ok(exists) => {
                 println!("Record exists? {}", if exists { "yes" } else { "no" });
@@ -153,8 +162,8 @@ impl Command for CheckRecordCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<vault_path>", "<record_path>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -163,12 +172,15 @@ impl Command for CheckRecordCommand {
 pub struct BackupCommand;
 impl Command for BackupCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
-        let pw = parameters[1].clone().as_bytes().to_vec();
-        let pa = SnapshotPath::from_path(&parameters[0]);
-        let ky = KeyProvider::with_passphrase_truncated(pw)?;
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
+        let password = parameters[1].clone().as_bytes().to_vec();
+        let snapshot_path = SnapshotPath::from_path(&parameters[0]);
+        let keyprovider = KeyProvider::with_passphrase_truncated(password)?;
 
-        stronghold.commit_with_keyprovider(&pa, &ky)?;
+        stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider)?;
 
         Ok(TermAction::OkMessage(
             "Stronghold snapshot successfully written to disk".to_string(),
@@ -181,8 +193,8 @@ impl Command for BackupCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<path_to_snapshot_location>", "<passphrase>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -191,12 +203,15 @@ impl Command for BackupCommand {
 pub struct RestoreCommand;
 impl Command for RestoreCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
-        let pw = parameters[1].clone().as_bytes().to_vec();
-        let pa = SnapshotPath::from_path(&parameters[0]);
-        let ky = KeyProvider::with_passphrase_truncated(pw)?;
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
+        let password = parameters[1].clone().as_bytes().to_vec();
+        let snapshot_path = SnapshotPath::from_path(&parameters[0]);
+        let keyprovider = KeyProvider::with_passphrase_truncated(password)?;
 
-        stronghold.load_snapshot(&ky, &pa)?;
+        stronghold.load_snapshot(&keyprovider, &snapshot_path)?;
 
         Ok(TermAction::OkMessage(
             "Stronghold snapshot successfully loaded from disk".to_string(),
@@ -209,8 +224,8 @@ impl Command for RestoreCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<path_to_snapshot_location>", "<passphrase>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -219,21 +234,24 @@ impl Command for RestoreCommand {
 pub struct Slip10GenerateCommand;
 impl Command for Slip10GenerateCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let vp = &parameters[0];
-        let rp = &parameters[1];
+        let vault_path = &parameters[0];
+        let record_path = &parameters[1];
 
         client.execute_procedure(Slip10Generate {
             size_bytes: None,
-            output: Location::const_generic(vp.clone().into_bytes(), rp.clone().into_bytes()),
+            output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
         Ok(TermAction::OkMessage(format!(
             "Created seed at location: {} - {}",
-            vp, rp
+            vault_path, record_path
         )))
     }
 
@@ -243,8 +261,8 @@ impl Command for Slip10GenerateCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<vault_path>", "<record_path>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -253,28 +271,34 @@ impl Command for Slip10GenerateCommand {
 pub struct Slip10DeriveCommand;
 impl Command for Slip10DeriveCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let ccd = &parameters[0];
-        let vpo = &parameters[1];
-        let rpo = &parameters[2];
-        let vpn = &parameters[3];
-        let rpn = &parameters[4];
+        let chain_code = &parameters[0];
+        let vault_path_old = &parameters[1];
+        let record_path_old = &parameters[2];
+        let vault_path_new = &parameters[3];
+        let record_path_new = &parameters[4];
 
         client.execute_procedure(Slip10Derive {
-            chain: Chain::from_u32_hardened(ccd.parse()),
+            chain: Chain::from_u32_hardened(chain_code.parse()),
             input: Slip10DeriveInput::Seed(Location::const_generic(
-                vpo.clone().into_bytes(),
-                rpo.clone().into_bytes(),
+                vault_path_old.clone().into_bytes(),
+                record_path_old.clone().into_bytes(),
             )),
-            output: Location::const_generic(vpn.clone().into_bytes(), rpn.clone().into_bytes()),
+            output: Location::const_generic(
+                vault_path_new.clone().into_bytes(),
+                record_path_new.clone().into_bytes(),
+            ),
         })?;
 
         Ok(TermAction::OkMessage(format!(
             "Derived key and stored at location: {} - {}",
-            vpn, rpn
+            vault_path_new, record_path_new
         )))
     }
 
@@ -290,8 +314,8 @@ impl Command for Slip10DeriveCommand {
             "<vault_path_derive>",
             "<record_path_derive>",
         ]
-        .iter()
-        .map(|s| s.to_string())
+        .into_iter()
+        .map(ToOwned::to_owned)
         .collect()
     }
 }
@@ -300,19 +324,22 @@ impl Command for Slip10DeriveCommand {
 pub struct Bip39GenerateCommand;
 impl Command for Bip39GenerateCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let pw = &parameters[0];
-        let lg = &parameters[1];
-        let vp = &parameters[2];
-        let rc = &parameters[3];
+        let password = &parameters[0];
+        let language = &parameters[1];
+        let vault_path = &parameters[2];
+        let record_path = &parameters[3];
 
         let result = client.execute_procedure(BIP39Generate {
-            passphrase: Some(pw.clone()),
-            language: parse_lang(lg)?,
-            output: Location::const_generic(vp.clone().into_bytes(), rc.clone().into_bytes()),
+            passphrase: Some(password.clone()),
+            language: parse_lang(language)?,
+            output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
         Ok(TermAction::OkMessage(format!("Generated Mnemonic : {}", result)))
@@ -324,8 +351,8 @@ impl Command for Bip39GenerateCommand {
 
     fn required_parameters(&self) -> Vec<String> {
         vec!["<passphrase>", "<language>", "<vault_path>", "<record_path>"]
-            .iter()
-            .map(|s| s.to_string())
+            .into_iter()
+            .map(ToOwned::to_owned)
             .collect()
     }
 }
@@ -334,19 +361,22 @@ impl Command for Bip39GenerateCommand {
 pub struct Bip39RestoreCommand;
 impl Command for Bip39RestoreCommand {
     fn eval(&self, context: State, parameters: &[String]) -> Result<TermAction, ReplError<String>> {
-        let stronghold = context.stronghold.borrow().clone().unwrap();
+        let stronghold = match context.stronghold.borrow().clone() {
+            Some(s) => s,
+            None => return Err(ReplError::Invalid("System not initialized. Run init".to_owned())),
+        };
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let pw = &parameters[0];
-        let mn = &parameters[1];
-        let vp = &parameters[2];
-        let rc = &parameters[3];
+        let password = &parameters[0];
+        let mnemonic = &parameters[1];
+        let vault_path = &parameters[2];
+        let record_path = &parameters[3];
 
         client.execute_procedure(BIP39Recover {
-            passphrase: Some(pw.clone()),
-            mnemonic: mn.clone(),
-            output: Location::const_generic(vp.clone().into_bytes(), rc.clone().into_bytes()),
+            passphrase: Some(password.clone()),
+            mnemonic: mnemonic.clone(),
+            output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
         Ok(Default::default())
@@ -365,8 +395,8 @@ impl Command for Bip39RestoreCommand {
             "<vault_path_derive>",
             "<record_path_derive>",
         ]
-        .iter()
-        .map(|s| s.to_string())
+        .into_iter()
+        .map(ToOwned::to_owned)
         .collect()
     }
 }

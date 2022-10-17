@@ -42,9 +42,9 @@ Commands:
     - slip10derive
     - mnemonic
     - bip39restore
-    - quit
     - checkrecord
     - checkvault
+    - quit
 "#;
 
 /// A [`TermAction`] describe some behavior at the end of execution for each [`Command`].
@@ -83,7 +83,7 @@ pub trait Command {
     /// Returns the name of the command as String
     fn name(&self) -> String;
 
-    /// Returns the number of required parameters
+    /// Returns the names of the required parameters.
     fn required_parameters(&self) -> Vec<String> {
         Default::default()
     }
