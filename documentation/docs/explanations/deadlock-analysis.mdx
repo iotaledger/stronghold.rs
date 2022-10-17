@@ -49,13 +49,14 @@ Note that lock $2$ depends on lock $1$, because in $f_1$ you can't take lock $2$
 
 
 #### Example: Deadlock with 2 functions
-Here is an example of the most simple possible deadlock.
 
-![](assets/deadlock_2_functions.drawio.png)
+The following is an example of the most simple possible deadlock.
 
-- the function $f_1$ wants to take the locks for shared memory $1$ then $2$
-- the function $f_2$ wants to take the locks for shared memory $2$ then $1$
-- on the right you can see that there is a circular dependency of locks between $f_1$ and $f_2$ (you can do a circle by following the arrows of $f_1$ and $f_2$). 
+![Simple deadlock](assets/deadlock_2_functions.drawio.png)
+
+- The function $f_1$ wants to take the locks for shared memory $1$, then $2$.
+- The function $f_2$ wants to take the locks for shared memory $2$, then $1$.
+- On the right, you can see a circular lock dependency between $f_1$ and $f_2$. This means that you can do a circle by following the arrows of $f_1$ and $f_2$.
 
 ##### Analysis
 
