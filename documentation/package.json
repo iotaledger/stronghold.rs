@@ -11,9 +11,13 @@
     "node": ">=14.14.0"
   },
   "dependencies": {
+    "hast-util-is-element": "1.1.0",
+    "katex": "^0.16.2",
     "raw-loader": "^4.0.2",
+    "rehype-katex": "5",
     "remark-code-import": "^0.3.0",
     "remark-import-partial": "^0.0.2",
+    "remark-math": "3",
     "remark-remove-comments": "^0.2.0"
   },
   "devDependencies": {

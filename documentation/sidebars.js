@@ -44,9 +44,15 @@ module.exports = {
             },
             {
                 type: 'doc',
+                id: 'explanations/deadlock-analysis',
+                label: 'Deadlock Analysis'
+            },
+            {
+                type: 'doc',
                 id: 'explanations/retrospective',
                 label: 'Retrospective'
-            },]
+            },
+        ]
     },
     {
 
