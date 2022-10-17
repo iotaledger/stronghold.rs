@@ -144,12 +144,15 @@ This should give you following output:
 
 Stronghold features a simple read-evaluate print loop (REPL) to showcase basic operations from an interaction command shell-like environment. The REPL maintains a state of a running Stronghold instance to store secrets or configuration data. 
 
-The REPL can be started from a terminal via inside the root folder of Stronghold
-```
+You can start REPL from a terminal inside the root folder of Stronghold by running the following command:
+
+```shell
 cargo run --example repl
 ```
 
-Following commands are defined:
+### Avaiablable Commands
+
+You can use the following commands:
 
 | Command      | Parameters                                                                                          | Description                                                                                                                   |
 |:-------------|:----------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------|
