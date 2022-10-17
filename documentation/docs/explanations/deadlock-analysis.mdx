@@ -33,20 +33,20 @@ These are thoughts stemming from experience, but they __do not have a peer-revie
 :::
 
 ### Model
-Locks are used to control access to shared memory.
-To simplify the problem we only model mutex so that only a single thread
-can access to a shared memory.
 
-#### Model of function and locks
-Here how we represent a function and locks.
+Locks are used for controlling access to shared memory.
+To simplify the problem, we only model mutex so that only a single thread can access shared memory.
 
-![](./assets/function_model.drawio.png)
+#### Model of functions and locks
 
-- $1$, $2$, $3$ represent locks that protect 3 different and distinct shared memory locations
-- $f_1$ is a function that sequentially takes hold of lock $1$ then $2$ then $3$
-- $f_1$ releases the locks $1$, $2$, $3$ at the end of its computation 
+![How functions and locks are represented in Stronghold](./assets/function_model.drawio.png)
 
-Here we can see that lock $2$ depends on lock $1$ because in $f_1$ you can't take lock $2$ before taking lock $1$. In the same way lock $3$ depends on locks $1$ and $2$.
+- $1$, $2$, $3$ represent locks that protect 3 different and distinct shared memory locations.
+- $f_1$ is a function that sequentially takes hold of lock $1$ then $2$ then $3$.
+- $f_1$ releases the locks $1$, $2$, $3$ at the end of its computation.
+
+Note that lock $2$ depends on lock $1$, because in $f_1$ you can't take lock $2$ before taking lock $1$. In the same way, lock $3$ depends on locks $1$ and $2$.
+
 
 #### Example: Deadlock with 2 functions
 Here is an example of the most simple possible deadlock.
