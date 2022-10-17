@@ -119,7 +119,8 @@ Each shared memory location/lock is associated to a number that will be used for
 6. db: `DbView` 
 7. store: `Store`
 
-### Stronghold functions
+### Stronghold Functions
+
 Doing one dependency graph per function would be too complicated. Rather we list every function that access the shared memories listed above.
 After the function name, we describe the locks that are acquired or the functions that they call.
 
