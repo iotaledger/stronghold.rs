@@ -121,7 +121,7 @@ Each shared memory location/lock is associated to a number that will be used for
 
 ### Stronghold Functions
 
-Doing one dependency graph per function would be too complicated. Rather we list every function that access the shared memories listed above.
+Creating one dependency graph per function would be too complicated. Instead, we list every function that accesses the [shared memories](#stronghold-shared-memories).
 After the function name, we describe the locks that are acquired or the functions that they call.
 
 #### Functions of the `Stronghold` type
