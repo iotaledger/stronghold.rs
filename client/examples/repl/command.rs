@@ -56,12 +56,8 @@ impl Command for InitCommand {
         "init".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        1
-    }
-
-    fn error_message(&self) -> String {
-        "requires one argument: <client_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<client_path>"].iter().map(|s| s.to_string()).collect()
     }
 }
 
@@ -90,12 +86,11 @@ impl Command for GenerateKeyCommand {
         "keygen".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        3
-    }
-
-    fn error_message(&self) -> String {
-        "requires three arguments: <key_type> <vault_path> <record_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<key_type>", "<vault_path>", "<record_path>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -123,12 +118,8 @@ impl Command for CheckVaultCommand {
         "checkvault".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        1
-    }
-
-    fn error_message(&self) -> String {
-        "requires one argument: <vault_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<vault_path>"].iter().map(|s| s.to_string()).collect()
     }
 }
 
@@ -160,12 +151,11 @@ impl Command for CheckRecordCommand {
         "checkrecord".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        2
-    }
-
-    fn error_message(&self) -> String {
-        "requires two arguments: <vault_path> <record_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<vault_path>", "<record_path>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -189,12 +179,11 @@ impl Command for BackupCommand {
         "backup".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        2
-    }
-
-    fn error_message(&self) -> String {
-        "requires two arguments: <path_to_snapshot_location> <passphrase>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<path_to_snapshot_location>", "<passphrase>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -218,12 +207,11 @@ impl Command for RestoreCommand {
         "restore".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        2
-    }
-
-    fn error_message(&self) -> String {
-        "requires two arguments: <path_to_snapshot_location> <passphrase>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<path_to_snapshot_location>", "<passphrase>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -253,12 +241,11 @@ impl Command for Slip10GenerateCommand {
         "slip10gen".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        2
-    }
-
-    fn error_message(&self) -> String {
-        "requires two arguments: <vault_path> <record_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<vault_path>", "<record_path>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -295,13 +282,17 @@ impl Command for Slip10DeriveCommand {
         "slip10derive".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        5
-    }
-
-    fn error_message(&self) -> String {
-        "requires two arguments: <chain> <vault_path_origin> <record_path_origin> <vault_path_derive> <record_path_derive>"
-            .to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec![
+            "<chain>",
+            "<vault_path_origin>",
+            "<record_path_origin>",
+            "<vault_path_derive>",
+            "<record_path_derive>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 }
 
@@ -331,12 +322,11 @@ impl Command for Bip39GenerateCommand {
         "mnemonic".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        4
-    }
-
-    fn error_message(&self) -> String {
-        "requires four arguments: <passphrase> <language> <vault_path> <record_path>".to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec!["<passphrase>", "<language>", "<vault_path>", "<record_path>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -366,13 +356,18 @@ impl Command for Bip39RestoreCommand {
         "bip39restore".to_string()
     }
 
-    fn required_param_length(&self) -> usize {
-        4
-    }
-
-    fn error_message(&self) -> String {
-        "requires 3 arguments: <passphrase> <language> <vault_path_origin> <record_path_origin> <vault_path_derive> <record_path_derive>"
-        .to_string()
+    fn required_parameters(&self) -> Vec<String> {
+        vec![
+            "<passphrase>",
+            "<language>",
+            "<vault_path_origin>",
+            "<record_path_origin>",
+            "<vault_path_derive>",
+            "<record_path_derive>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 }
 

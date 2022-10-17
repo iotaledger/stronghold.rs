@@ -69,7 +69,7 @@ pub trait Command {
 
     /// Validates the number of input tokens, otherwise displays the provided error message
     fn validate(&self, parameter: &Vec<String>) -> Result<(), ReplError<String>> {
-        if parameter.len().ne(&self.required_param_length()) {
+        if parameter.len().ne(&self.required_parameters().len()) {
             return Err(ReplError::Invalid(format!(
                 "'{}' {}",
                 self.name(),
@@ -84,13 +84,23 @@ pub trait Command {
     fn name(&self) -> String;
 
     /// Returns the number of required parameters
-    fn required_param_length(&self) -> usize {
+    fn required_parameters(&self) -> Vec<String> {
         Default::default()
     }
 
     /// Returns the error message for the command
     fn error_message(&self) -> String {
-        Default::default()
+        let plural = |a: usize| match a {
+            1 => "",
+            _ => "s",
+        };
+        let req = self.required_parameters();
+        format!(
+            "requires {} argument{}: {}",
+            req.len(),
+            plural(req.len()),
+            req.join(" ")
+        )
     }
 }
 
