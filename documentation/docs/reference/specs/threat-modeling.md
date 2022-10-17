@@ -25,7 +25,7 @@ There are multiple steps to this process:
 
 Stronghold is simple in concept; it is used to store secrets. 
 These secrets should never be revealed, even to their owners. 
-Users can interact with secrets through controlled methods called [procedures](explanations/procedures).
+Users can interact with secrets through controlled methods called [procedures](./../../explanations/procedures).
 
 
 ### Typical use of Stronghold:
@@ -123,9 +123,9 @@ Mentions of __WIP__ means that it is still "Work In Progress".
 
 | Attack                  | Attack                                                                                                     | Remediation                                                                                                                                                      | Severity |
 |-------------------------|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
-| Spoofed                 |                                                                                                            | OS responsibility                                                                                                                                                |
+| Spoofed                 |                                                                                                            | OS responsibility                                                                                                                                                |          |
 | Tampered                | Host system gets its memory corrupted. Procedures will produce wrong outputs, so original data can be lost | Secrets are backed by permanent a storage called Snapshot. User may use a previous snapshot to restore a previous state                                          | High     |
-| Repudiated              |                                                                                                            | OS responsibility                                                                                                                                                |
+| Repudiated              |                                                                                                            | OS responsibility                                                                                                                                                |          |
 | Information Disclosure  | Secrets are revealed through reading the memory directly                                                   | Secrets are stored encrypted in the memory and are only decrypted for the minimum amount of time. Moreover the Boojum scheme protects encryption keys in memory. | High     |
 | Denial of Service       | Memory is not accessible, preventing Stronghold from working                                               | OS responsibility                                                                                                                                                | Mid      |
 | Elevation of Privileges | Attacker has elevated privileges on the host machine and can access the secrets in Stronghold              | Same case as Tampered and Info Disclosure attacks, the snapshot is encrypted and can be restored if it has a valid checksum                                      | High     |
@@ -134,10 +134,10 @@ Mentions of __WIP__ means that it is still "Work In Progress".
 
 | Attack                      | Attack                                                                                     | Remediation                                                                                                                         | Severity |
 |-----------------------------|--------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|----------|
-| Spoofed                     | No potential attack                                                                        |                                                                                                                                     |
+| Spoofed                     | No potential attack                                                                        |                                                                                                                                     |          |
 | Tampered                    | Tamper memory using side-channels                                                          | Refer to [memory](#level-3-memory) and [storage](#level-2-permanent-storage-file-system) tables                                     | High     |
-| Repudiated                  | No potential attack                                                                        |                                                                                                                                     |
+| Repudiated                  | No potential attack                                                                        |                                                                                                                                     |          |
 | Information Disclosure      | Secrets are revealed through side-channels                                                 | Make sure the procedure are constant in time and energy usage **(WIP)**. This also depends on the cryptographic implementation used | High     |
 | Denial of Service           | Prevent normal behaviour of stronghold through side-channels such as electromagnetic waves | You can't protect this from software, it is the host's responsibility                                                               | Mid      |
-| ~~Elevation of Privileges~~ | No potential attack                                                                        |                                                                                                                                     |
+| ~~Elevation of Privileges~~ | No potential attack                                                                        |                                                                                                                                     |          |
 
