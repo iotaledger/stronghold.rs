@@ -69,6 +69,12 @@ module.exports = {
                         'how_tos/cli/recover_seed_with_mnemonic',
                     ]
             },
+            {
+                type: "category",
+                label: "Read-evaluate-print-loop (REPL)",
+                items:
+                    ['how_tos/repl/repl']
+            }
         ]
     },
     {
