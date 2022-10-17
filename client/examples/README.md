@@ -11,7 +11,7 @@ The following examples explain how Stronghold works. There are two sets of examp
     - [Create a snapshot](#create-a-snapshot)
     - [Read a Snapshot From Filesystem](#read-a-snapshot-from-filesystem)
     - [Recover a BIP39 Seed with a Mnemonic and Optional Passphrase](#recover-a-bip39-seed-with-a-mnemonic-and-optional-passphrase)
-2) [REPL example](#repl-example): A read-evaluate-print-loop for interactively working with a Stronghold instance
+2) [REPL example](#repl-example): A read-evaluate-print-loop for interactively working with a Stronghold instance.
 
 ---
 ## Command Line Interface
@@ -144,27 +144,31 @@ This should give you following output:
 
 Stronghold features a simple read-evaluate print loop (REPL) to showcase basic operations from an interaction command shell-like environment. The REPL maintains a state of a running Stronghold instance to store secrets or configuration data. 
 
-The REPL can be started from a terminal via inside the root folder of Stronghold
-```
+You can start REPL from a terminal inside the root folder of Stronghold by running the following command:
+
+```shell
 cargo run --example repl
 ```
 
-Following commands are defined:
+### Avaiablable Commands
 
-| Command      | Parameters                                                                                          | Description                                                                                                                   |
-|:-------------|:----------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------|
-| help         | -                                                                                                   | Display a help message                                                                                                        |
-| init         | < client_path >                                                                                     | initializes the underlying Stronghold system                                                                                  |
-| keygen       | < key_type > < vault_path > < record_path >                                                         | Generates a key "ed25510" or "x25519", at location composed of "vault_path" and "record_path"                                 |
-| backup       | < path_to_snapshot_location > < passphrase >                                                        | Writes the current Stronghold state to "path_to_snapshot_location" (a path) with "passphrase"                                 |
-| restore      | < path_to_snapshot_location > < passphrase >                                                        | Loads the current Stronghold state from "path_to_snapshot_location" (a path) with "passphrase"                                |
-| slip10gen    | < vault_path > < record_path >                                                                      |                                                                                                                               |
-| slip10derive | < chain > < vault_path_origin > < record_path_origin > < vault_path_derive > < record_path_derive > | Derives a new key from old location and stores it into the new location. The key is being derive from the provided chain code |
-| mnemonic     | -                                                                                                   | Creates a BIP39 mnemonic and generates a seed                                                                                 |
-| bip39restore | -                                                                                                   |                                                                                                                               |
-| quit         | -                                                                                                   | Exits the REPL                                                                                                                |
-| checkrecord  | < vault_path > < record_path >                                                                      | Checks a record inside the vault, if it exists                                                                                |
-| checkvault   | < vault_path >                                                                                      | Checks for the presence of a vault                                                                                            |
+You can use the following commands:
+
+
+| Command      | Parameters                                                                                          | Description                                                                                                                    |
+|:-------------|:----------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| help         | -                                                                                                   | Display a help message.                                                                                                        |
+| init         | < client_path >                                                                                     | Initializes the underlying Stronghold system.                                                                                  |
+| keygen       | < key_type > < vault_path > < record_path >                                                         | Generates a "ed25510" or "x25519" key at a location composed of "vault_path" and "record_path".                                |
+| backup       | < path_to_snapshot_location > < passphrase >                                                        | Writes the current Stronghold state to "path_to_snapshot_location" (a path) with "passphrase".                                 |
+| restore      | < path_to_snapshot_location > < passphrase >                                                        | Loads the current Stronghold state from "path_to_snapshot_location" (a path) with "passphrase".                                |
+| slip10gen    | < vault_path > < record_path >                                                                      |                                                                                                                                |
+| slip10derive | < chain > < vault_path_origin > < record_path_origin > < vault_path_derive > < record_path_derive > | Derives a new key from old location and stores it into the new location. The key will be derived from the provided chain code. |
+| mnemonic     | -                                                                                                   | Creates a BIP39 mnemonic and generates a seed.                                                                                 |
+| bip39restore | -                                                                                                   |                                                                                                                                |
+| quit         | -                                                                                                   | Exits the REPL.                                                                                                                |
+| checkrecord  | < vault_path > < record_path >                                                                      | Checks a record inside the vault. The command will return `yes` if the record exists or `no` if it doesn't.                    |
+| checkvault   | < vault_path >                                                                                      | Checks for the presence of a vault.                                                                                            |
 
 **Note:**
-Each command will show a short help message, if the entered command was incorrect.
+Each command will show a short help message, if the entered command or parameters are incorrect.
