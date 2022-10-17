@@ -23,8 +23,7 @@ pub const HELP_MESSAGE: &str = r#"
 
 
 Stronghold REPL (Read Evaluate Print Loop). This demo program  showcases  the 
-basic usage of Stronghold. Only a few commands are featured. When the REPL is 
-being started the first time, a  <client_path>  must  be  provided.  The REPL 
+basic usage of Stronghold. Only a few commands are featured. The REPL 
 maintains a state  of  a Stronghold  instance, that can be modified with some 
 commands eg. switching  the client  and  loading  or storing a snapshot file. 
 
@@ -44,6 +43,8 @@ Commands:
     - mnemonic
     - bip39restore
     - quit
+    - checkrecord
+    - checkvault
 "#;
 
 /// A [`TermAction`] describe some behavior at the end of execution for each [`Command`].
@@ -84,12 +85,12 @@ pub trait Command {
 
     /// Returns the number of required parameters
     fn required_param_length(&self) -> usize {
-        0
+        Default::default()
     }
 
     /// Returns the error message for the command
     fn error_message(&self) -> String {
-        "".to_string()
+        Default::default()
     }
 }
 
@@ -151,7 +152,7 @@ impl Repl {
         println!("{}", HELP_MESSAGE);
 
         loop {
-            prompt(None::<String>);
+            prompt(Some(self.check_initialized()));
             match self.eval() {
                 Ok(TermAction::Quit) => break,
                 Ok(TermAction::OkMessage(msg)) => {
@@ -162,6 +163,15 @@ impl Repl {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// Checks, if the [`REPL`] state has been initialized
+    fn check_initialized(&self) -> String {
+        let path = self.state.client_path.borrow();
+        match path.is_empty() {
+            true => "[uninitialized]".to_string(),
+            false => "[ready]".to_string(),
         }
     }
 }

@@ -336,8 +336,7 @@ impl Command for Bip39GenerateCommand {
     }
 
     fn error_message(&self) -> String {
-        "requires five arguments: <passphrase> <language> <vault_path_origin> <record_path_origin> <vault_path_derive> <record_path_derive>"
-        .to_string()
+        "requires four arguments: <passphrase> <language> <vault_path> <record_path>".to_string()
     }
 }
 

@@ -14,9 +14,9 @@ fn flush() {
 pub fn readline() -> Result<String, ReplError<String>> {
     let stdin = std::io::stdin();
     let mut input = String::new();
-
     stdin.read_line(&mut input).map_err(|_| ReplError::LineError)?;
     input = input.trim().to_string();
+
     Ok(input)
 }
 
