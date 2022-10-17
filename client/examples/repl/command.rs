@@ -140,8 +140,8 @@ impl Command for CheckRecordCommand {
         let client_path = context.client_path.borrow();
         let client = stronghold.get_client(client_path.deref())?;
 
-        let vault_path = &parameters[1];
-        let record_path = &parameters[2];
+        let vault_path = &parameters[0];
+        let record_path = &parameters[1];
 
         match client.record_exists(&Location::const_generic(
             vault_path.clone().into_bytes(),
