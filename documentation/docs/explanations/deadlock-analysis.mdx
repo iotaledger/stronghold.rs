@@ -91,11 +91,12 @@ between $f_1$, $f_2$ and $f_3$.
 This is a proof on an example for simplicity. You can apply the reasoning in the next part to any dependency graph of locks to prove the absence of a deadlock when there are no circular dependencies.
 
 #### Example: no deadlock
-![](assets/no_deadlock.drawio.png)
+
+![No deadlock](assets/no_deadlock.drawio.png)
 
 There is no circular dependency in the right-side representation.
 We will try to argue that there is indeed no possible deadlock in this configuration.
-The main idea linking absence of deadlock with absence of circular dependency is that any thread will always eventually get the lock it's waiting for. Thus it will eventually terminate its computation thus releasing the locks it acquired.
+The main idea linking absence of deadlock with absence of circular dependency is that any thread will always eventually get the lock it's waiting for. So, it will eventually terminate its computation thus releasing the locks it acquired.
 
 ##### Definition: deadlock-free lock
 We say a lock is deadlock-free when we can prove that it will never part of a deadlock and will always eventually be released.
