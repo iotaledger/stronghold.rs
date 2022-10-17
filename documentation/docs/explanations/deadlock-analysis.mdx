@@ -8,7 +8,7 @@ keywords:
 - explanation
 ---
 
-# Deadlock analysis for Stronghold
+# Deadlock Analysis in Stronghold
 
 Current Stronghold use `RwLock` to enable [concurrency](./concurrency.md).
 This approach has the pros of being simple in theory and has fast performance when done right. The downside is that in practice it is usually really difficult to use locks in concurrent programming and you often encounter _data races_ or _deadlocks_ when using them.
