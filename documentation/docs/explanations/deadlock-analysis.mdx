@@ -60,7 +60,7 @@ Here is an example of the most simple possible deadlock.
 ##### Analysis
 
 The graph at the right represents the merged dependency graph of functions $f_1$ and $f_2$. It shows all the dependencies of the locks in $f_1$ and $f_2$.
-The presence of a circular dependency on the merged graph indicates the possibility of a deadlock when executing $f_1$ and $f_2$ concurrently.
+A circular dependency on the merged graph indicates the possibility of a deadlock when executing $f_1$ and $f_2$ concurrently.
 
 ##### Example run resulting in a deadlock: 
 1. $f_1$ starts and takes the lock $1$
