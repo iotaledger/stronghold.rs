@@ -102,24 +102,27 @@ The main idea linking absence of deadlock with absence of circular dependency is
 
 A lock is deadlock-free when we can prove that it will never be part of a deadlock and will always eventually be released.
 
-#### Proof of the absence of deadlock using the merged graph
+#### Prove the absence of deadlock using the merged graph
 
-1. __Lock $3$ is deadlock-free__. No locks depend on lock $3$. When a thread acquires lock $3$ it will manage to terminate its computation and will always release it
-2. __Recursively lock $2$ is deadlock-free__. Lock $2$ has only lock $3$ which depends on it. That means:
-  a) if a thread acquires lock $2$ it will eventually get lock $3$ because lock $3$ is deadlock-free (lock $3$ will always be available at some point)
-  b) if a thread acquires lock $2$ it will manage to terminate its computation and eventually be released because lock $3$ is deadlock-free
-  c) lock $2$ is deadlock-free by recursivity
-3. __Recursively lock $1$ is deadlock-free__. All the locks that depend on lock $1$ are deadlock-free. Reasoning for lock $2$ can be also applied to lock $1$.
+1. __Lock $3$ is deadlock-free__. No locks depend on lock $3$. When a thread acquires lock $3$ it will manage to terminate its computation and will always release it.
+2. __Recursively lock $2$ is deadlock-free__. Lock $3$ is the only lock that depends on lock $2$. That means:
+    1. If a thread acquires lock $2$, it will eventually get lock $3$ because lock $3$ is deadlock-free (lock $3$ will always be available at some point).
+    2. If a thread acquires lock $2$, it will manage to terminate its computation and eventually be released because lock $3$ is deadlock-free.
+    3. Lock $2$ is deadlock-free by recursivity.
+3. __Recursively, lock $1$ is deadlock-free__. All the locks that depend on lock $1$ are deadlock-free. You can apply the same reasoning for lock $2$ to lock $1$.
 
-## Stronghold deadlock analysis
-The goal is to list the functions of Stronghold that access locks and build a merge graph. Then we show that the merge graph does not contain any circular dependency.
+## Stronghold Deadlock Analysis
+
+The goal is to list Stronghold's functions that access locks and build a merge graph. Then, we show that the merge graph does not contain circular dependencies.
  
-### Stronghold shared memories
-Here we list the different shared memory locations that are protected behind locks.
-Each shared memory location/lock is associated to a number that will be used for the dependency graph we describe after.
+### Stronghold Share Memories
+
+This list shows the different shared memory locations that are protected behind locks.
+Each shared memory location/lock is associated with a number that we will use for the dependency graph that follows.
  
 
 #### Fields of the `Stronghold` type which are shared memories
+
 1. snapshot: `Snapshot`
 2. clients: `HashMap<ClientId, Client>`
 3. store: `Store`
@@ -127,6 +130,7 @@ Each shared memory location/lock is associated to a number that will be used for
 
 
 #### Fields of the `Client` type which are shared memories
+
 5. keystore: `KeyStore`
 6. db: `DbView` 
 7. store: `Store`
