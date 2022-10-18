@@ -1,6 +1,6 @@
 [package]
 name = "stronghold_engine"
-version = "0.5.6"
+version = "1.0.0"
 authors = [
   "IOTA Stiftung",
   "tensorprogramming <tensordeveloper@gmail.com>"
@@ -29,7 +29,7 @@ serde = { version = "1.0", features = [ "derive" ] }
 
   [dependencies.stronghold-runtime]
   path = "runtime"
-  version = "0.6"
+  version = "1.0"
 
   [dependencies.digest]
   version = "0.10.1"
@@ -57,7 +57,7 @@ json = "0.12"
 
   [dev-dependencies.stronghold-utils]
   path = "../utils"
-  version = "0.4.1"
+  version = "1.0.0"
 
 [[bench]]
 name = "engine_bench"
