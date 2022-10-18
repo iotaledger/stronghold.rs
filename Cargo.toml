@@ -6,12 +6,12 @@ members = [
   "client",
   "utils",
   "derive",
-  # "stm"
 ]
 exclude = [
   "products/commandline",
   "products/desktop",
   "products/SHaaS",
+  "stm"
 ]
 
 [profile.release]
