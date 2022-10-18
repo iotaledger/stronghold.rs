@@ -1,7 +1,7 @@
 ---
 "stronghold-derive" : major
 "stronghold-runtime" : major
-"stronghold_engine" : major
+"stronghold-engine" : major
 "stronghold-utils" : major
 ---
 
