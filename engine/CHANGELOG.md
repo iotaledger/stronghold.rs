@@ -1,5 +1,12 @@
 # Changelog
 
+## \[0.5.6]
+
+- - Upgrade to crypto.rs 0.15.1
+- Downgrade Zeroize to 1.3.0
+- Bumped due to a bump in stronghold-runtime.
+- [be680479](https://www.github.com/iotaledger/stronghold.rs/commit/be68047942788c047c1ac8a9ef12776a974fee0a) dep: upgrade crypto.rs to latest version; downgrade zeroize on 2022-10-18
+
 ## \[0.5.5]
 
 - upgrade dev-dependency for criterion
