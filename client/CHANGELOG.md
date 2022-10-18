@@ -1,5 +1,10 @@
 # Changelog
 
+## \[1.0.2]
+
+- Update dependencies to pull version 1.0
+  - [bb38d950](https://www.github.com/iotaledger/stronghold.rs/commit/bb38d950766552a70220b702cd014b8e15ba6ff2) update dependencies to local crates on 2022-10-18
+
 ## \[1.0.1]
 
 - update to Stronghold 1.0
