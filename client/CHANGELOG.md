@@ -1,5 +1,19 @@
 # Changelog
 
+## \[1.0.0]
+
+- Add a method to access the store of a Stronghold instance
+  - [c14b04b6](https://www.github.com/iotaledger/stronghold.rs/commit/c14b04b646d7500722a8e1cabe9a3ba795fad821) Add change file on 2022-10-05
+- Multithreaded stronghold with RwLock
+  - [24c0d762](https://www.github.com/iotaledger/stronghold.rs/commit/24c0d7626af8ca925da9aec3fc7a782c06124339) Concurrency with locks ([#441](https://www.github.com/iotaledger/stronghold.rs/pull/441)) on 2022-10-13
+- Remove p2p dependency
+  - [6a4acd58](https://www.github.com/iotaledger/stronghold.rs/commit/6a4acd581fae415dd42bead887cb98c1213e9847) fix tests; remove dispatch mapper protoype on 2022-09-28
+- Add a REPL as an interactive example application
+  - [865b3e69](https://www.github.com/iotaledger/stronghold.rs/commit/865b3e69700febc30943b07398784e68553609bd) doc: add changes doc on 2022-10-17
+- - Upgrade to crypto.rs 0.15.1
+- Downgrade Zeroize to 1.3.0
+- [be680479](https://www.github.com/iotaledger/stronghold.rs/commit/be68047942788c047c1ac8a9ef12776a974fee0a) dep: upgrade crypto.rs to latest version; downgrade zeroize on 2022-10-18
+
 ## \[0.9.1]
 
 - upgrade dev-dependency for criterion
