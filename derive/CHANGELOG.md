@@ -1,5 +1,11 @@
 # Changelog
 
+## \[1.0.0]
+
+- update to Stronghold 1.0
+  - [f5a0cfdf](https://www.github.com/iotaledger/stronghold.rs/commit/f5a0cfdfc7c9a127cf92256b7782bbcae3d406b6) update bindings to Stronghold 1.0 on 2022-10-18
+  - [a47c3cf3](https://www.github.com/iotaledger/stronghold.rs/commit/a47c3cf3c64d8aa6ee307e3b68069c259d5ea427) fix changes file on 2022-10-18
+
 ## \[0.3.1]
 
 - bump all crate versions to update to new utils modules
