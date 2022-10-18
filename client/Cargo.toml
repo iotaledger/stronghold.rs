@@ -62,3 +62,6 @@ harness = false
 
 [[example]]
 name = "cli"
+
+[[example]]
+name = "repl"
