@@ -1,5 +1,10 @@
 # Changelog
 
+## \[1.0.1]
+
+- update version of zeroize
+  - [5eba6e8c](https://www.github.com/iotaledger/stronghold.rs/commit/5eba6e8cc77caeb30e1259c90518a03226212877) update zeroize on 2022-10-19
+
 ## \[1.0.0]
 
 - update to Stronghold 1.0
