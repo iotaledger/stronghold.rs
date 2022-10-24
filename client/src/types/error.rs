@@ -35,10 +35,10 @@ pub enum ClientError {
     #[error("No such value exist for key ({0})")]
     NoValuePresent(String),
 
-    #[error("Inner error occured({0})")]
+    #[error("Inner error occurred({0})")]
     Inner(String),
 
-    #[error("Engine error occured({0})")]
+    #[error("Engine error occurred({0})")]
     Engine(String),
 
     #[error("BoxProvider error: ({0})")]
