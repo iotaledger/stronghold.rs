@@ -1,5 +1,10 @@
 # Changelog
 
+## \[1.0.4]
+
+- fix typos in `ClientError`
+  - [8dd5799b](https://www.github.com/iotaledger/stronghold.rs/commit/8dd5799b8e1e6b88bf7a9cd0313b760b00b6f740) Rename Typos.md to typos.md on 2022-10-24
+
 ## \[1.0.3]
 
 - update version of zeroize
