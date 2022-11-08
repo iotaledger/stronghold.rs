@@ -49,7 +49,7 @@ criterion = { version = "0.4", features = [ "async_tokio" ] }
 env_logger = { version = "0.9.0" }
 ctor = { version = "0.1.21" }
 rand = { version = "0.8.4" }
-clap = { version = "3.1.6", features = [ "derive" ] }
+clap = { version = "4.0.22", features = [ "derive" ] }
 log = { version = "0.4.14" }
 base64 = { version = "0.13.0" }
 regex = { version = "1.5.5" }
