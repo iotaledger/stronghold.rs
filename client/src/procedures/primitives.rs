@@ -659,17 +659,17 @@ impl UseSecret<1> for Hmac {
         match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut mac = [0; SHA256_LEN];
-                HMAC_SHA256(&self.msg, &*guards[0].borrow(), &mut mac);
+                HMAC_SHA256(&self.msg, &guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha384 => {
                 let mut mac = [0; SHA384_LEN];
-                HMAC_SHA384(&self.msg, &*guards[0].borrow(), &mut mac);
+                HMAC_SHA384(&self.msg, &guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
             Sha2Hash::Sha512 => {
                 let mut mac = [0; SHA512_LEN];
-                HMAC_SHA512(&self.msg, &*guards[0].borrow(), &mut mac);
+                HMAC_SHA512(&self.msg, &guards[0].borrow(), &mut mac);
                 Ok(mac.to_vec())
             }
         }
@@ -696,21 +696,21 @@ impl DeriveSecret<1> for Hkdf {
         let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut okm = [0; SHA256_LEN];
-                hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &*guards[0].borrow())
+                hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
             }
             Sha2Hash::Sha384 => {
                 let mut okm = [0; SHA384_LEN];
-                hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &*guards[0].borrow())
+                hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
             }
             Sha2Hash::Sha512 => {
                 let mut okm = [0; SHA512_LEN];
-                hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &*guards[0].borrow())
+                hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &guards[0].borrow())
                     .expand(&self.label, &mut okm)
                     .expect("okm is the correct length");
                 okm.to_vec()
@@ -807,7 +807,7 @@ impl UseSecret<1> for AeadEncrypt {
             AeadCipher::XChaCha20Poly1305 => Tag::<XChaCha20Poly1305>::default(),
         };
         f(
-            &*guards[0].borrow(),
+            &guards[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &self.plaintext,
@@ -851,7 +851,7 @@ impl UseSecret<1> for AeadDecrypt {
             AeadCipher::XChaCha20Poly1305 => XChaCha20Poly1305::try_decrypt,
         };
         f(
-            &*guards[0].borrow(),
+            &guards[0].borrow(),
             &self.nonce,
             &self.associated_data,
             &mut ptx,
@@ -942,21 +942,21 @@ impl ConcatKdf {
 
         for count in 0..rounds {
             // Iteration Count
-            Digest::update(&mut digest, &(count as u32 + 1).to_be_bytes());
+            Digest::update(&mut digest, (count as u32 + 1).to_be_bytes());
 
             // Derived Secret
             Digest::update(&mut digest, z);
 
             // AlgorithmId
-            Digest::update(&mut digest, &(alg.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, (alg.len() as u32).to_be_bytes());
             Digest::update(&mut digest, alg.as_bytes());
 
             // PartyUInfo
-            Digest::update(&mut digest, &(apu.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, (apu.len() as u32).to_be_bytes());
             Digest::update(&mut digest, apu);
 
             // PartyVInfo
-            Digest::update(&mut digest, &(apv.len() as u32).to_be_bytes());
+            Digest::update(&mut digest, (apv.len() as u32).to_be_bytes());
             Digest::update(&mut digest, apv);
 
             // SuppPubInfo
