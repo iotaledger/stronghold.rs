@@ -199,7 +199,7 @@ impl<T: BoxProvider> NCKey<T> {
             key: self.key.unlock().unwrap_or_else(|e| panic!("{}", e)),
             _box_provider: PhantomData,
         };
-        T::box_seal(&key, ad.as_ref(), &*data.key.borrow())
+        T::box_seal(&key, ad.as_ref(), &data.key.borrow())
     }
 
     pub fn decrypt_key<AD: AsRef<[u8]>>(&self, data: Vec<u8>, ad: AD) -> Result<Key<T>, DecryptError<T::Error>> {

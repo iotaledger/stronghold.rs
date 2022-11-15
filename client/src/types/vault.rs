@@ -87,7 +87,7 @@ impl ClientVault {
 
         self.client.get_guard(&location, |guarded_data| {
             let guarded_data = guarded_data.borrow();
-            data.extend_from_slice(&*guarded_data);
+            data.extend_from_slice(&guarded_data);
             Ok(())
         })?;
 

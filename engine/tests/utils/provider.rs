@@ -38,7 +38,7 @@ impl BoxProvider for Provider {
 
         let key = &key.key;
 
-        XChaCha20Poly1305::try_encrypt(&*key.borrow(), &nonce, ad, data, &mut cipher, &mut tag)?;
+        XChaCha20Poly1305::try_encrypt(&key.borrow(), &nonce, ad, data, &mut cipher, &mut tag)?;
 
         let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
 
@@ -53,7 +53,7 @@ impl BoxProvider for Provider {
 
         let key = &key.key;
 
-        XChaCha20Poly1305::try_decrypt(&*key.borrow(), nonce, ad, &mut plain, cipher, tag)?;
+        XChaCha20Poly1305::try_decrypt(&key.borrow(), nonce, ad, &mut plain, cipher, tag)?;
 
         Ok(plain)
     }

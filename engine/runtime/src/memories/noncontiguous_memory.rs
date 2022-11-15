@@ -4,18 +4,16 @@
 // TODO:
 // - replace thread based shard refresh with guard type return and functional refresh
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::memories::frag::{Frag, FragStrategy};
 use crate::{
     locked_memory::LockedMemory,
-    memories::{
-        buffer::Buffer,
-        file_memory::FileMemory,
-        frag::{Frag, FragStrategy},
-        ram_memory::RamMemory,
-    },
+    memories::{buffer::Buffer, file_memory::FileMemory, ram_memory::RamMemory},
     utils::*,
     MemoryError::*,
     *,
 };
+
 use core::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
@@ -47,6 +45,7 @@ pub enum NCConfig {
     FullFile,
     FullRam,
     RamAndFile,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     FragAllocation(FragStrategy),
 }
 use NCConfig::*;
@@ -57,6 +56,7 @@ use NCConfig::*;
 enum MemoryShard {
     File(FileMemory),
     Ram(RamMemory),
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Frag(Frag<[u8; NC_DATA_SIZE]>),
 }
 use MemoryShard::*;
@@ -203,6 +203,7 @@ impl MemoryShard {
                 Ok((File(fmem1), File(fmem2)))
             }
 
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             FragAllocation(strat) => {
                 let (frag1, frag2) = Frag::alloc_initialized(
                     *strat,
@@ -226,6 +227,7 @@ impl MemoryShard {
                 let v = buf.borrow().to_vec();
                 Ok(v)
             }
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             Frag(frag) => {
                 if frag.is_live() {
                     Ok(frag.get()?.to_vec())
@@ -249,6 +251,7 @@ impl Zeroize for MemoryShard {
         match self {
             File(fm) => fm.zeroize(),
             Ram(buf) => buf.zeroize(),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             Frag(frag) => frag.zeroize(),
         }
     }

@@ -222,7 +222,7 @@ impl Snapshot {
                 let mut data = Vec::new();
                 self.db.get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
                     let guarded_data = guarded_data.borrow();
-                    data.extend_from_slice(&*guarded_data);
+                    data.extend_from_slice(&guarded_data);
                     Ok(())
                 })?;
                 data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
@@ -340,7 +340,7 @@ impl Snapshot {
 
         let decrypted = &mut Vec::new();
         self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
-            let sk = x25519::SecretKey::try_from_slice(&*guard.borrow())?;
+            let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
             let shared_key = sk.diffie_hellman(&remote_pk);
             let pt = engine::snapshot::read(&mut bytes.as_slice(), shared_key.as_bytes(), &[])?;
             *decrypted = pt;

@@ -367,7 +367,7 @@ mod test {
 
         for tv in &tvs {
             let mut key = [0; KEY_SIZE];
-            hex::decode_to_slice(&tv.key, &mut key).unwrap();
+            hex::decode_to_slice(tv.key, &mut key).unwrap();
             let ad = hex::decode(tv.ad).unwrap();
             let data = hex::decode(tv.data).unwrap();
             let snapshot = hex::decode(tv.snapshot).unwrap();
