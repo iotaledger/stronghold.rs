@@ -1,5 +1,12 @@
 # Changelog
 
+## \[1.0.2]
+
+- Disable frag module for android and ios targets.
+  - [0a2331a9](https://www.github.com/iotaledger/stronghold.rs/commit/0a2331a906493c3466f029155601aa0cda8f363d) Fix clippy and add covector changefile on 2022-11-14
+  - [21fbdc68](https://www.github.com/iotaledger/stronghold.rs/commit/21fbdc68dbee1e803be1ed214e0e1f98ebffe711) Add changefiles on 2022-11-15
+  - [4561e4a9](https://www.github.com/iotaledger/stronghold.rs/commit/4561e4a93e2c7119e5da04c1eb5b505303bb3114) Merge changefiles on 2022-11-15
+
 ## \[1.0.1]
 
 - update version of zeroize
