@@ -24,15 +24,15 @@ protect any digital secret.
 Stronghold is a secure database for working with cryptography, which ensures that secrets (like private keys) are never
 revealed, but can be used according to best practices.
 
-You can think of Stronghold as an isolated container for secrets. The secret can be a private key or other bytes of data that should never be exposed. You can interact with Stronghold using procedures to [generate new keys](how_tos/cli/generate_key_pair), [store data in the vault](how_tos/cli/store_read_write), [derive keys](how_tos/cli/derive_slip_10), or work with the data. The difference to a "traditional" password store is that you can never access the secret data directly. You will need to use procedures. For example, if you need to sign data with your private key, you must call a procedure.
+You can think of Stronghold as an isolated container for secrets. The secret can be a private key or other bytes of data that should never be exposed. You can interact with Stronghold using procedures to [generate new keys](how_tos/cli/generate_key_pair.mdx), [store data in the vault](how_tos/cli/store_read_write.mdx), [derive keys](how_tos/cli/derive_slip_10.mdx), or work with the data. The difference to a "traditional" password store is that you can never access the secret data directly. You will need to use procedures. For example, if you need to sign data with your private key, you must call a procedure.
 
-Generally speaking, there are two states where the secret data remains, [Clients](reference/structure/client) and the [Snapshot](reference/structure/engine/snapshot) facilities.
+Generally speaking, there are two states where the secret data remains, [Clients](reference/structure/client.md) and the [Snapshot](reference/structure/engine/snapshot.md) facilities.
 
 The runtime operation uses Clients. You can think of Clients as a context-based secure data container that includes all the functionality you need to work with sensitive data. 
 
 Stronghold uses Snapshot facilities to persist the runtime. The Snapshot is actually twofold. At the lowest level, the Snapshot is a highly encrypted file represented by an in-memory instance of Snapshot itself, which is encrypted and protected via the same means as the Vault.
 
-Additionally to the secure secret database [Vault](reference/structure/engine/vault), Stronghold provides an evicting cache to store non-sensitive data called the [Store](reference/structure/engine/store). Use the Store to keep session-based configuration data. 
+Additionally to the secure secret database [Vault](reference/structure/engine/vault.md), Stronghold provides an evicting cache to store non-sensitive data called the [Store](reference/structure/engine/store.md). Use the Store to keep session-based configuration data. 
 
 [![status](https://img.shields.io/badge/Status-Beta-green.svg)](https://github.com/iotaledger/stronghold.rs)
 ![Audit](https://github.com/iotaledger/stronghold.rs/workflows/Audit/badge.svg?branch=dev)
@@ -63,5 +63,3 @@ If you want to get involved in discussions about this library, or you're looking
 
 We maintain a [bill of materials](https://github.com/iotaledger/stronghold.rs/raw/dev/S-BOM.pdf) for the upstream
 libraries that Stronghold consumes. 
-
-

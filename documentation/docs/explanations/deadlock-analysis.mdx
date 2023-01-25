@@ -18,7 +18,7 @@ To avoid this situation, Stronghold uses deadlock analysis.
 ### Requirements for a Multithreaded Stronghold
 
 - Be able to clone the element type parts of the API and use them concurrently. The following types ar reachable through the API and may be cloned and shared between threads:
-  - [Stronghold](../reference/structure/overview)
+  - [Stronghold](../reference/structure/overview.md)
   - [Client](../reference/structure/client.md)
   - [Store](../reference/structure/engine/store.md)
 - Use `Mutex` or `RWLock`
@@ -199,5 +199,3 @@ You can easily see that there are no circular dependencies in this graph.
 This document reassures us of the absence of deadlocks in our multithreaded implementation of Stronghold.
 
 However, the theory presented has not been proven correct to our knowledge. Moreover, creating the merged graph is not exempt from human error either. **This is not proof of the absence of deadlocks**, but an argument and a view on how we designed Stronghold to avoid such a situation.
-
-
