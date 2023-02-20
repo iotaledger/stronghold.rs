@@ -25,16 +25,16 @@ There are multiple steps to this process:
 
 Stronghold is simple in concept; it is used to store secrets. 
 These secrets should never be revealed, even to their owners. 
-Users can interact with secrets through controlled methods called [procedures](./../../explanations/procedures).
+Users can interact with secrets through controlled methods called [procedures](./../../explanations/procedures.md).
 
 
 ### Typical use of Stronghold:
 
 ### Typical use of Stronghold
 
-1. [Generate a key in Stronghold](./../../how_tos/cli/generate_key_pair).
+1. [Generate a key in Stronghold](./../../how_tos/cli/generate_key_pair.mdx).
 2. Use Stronghold procedures to use the key for encryption, decryption, signatures, etc.
-3. [Store Stronghold state](./../../how_tos/cli/create_snapshot) for future usage in permanent storage called [Snapshot](../structure/engine/snapshot).
+3. [Store Stronghold state](./../../how_tos/cli/create_snapshot.mdx) for future usage in permanent storage called [Snapshot](../structure/engine/snapshot.md).
 
 
 ### Model 
@@ -140,4 +140,3 @@ Mentions of __WIP__ means that it is still "Work In Progress".
 | Information Disclosure      | Secrets are revealed through side-channels                                                 | Make sure the procedure are constant in time and energy usage **(WIP)**. This also depends on the cryptographic implementation used | High     |
 | Denial of Service           | Prevent normal behaviour of stronghold through side-channels such as electromagnetic waves | You can't protect this from software, it is the host's responsibility                                                               | Mid      |
 | ~~Elevation of Privileges~~ | No potential attack                                                                        |                                                                                                                                     |          |
-
