@@ -21,18 +21,13 @@ use crate::snapshot::{compress, decompress};
 pub const MAGIC: [u8; 5] = [0x50, 0x41, 0x52, 0x54, 0x49];
 
 /// Current version bytes (bytes 5-6 in a snapshot file)
-pub const VERSION: [u8; 2] = [0x2, 0x0];
+pub const VERSION: [u8; 2] = [0x3, 0x0];
 // pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
 
 /// Key size for the ephemeral key
 const KEY_SIZE: usize = 32;
 /// Key type alias.
 pub type Key = [u8; KEY_SIZE];
-
-/// Nonce size for XChaCha20Poly1305
-const NONCE_SIZE: usize = XChaCha20Poly1305::NONCE_LENGTH;
-/// Nonce type alias
-pub type Nonce = [u8; NONCE_SIZE];
 
 #[derive(Debug, DeriveError)]
 pub enum ReadError {
@@ -61,105 +56,17 @@ pub enum WriteError {
     CorruptedData(String),
 }
 
-/// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
-/// and writes the ciphertext to the specifed output
-pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
-    // create ephemeral key pair.
-    let ephemeral_key = x25519::SecretKey::generate().map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
-
-    // get public key.
-    let ephemeral_pk = ephemeral_key.public_key();
-
-    let ephemeral_pk_bytes = ephemeral_pk.to_bytes();
-
-    // write public key into output.
-    output.write_all(&ephemeral_pk_bytes)?;
-
-    // secret key now expects an array
-    let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
-    key_bytes.clone_from_slice(key);
-
-    // get `x25519` secret key from public key.
-    let pk = x25519::SecretKey::from_bytes(key_bytes).public_key();
-
-    let pk_bytes = pk.to_bytes();
-
-    // do a diffie_hellman exchange to make a shared secret key.
-    let shared = ephemeral_key.diffie_hellman(&pk);
-
-    // compute the nonce using the ephemeral keys.
-    let nonce = {
-        let mut i = ephemeral_pk.to_bytes().to_vec();
-        i.extend_from_slice(&pk_bytes);
-        let res = blake2b::Blake2b256::digest(&i).to_vec();
-        let v: Nonce = res[0..NONCE_SIZE].try_into().expect("slice with incorrect length");
-        v
-    };
-
-    // create the XChaCha20Poly1305 tag.
-    let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
-
-    // creates the ciphertext.
-    let mut ct = vec![0; plain.len()];
-
-    // decrypt the plain text into the ciphertext buffer.
-    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
-        .map_err(|e| WriteError::CorruptedData(format!("Encryption failed: {}", e)))?;
-
-    // write tag and ciphertext into the output.
-    output.write_all(&tag)?;
-    output.write_all(&ct)?;
-
+pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, _associated_data: &[u8]) -> Result<(), WriteError> {
+    let age = crypto::keys::age::encrypt_vec(key, plain);
+    output.write_all(&age[..])?;
     Ok(())
 }
 
-/// Read ciphertext from the input, decrypts it using the specified key and the associated data
-/// specified during encryption and returns the plaintext
-pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
-    // create ephemeral private key.
-    let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
-    // get ephemeral private key from input.
-    input.read_exact(&mut ephemeral_pk)?;
-
-    // creating the secret key now expects an array
-    let mut key_bytes = [0u8; x25519::SECRET_KEY_LENGTH];
-    key_bytes.clone_from_slice(key);
-
-    // derive public key from ephemeral private key
-    let ephemeral_pk = x25519::PublicKey::from_bytes(ephemeral_pk);
-
-    // get x25519 key pair from ephemeral private key.
-    let sk = x25519::SecretKey::from_bytes(key_bytes);
-    let pk = sk.public_key();
-
-    // diffie hellman to create the shared secret.
-    let shared = sk.diffie_hellman(&ephemeral_pk);
-
-    // compute the nonce using the ephemeral keys.
-    let nonce = {
-        let mut i = ephemeral_pk.to_bytes().to_vec();
-        i.extend_from_slice(&pk.to_bytes());
-        let res = blake2b::Blake2b256::digest(&i).to_vec();
-        let v: Nonce = res[0..NONCE_SIZE].try_into().expect("slice with incorrect length");
-        v
-    };
-
-    // create and read tag from input.
-    let mut tag = [0; XChaCha20Poly1305::TAG_LENGTH];
-    input.read_exact(&mut tag)?;
-
-    // create and read ciphertext from input.
-    let mut ct = Vec::new();
-    input.read_to_end(&mut ct)?;
-
-    // create plain text buffer.
-    let mut pt = vec![0; ct.len()];
-
-    // decrypt the ciphertext into the plain text buffer.
-    XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)
-        .map_err(|e| ReadError::CorruptedContent(format!("Decryption failed: {}", e)))?;
-
-    Ok(pt)
+pub fn read<I: Read>(input: &mut I, key: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+    let mut age = Vec::new();
+    input.read_to_end(&mut age)?;
+    crypto::keys::age::decrypt_vec(key, &age[..])
+        .map_err(|_| ReadError::InvalidFile)
 }
 
 /// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified
@@ -206,7 +113,9 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u
 }
 
 fn check_min_file_len(input: &mut File) -> Result<(), ReadError> {
-    let min = MAGIC.len() + VERSION.len() + x25519::PUBLIC_KEY_LENGTH + XChaCha20Poly1305::TAG_LENGTH;
+    const AGE_HEADER_LEN: usize = 150;
+    const AGE_TAG_LEN: usize = 16;
+    let min = MAGIC.len() + VERSION.len() + AGE_HEADER_LEN + AGE_TAG_LEN;
     if input.metadata()?.len() >= min as u64 {
         Ok(())
     } else {
