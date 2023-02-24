@@ -18,7 +18,8 @@ path = "../"
 version = "0.4"
 
 [dependencies.iota-crypto]
-path = "../../../crypto.rs"
+git = "https://github.com/semenov-vladyslav/crypto.rs"
+branch = "age"
 features = [ "random", "chacha" ]
 default-features= false
 
