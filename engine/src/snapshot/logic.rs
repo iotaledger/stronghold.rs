@@ -37,6 +37,9 @@ pub enum ReadError {
 
     #[error("unsupported version: expected `{expected:?}`, found `{found:?}`")]
     UnsupportedVersion { expected: [u8; 2], found: [u8; 2] },
+
+    #[error("unsupported associated data")]
+    UnsupportedAssociatedData,
 }
 
 #[derive(Debug, DeriveError)]
@@ -49,6 +52,9 @@ pub enum WriteError {
 
     #[error("corrupted data: {0}")]
     CorruptedData(String),
+
+    #[error("unsupported associated data")]
+    UnsupportedAssociatedData,
 }
 
 pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, _associated_data: &[u8]) -> Result<(), WriteError> {
@@ -72,6 +78,9 @@ pub fn read<I: Read>(input: &mut I, key: &Key, _associated_data: &[u8]) -> Resul
 pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
+    if !associated_data.is_empty() {
+        return Err(WriteError::UnsupportedAssociatedData);
+    }
 
     let compressed_plain = compress(plain);
 
@@ -101,6 +110,9 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u
     check_min_file_len(&mut f)?;
     // check the header for structure.
     check_header(&mut f)?;
+    if !associated_data.is_empty() {
+        return Err(ReadError::UnsupportedAssociatedData);
+    }
     let pt = read(&mut f, key, associated_data)?;
 
     decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
