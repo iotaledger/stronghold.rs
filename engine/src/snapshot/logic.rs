@@ -7,12 +7,7 @@ use std::{
     path::Path,
 };
 
-use crypto::{
-    ciphers::{chacha::XChaCha20Poly1305, traits::Aead},
-    hashes::{blake2b, Digest},
-    keys::x25519,
-    utils::rand,
-};
+use crypto::utils::rand;
 use thiserror::Error as DeriveError;
 
 use crate::snapshot::{compress, decompress};
@@ -65,8 +60,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, _associated_data
 pub fn read<I: Read>(input: &mut I, key: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
-    crypto::keys::age::decrypt_vec(key, &age[..])
-        .map_err(|_| ReadError::InvalidFile)
+    crypto::keys::age::decrypt_vec(key, &age[..]).map_err(|_| ReadError::InvalidFile)
 }
 
 /// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified

@@ -186,7 +186,7 @@ mod v2 {
 
         // decrypt the plain text into the ciphertext buffer.
         XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
-            .map_err(|e| Error::EncryptFailed)?;
+            .map_err(|_| Error::EncryptFailed)?;
 
         // write tag and ciphertext into the output.
         output.write_all(&tag)?;
