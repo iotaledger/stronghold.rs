@@ -46,19 +46,25 @@ pub enum Error {
     /// I/O error.
     #[error("I/O error")]
     IoError(std::io::Error),
+    /// Crypto error.
+    #[error("Crypto error")]
+    CryptoError(crypto::Error),
 }
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Self::IoError(e)
     }
 }
+impl From<crypto::Error> for Error {
+    fn from(e: crypto::Error) -> Self {
+        Self::CryptoError(e)
+    }
+}
 
 pub enum Version<'a> {
     V2 {
         path: &'a Path,
-        password: &'a [u8],
-        salt: &'a [u8],
-        iter: usize,
+        key: [u8; 32],
         aad: &'a [u8],
     },
     V3 {
@@ -68,16 +74,26 @@ pub enum Version<'a> {
 }
 
 impl<'a> Version<'a> {
+    pub fn v2pbkdf(path: &'a Path, password: &'a [u8], salt: &[u8], iter: usize, aad: &'a [u8]) -> Result<Self, Error> {
+        let mut key = [0_u8; 32];
+        crypto::keys::pbkdf::PBKDF2_HMAC_SHA512(password, salt, iter, &mut key)?;
+        Ok(Self::v2(path, key, aad))
+    }
+
     pub fn v2wallet(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
         const PBKDF_SALT: &[u8] = b"wallet.rs";
         const PBKDF_ITER: usize = 100;
-        Self::V2 { path, password, aad, salt: PBKDF_SALT, iter: PBKDF_ITER, }
+        Self::v2pbkdf(path, password, PBKDF_SALT, PBKDF_ITER, aad).unwrap()
     }
 
     pub fn v2identity(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
         const PBKDF_SALT: &[u8] = b"identity.rs";
         const PBKDF_ITER: usize = 100;
-        Self::V2 { path, password, aad, salt: PBKDF_SALT, iter: PBKDF_ITER, }
+        Self::v2pbkdf(path, password, PBKDF_SALT, PBKDF_ITER, aad).unwrap()
+    }
+
+    pub fn v2(path: &'a Path, key: [u8; 32], aad: &'a [u8]) -> Self {
+        Self::V2 { path, key, aad, }
     }
 
     pub fn v3(path: &'a Path, password: &'a [u8]) -> Self {
@@ -166,7 +182,7 @@ mod v2 {
     #[deprecated]
     pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), Error> {
         // create ephemeral key pair.
-        let ephemeral_key = x25519::SecretKey::generate().unwrap();
+        let ephemeral_key = x25519::SecretKey::generate()?;
 
         // get public key.
         let ephemeral_pk = ephemeral_key.public_key();
@@ -227,10 +243,7 @@ mod v2 {
     /// - `crypto.rs`
     /// - `crate::snapshot::decompress`
     ///
-    pub fn read_snapshot(path: &Path, password: &[u8], salt: &[u8], iter: usize, aad: &[u8]) -> Result<Vec<u8>, Error> {
-        let mut key = [0_u8; 32];
-        crypto::keys::pbkdf::PBKDF2_HMAC_SHA512(password, salt, iter, &mut key).unwrap();
-
+    pub fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Vec<u8>, Error> {
         let mut f: File = OpenOptions::new().read(true).open(path)?;
 
         // check min file length
@@ -249,7 +262,6 @@ mod v2 {
         guard(version == VERSION_V2, Error::BadSnapshotVersion)?;
 
         let pt = read(&mut f, &key, aad)?;
-        key.zeroize();
 
         decompress(&pt).map_err(|_| Error::DecompressFailed)
     }
@@ -306,28 +318,30 @@ mod v3 {
 }
 
 fn migrate_from_v2_to_v3(
-    v2_path: &Path, v2_pwd: &[u8], v2_salt: &[u8], v2_iter: usize, v2_aad: &[u8],
+    v2_path: &Path, v2_key: &[u8; 32], v2_aad: &[u8],
     v3_path: &Path, v3_pwd: &[u8],
 ) -> Result<(), Error> {
-    let v = v2::read_snapshot(v2_path, v2_pwd, v2_salt, v2_iter, v2_aad)?;
+    let v = v2::read_snapshot(v2_path, v2_key, v2_aad)?;
     v3::write_snapshot(&v[..], v3_path, v3_pwd, &[])
 }
 
-pub fn migrate(prev: Version, next: Version) -> Result<(), Error> {
+pub fn migrate(mut prev: Version, next: Version) -> Result<(), Error> {
     match (prev, next) {
         (
             Version::V2 {
                 path: v2_path,
-                password: v2_pwd,
-                salt: v2_salt,
-                iter: v2_iter,
+                key: mut v2_key,
                 aad: v2_aad,
             },
             Version::V3 {
                 path: v3_path,
                 password: v3_pwd,
             },
-        ) => migrate_from_v2_to_v3(v2_path, v2_pwd, v2_salt, v2_iter, v2_aad, v3_path, v3_pwd),
+        ) => {
+            let r = migrate_from_v2_to_v3(v2_path, &v2_key, v2_aad, v3_path, v3_pwd);
+            v2_key.zeroize();
+            r
+        },
         _ => Err(Error::BadMigrationVersion),
     }
 }
