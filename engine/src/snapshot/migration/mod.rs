@@ -16,7 +16,7 @@ use crypto::{
 
 // These dependencies must not change between versions,
 // otherwise migration will work differently.
-use self::error::Error;
+pub use self::error::Error;
 use crate::snapshot::{compress, decompress};
 
 pub enum Version<'a> {
