@@ -64,7 +64,7 @@ impl From<crypto::Error> for Error {
 pub enum Version<'a> {
     V2 {
         path: &'a Path,
-        key: [u8; 32],
+        key: &'a [u8; 32],
         aad: &'a [u8],
     },
     V3 {
@@ -74,25 +74,7 @@ pub enum Version<'a> {
 }
 
 impl<'a> Version<'a> {
-    pub fn v2pbkdf(path: &'a Path, password: &'a [u8], salt: &[u8], iter: usize, aad: &'a [u8]) -> Result<Self, Error> {
-        let mut key = [0_u8; 32];
-        crypto::keys::pbkdf::PBKDF2_HMAC_SHA512(password, salt, iter, &mut key)?;
-        Ok(Self::v2(path, key, aad))
-    }
-
-    pub fn v2wallet(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
-        const PBKDF_SALT: &[u8] = b"wallet.rs";
-        const PBKDF_ITER: usize = 100;
-        Self::v2pbkdf(path, password, PBKDF_SALT, PBKDF_ITER, aad).unwrap()
-    }
-
-    pub fn v2identity(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
-        const PBKDF_SALT: &[u8] = b"identity.rs";
-        const PBKDF_ITER: usize = 100;
-        Self::v2pbkdf(path, password, PBKDF_SALT, PBKDF_ITER, aad).unwrap()
-    }
-
-    pub fn v2(path: &'a Path, key: [u8; 32], aad: &'a [u8]) -> Self {
+    pub fn v2(path: &'a Path, key: &'a [u8; 32], aad: &'a [u8]) -> Self {
         Self::V2 { path, key, aad, }
     }
 
@@ -325,23 +307,19 @@ fn migrate_from_v2_to_v3(
     v3::write_snapshot(&v[..], v3_path, v3_pwd, &[])
 }
 
-pub fn migrate(mut prev: Version, next: Version) -> Result<(), Error> {
+pub fn migrate(prev: Version, next: Version) -> Result<(), Error> {
     match (prev, next) {
         (
             Version::V2 {
                 path: v2_path,
-                key: mut v2_key,
+                key: v2_key,
                 aad: v2_aad,
             },
             Version::V3 {
                 path: v3_path,
                 password: v3_pwd,
             },
-        ) => {
-            let r = migrate_from_v2_to_v3(v2_path, &v2_key, v2_aad, v3_path, v3_pwd);
-            v2_key.zeroize();
-            r
-        },
+        ) => migrate_from_v2_to_v3(v2_path, v2_key, v2_aad, v3_path, v3_pwd),
         _ => Err(Error::BadMigrationVersion),
     }
 }

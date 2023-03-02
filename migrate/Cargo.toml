@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 stronghold_engine = { path = "../engine" }
+iota-crypto = { git = "https://github.com/semenov-vladyslav/crypto.rs", branch = "age", features = ["pbkdf"] }
