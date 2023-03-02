@@ -14,7 +14,7 @@ const VERSION_V2: [u8; 2] = [0x2, 0x0];
 
 /// Read ciphertext from the input, decrypts it using the specified key and the associated data
 /// specified during encryption and returns the plaintext
-pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, Error> {
     // create ephemeral private key.
     let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
     // get ephemeral private key from input.
@@ -64,7 +64,8 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result
 /// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
 /// and writes the ciphertext to the specifed output
 #[deprecated]
-pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), Error> {
+#[allow(dead_code)]
+pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), Error> {
     // create ephemeral key pair.
     let ephemeral_key = x25519::SecretKey::generate()?;
 
@@ -127,7 +128,7 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
 /// - `crypto.rs`
 /// - `crate::snapshot::decompress`
 ///
-pub fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Vec<u8>, Error> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
 
     // check min file length
