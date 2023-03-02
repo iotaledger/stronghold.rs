@@ -226,6 +226,7 @@ impl From<EngineReadError> for SnapshotError {
                 "Unsupported version: expected {:?}, found {:?}.",
                 expected, found
             )),
+            EngineReadError::UnsupportedAssociatedData => SnapshotError::Engine("Unsupported snapshot associated data".into()),
         }
     }
 }
@@ -236,6 +237,7 @@ impl From<EngineWriteError> for SnapshotError {
             EngineWriteError::Io(io) => SnapshotError::Io(io),
             EngineWriteError::CorruptedData(e) => SnapshotError::CorruptedContent(e),
             EngineWriteError::GenerateRandom(_) => SnapshotError::Io(std::io::ErrorKind::Other.into()),
+            EngineWriteError::UnsupportedAssociatedData => SnapshotError::Engine("Unsupported snapshot associated data".into()),
         }
     }
 }
