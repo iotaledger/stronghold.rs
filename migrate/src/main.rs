@@ -2,15 +2,7 @@ use std::path::Path;
 use engine::snapshot::migration::{migrate, Version};
 
 fn main() {
-    let prev = Version::V2wallet {
-        path: Path::new("../stardust-cli-wallet.stronghold"),
-        password: "migration-test".as_bytes(),
-        aad: &[],
-    };
-    let next = Version::V3 {
-        path: Path::new("../stardust-cli-wallet-v3.stronghold"),
-        password: "migration-test".as_bytes(),
-        aad: &[],
-    };
-    println!("migrating: {:?}", migrate(prev, next));
+    let v2 = Version::v2wallet(Path::new("../stardust-cli-wallet.stronghold"), "migration-test".as_bytes(), &[]);
+    let v3 = Version::v3(Path::new("../stardust-cli-wallet-v3.stronghold"), "migration-test".as_bytes());
+    println!("migrating: {:?}", migrate(v2, v3));
 }

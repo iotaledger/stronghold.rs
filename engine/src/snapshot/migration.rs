@@ -54,16 +54,35 @@ impl From<std::io::Error> for Error {
 }
 
 pub enum Version<'a> {
-    V2wallet {
+    V2 {
         path: &'a Path,
         password: &'a [u8],
+        salt: &'a [u8],
+        iter: usize,
         aad: &'a [u8],
     },
     V3 {
         path: &'a Path,
         password: &'a [u8],
-        aad: &'a [u8],
     },
+}
+
+impl<'a> Version<'a> {
+    pub fn v2wallet(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
+        const PBKDF_SALT: &[u8] = b"wallet.rs";
+        const PBKDF_ITER: usize = 100;
+        Self::V2 { path, password, aad, salt: PBKDF_SALT, iter: PBKDF_ITER, }
+    }
+
+    pub fn v2identity(path: &'a Path, password: &'a [u8], aad: &'a [u8]) -> Self {
+        const PBKDF_SALT: &[u8] = b"identity.rs";
+        const PBKDF_ITER: usize = 100;
+        Self::V2 { path, password, aad, salt: PBKDF_SALT, iter: PBKDF_ITER, }
+    }
+
+    pub fn v3(path: &'a Path, password: &'a [u8]) -> Self {
+        Self::V3 { path, password, }
+    }
 }
 
 /// Magic bytes (bytes 0-4 in a snapshot file) aka PARTI
@@ -203,28 +222,14 @@ mod v2 {
     /// - [wallet.rs style to create KeyProvider in iota.rs](https://github.com/iotaledger/iota.rs/blob/03c72133279b98f12c91b1e1bdc14965d9f48cf9/client/src/stronghold/common.rs#L33)
     /// - [KeyProvider constructor in stronghold.rs](https://github.com/iotaledger/stronghold.rs/blob/c2dfa5f9f1f32220d377ed64d934947b22943a5f/client/src/security/keyprovider.rs#L80)
     ///
-    /// Dependencies:
+    /// Dependencies (should not change):
     ///
     /// - `crypto.rs`
     /// - `crate::snapshot::decompress`
     ///
-    pub fn read_wallet_snapshot(path: &Path, password: &[u8], aad: &[u8]) -> Result<Vec<u8>, Error> {
-        const PBKDF_SALT: &[u8] = b"wallet.rs";
-        const PBKDF_ITER: usize = 100;
-        const KEY_SIZE_HASHED: usize = 32;
-
-        // "wallet.rs"-style of deriving KeyProvider from password
-
-        // Hash a password, deriving a key, for accessing Stronghold.
-        let mut buffer = [0u8; 64];
-
-        // Safe to unwrap because rounds > 0.
-        crypto::keys::pbkdf::PBKDF2_HMAC_SHA512(password, PBKDF_SALT, PBKDF_ITER, buffer.as_mut()).unwrap();
-
-        // key internally stored in KeyProvider
-        let mut key = [0_u8; KEY_SIZE_HASHED];
-        key.copy_from_slice(&buffer[..KEY_SIZE_HASHED]);
-        buffer.zeroize();
+    pub fn read_snapshot(path: &Path, password: &[u8], salt: &[u8], iter: usize, aad: &[u8]) -> Result<Vec<u8>, Error> {
+        let mut key = [0_u8; 32];
+        crypto::keys::pbkdf::PBKDF2_HMAC_SHA512(password, salt, iter, &mut key).unwrap();
 
         let mut f: File = OpenOptions::new().read(true).open(path)?;
 
@@ -260,14 +265,14 @@ mod v3 {
 
     const VERSION_V3: [u8; 2] = [0x3, 0x0];
 
-    pub fn read<I: Read>(input: &mut I, key: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, Error> {
+    pub fn read<I: Read>(input: &mut I, password: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, Error> {
         let mut age = Vec::new();
         input.read_to_end(&mut age)?;
-        age::decrypt_vec(key, &age[..]).map_err(|e| Error::AgeError(e))
+        age::decrypt_vec(password, &age[..]).map_err(|e| Error::AgeError(e))
     }
 
-    pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, _associated_data: &[u8]) -> Result<(), Error> {
-        let age = age::encrypt_vec(key, plain);
+    pub fn write<O: Write>(plain: &[u8], output: &mut O, password: &Key, _associated_data: &[u8]) -> Result<(), Error> {
+        let age = age::encrypt_vec(password, plain);
         output.write_all(&age[..])?;
         Ok(())
     }
@@ -283,48 +288,46 @@ mod v3 {
         let compressed_plain = compress(plain);
 
         // emulate constructor `KeyProvider::with_passphrase_hashed` with `D = blake2b`
-        let mut key = [0_u8; KEY_SIZE];
+        let mut password_hash = [0_u8; KEY_SIZE];
         let mut h = crypto::hashes::blake2b::Blake2b256::default();
         h.update(password);
-        h.finalize_into((&mut key).into());
+        h.finalize_into((&mut password_hash).into());
 
         let mut f = OpenOptions::new().write(true).create_new(true).open(path)?;
         // write magic and version bytes
         f.write_all(&MAGIC)?;
         f.write_all(&VERSION_V3)?;
-        write(&compressed_plain, &mut f, &key, aad)?;
+        // blake2b hash of password is used as encryption password in age
+        write(&compressed_plain, &mut f, &password_hash, aad)?;
         f.sync_all()?;
 
         Ok(())
     }
 }
 
-fn migrate_from_v2wallet_to_v3(
-    prev_path: &Path,
-    prev_pwd: &[u8],
-    prev_aad: &[u8],
-    next_path: &Path,
-    next_pwd: &[u8],
-    next_aad: &[u8],
+fn migrate_from_v2_to_v3(
+    v2_path: &Path, v2_pwd: &[u8], v2_salt: &[u8], v2_iter: usize, v2_aad: &[u8],
+    v3_path: &Path, v3_pwd: &[u8],
 ) -> Result<(), Error> {
-    let v = v2::read_wallet_snapshot(prev_path, prev_pwd, prev_aad)?;
-    v3::write_snapshot(&v[..], next_path, next_pwd, next_aad)
+    let v = v2::read_snapshot(v2_path, v2_pwd, v2_salt, v2_iter, v2_aad)?;
+    v3::write_snapshot(&v[..], v3_path, v3_pwd, &[])
 }
 
 pub fn migrate(prev: Version, next: Version) -> Result<(), Error> {
     match (prev, next) {
         (
-            Version::V2wallet {
-                path: prev_path,
-                password: prev_pwd,
-                aad: prev_aad,
+            Version::V2 {
+                path: v2_path,
+                password: v2_pwd,
+                salt: v2_salt,
+                iter: v2_iter,
+                aad: v2_aad,
             },
             Version::V3 {
-                path: next_path,
-                password: next_pwd,
-                aad: next_aad,
+                path: v3_path,
+                password: v3_pwd,
             },
-        ) => migrate_from_v2wallet_to_v3(prev_path, prev_pwd, prev_aad, next_path, next_pwd, next_aad),
+        ) => migrate_from_v2_to_v3(v2_path, v2_pwd, v2_salt, v2_iter, v2_aad, v3_path, v3_pwd),
         _ => Err(Error::BadMigrationVersion),
     }
 }

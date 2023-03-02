@@ -205,10 +205,9 @@ mod test {
 
         let key: Key = random_key();
         let bs0 = random_bytestring();
-        let ad = random_bytestring();
 
-        write_to(&bs0, &pb, &key, &ad).unwrap();
-        let bs1 = read_from(&pb, &key, &ad).unwrap();
+        write_to(&bs0, &pb, &key, &[]).unwrap();
+        let bs1 = read_from(&pb, &key, &[]).unwrap();
         assert_eq!(bs0, bs1);
     }
 
@@ -221,11 +220,10 @@ mod test {
 
         let key: Key = random_key();
         let bs0 = random_bytestring();
-        let ad = random_bytestring();
 
-        write_to(&bs0, &pb, &key, &ad).unwrap();
+        write_to(&bs0, &pb, &key, &[]).unwrap();
         corrupt_file_at(&pb);
-        read_from(&pb, &key, &ad).unwrap();
+        read_from(&pb, &key, &[]).unwrap();
     }
 
     #[test]
@@ -234,13 +232,12 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        write_to(&random_bytestring(), &pb, &random_key(), &random_bytestring()).unwrap();
+        write_to(&random_bytestring(), &pb, &random_key(), &[]).unwrap();
 
         let key: Key = random_key();
         let bs0 = random_bytestring();
-        let ad = random_bytestring();
-        write_to(&bs0, &pb, &key, &ad).unwrap();
-        let bs1 = read_from(&pb, &key, &ad).unwrap();
+        write_to(&bs0, &pb, &key, &[]).unwrap();
+        let bs1 = read_from(&pb, &key, &[]).unwrap();
         assert_eq!(bs0, bs1);
     }
 
