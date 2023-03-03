@@ -1,5 +1,5 @@
-use std::path::Path;
 use engine::snapshot::migration::{migrate, Version};
+use std::path::Path;
 
 fn main() {
     let mut key = [0_u8; 32];

@@ -127,7 +127,6 @@ pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associate
 ///
 /// - `crypto.rs`
 /// - `crate::snapshot::decompress`
-///
 pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Vec<u8>, Error> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
 
