@@ -942,7 +942,7 @@ impl ConcatKdf {
 
         for count in 0..rounds {
             // Iteration Count
-            Digest::update(&mut digest, (count as u32 + 1).to_be_bytes());
+            Digest::update(&mut digest, (count + 1).to_be_bytes());
 
             // Derived Secret
             Digest::update(&mut digest, z);

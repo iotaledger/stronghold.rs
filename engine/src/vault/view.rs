@@ -366,7 +366,6 @@ impl<P: BoxProvider> Vault<P> {
             buf = self
                 .entries
                 .values()
-                .into_iter()
                 .filter_map(|entry| entry.get_hint_and_id(key).ok())
                 .collect();
         }
@@ -386,7 +385,7 @@ impl<P: BoxProvider> Vault<P> {
 
     /// Check if the [`Vault`] contains a [`Record`].
     fn contains_record(&self, rid: RecordId) -> bool {
-        self.entries.values().into_iter().any(|entry| entry.check_id(rid))
+        self.entries.values().any(|entry| entry.check_id(rid))
     }
 
     /// Revokes an [`Record`] by its [`ChainId`].  Does nothing if the [`Record`] doesn't exist.
