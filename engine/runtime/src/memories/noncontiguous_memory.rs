@@ -91,7 +91,7 @@ impl LockedMemory for NonContiguousMemory {
     /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         let (data1, data2) = self.get_shards_data()?;
-        let data1 = &blake2b::Blake2b256::digest(&data1);
+        let data1 = &blake2b::Blake2b256::digest(data1);
         let reconstructed_data = xor(data1, &data2, NC_DATA_SIZE);
 
         // Refresh the shards after each use

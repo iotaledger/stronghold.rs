@@ -14,18 +14,13 @@ use crate::{
 };
 
 /// Policy for conflicts when merging two vaults.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum MergePolicy {
     /// Do not copy the record, instead keep the existing one.
     KeepOld,
     /// Replace the existing record.
+    #[default]
     Replace,
-}
-
-impl Default for MergePolicy {
-    fn default() -> Self {
-        MergePolicy::Replace
-    }
 }
 
 /// Config for synching two clients.

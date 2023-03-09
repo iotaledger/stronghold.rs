@@ -32,9 +32,9 @@ pub fn derive_guard_debug(input: TokenStream) -> TokenStream {
 }
 
 /// Implements the `VariantPermission` for struct/ unions with PermissionValue(1).
-/// For enums, it creates an analogous new enum <Ident>Permission with Unit variants, and implements `VariantPermission`
-/// by assigning different `PermissionValue` for each variant. The permission value is the "index" in the enum as
-/// exponent for the power of 2, thus from top to bottom 1, 2, 4, 8...
+/// For enums, it creates an analogous new enum `<Ident>Permission` with Unit variants, and implements
+/// `VariantPermission` by assigning different `PermissionValue` for each variant. The permission value is the "index"
+/// in the enum as exponent for the power of 2, thus from top to bottom 1, 2, 4, 8...
 /// Additionally, it implements `Borrow` from the new original enum to the new enum, to satisfy the trait bounds of
 /// `StrongholdP2p`.
 #[proc_macro_derive(RequestPermissions)]

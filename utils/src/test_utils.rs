@@ -4,7 +4,7 @@
 use crate::random;
 use std::{
     fs::{File, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, Write},
     path::Path,
 };
 
@@ -23,7 +23,7 @@ pub fn corrupt(bs: &mut [u8]) {
 }
 
 fn seek_to_beginning(f: &mut File) {
-    f.seek(SeekFrom::Start(0)).unwrap();
+    f.rewind().unwrap();
 }
 
 pub fn corrupt_file(f: &mut File) {

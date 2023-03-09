@@ -10,7 +10,7 @@ use engine::vault::{BoxProvider, Key, NCKey, VaultId};
 // };
 use std::collections::HashMap;
 
-/// The [`KeyStore`] keeps a map of [`VaultId`] -> [Vec<u8>] representing
+/// The [`KeyStore`] keeps a map of [`VaultId`] -> [`Vec<u8>`] representing
 /// encrypted [`Key<P>`] using the `master_key`.
 /// `master_key` is stored in a non-contiguous data structure [`NCKey<P>`]
 /// for more security

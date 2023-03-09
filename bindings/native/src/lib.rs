@@ -32,7 +32,7 @@ fn set_last_error(err: WrapperError) {
 
 #[no_mangle]
 pub extern "C" fn stronghold_set_log_level(log_level: libc::size_t) {
-    let filter = match log_level as usize {
+    let filter = match log_level {
         0 => Some(LevelFilter::Off),
         1 => Some(LevelFilter::Error),
         2 => Some(LevelFilter::Warn),
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn stronghold_write_vault(
 
     let record_path = CStr::from_ptr(record_path_c);
     let record_path = record_path.to_str().unwrap().to_string();
-    let data = slice::from_raw_parts(data_c, data_length as usize);
+    let data = slice::from_raw_parts(data_c, data_length);
 
     info!("[Rust] Getting Stronghold instance from Box");
 
@@ -319,7 +319,7 @@ pub unsafe extern "C" fn stronghold_sign(
 ) -> *mut u8 {
     let record_path = CStr::from_ptr(record_path_c);
     let record_path = record_path.to_str().unwrap().to_string();
-    let data = slice::from_raw_parts(data_c, data_length as usize);
+    let data = slice::from_raw_parts(data_c, data_length);
 
     info!("[Rust] Getting Stronghold instance from Box");
 
