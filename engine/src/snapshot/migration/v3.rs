@@ -11,7 +11,7 @@ const VERSION_V3: [u8; 2] = [0x3, 0x0];
 pub(crate) fn read<I: Read>(input: &mut I, password: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, Error> {
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
-    age::decrypt_vec(password, &age[..]).map_err(|e| Error::AgeError(e))
+    age::decrypt_vec(password, age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR, &age[..]).map_err(|e| Error::AgeError(e))
 }
 
 pub(crate) fn write<O: Write>(
@@ -20,7 +20,9 @@ pub(crate) fn write<O: Write>(
     password: &Key,
     _associated_data: &[u8],
 ) -> Result<(), Error> {
-    let age = age::encrypt_vec(password, plain);
+    let work_factor = age::WorkFactor::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
+    let age = age::encrypt_vec(password, work_factor, plain)
+        .map_err(|_| Error::EncryptFailed)?;
     output.write_all(&age[..])?;
     Ok(())
 }
