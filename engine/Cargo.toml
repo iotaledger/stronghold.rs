@@ -37,8 +37,7 @@ serde = { version = "1.0", features = [ "derive" ] }
   default-features = false
 
   [dependencies.iota-crypto]
-  git = "https://github.com/semenov-vladyslav/crypto.rs"
-  branch = "age"
+  version = "0.16.1"
   features = [
   "age",
   "pbkdf",
