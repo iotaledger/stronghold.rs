@@ -63,7 +63,13 @@ pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data:
     write0(plain, output, key, work_factor, associated_data)
 }
 
-pub fn write0<O: Write>(plain: &[u8], output: &mut O, key: &Key, work_factor: u8, _associated_data: &[u8]) -> Result<(), WriteError> {
+pub fn write0<O: Write>(
+    plain: &[u8],
+    output: &mut O,
+    key: &Key,
+    work_factor: u8,
+    _associated_data: &[u8],
+) -> Result<(), WriteError> {
     use crypto::keys::age::*;
 
     let age = encrypt_vec(key, WorkFactor::new(work_factor), plain)
@@ -78,7 +84,12 @@ pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result
     read0(input, key, max_work_factor, associated_data)
 }
 
-pub fn read0<I: Read>(input: &mut I, key: &Key, max_work_factor: u8, _associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+pub fn read0<I: Read>(
+    input: &mut I,
+    key: &Key,
+    max_work_factor: u8,
+    _associated_data: &[u8],
+) -> Result<Vec<u8>, ReadError> {
     use crypto::keys::age::*;
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;

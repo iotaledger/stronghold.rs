@@ -21,8 +21,7 @@ pub(crate) fn write<O: Write>(
     _associated_data: &[u8],
 ) -> Result<(), Error> {
     let work_factor = age::WorkFactor::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
-    let age = age::encrypt_vec(password, work_factor, plain)
-        .map_err(|_| Error::EncryptFailed)?;
+    let age = age::encrypt_vec(password, work_factor, plain).map_err(|_| Error::EncryptFailed)?;
     output.write_all(&age[..])?;
     Ok(())
 }
