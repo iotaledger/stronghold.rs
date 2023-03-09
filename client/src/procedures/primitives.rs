@@ -141,7 +141,7 @@ impl StrongholdProcedure {
     }
 }
 
-/// Implement StrongholdProcedure: From<T> for all.
+/// Implement `StrongholdProcedure: From<T>` for all.
 /// Implement [`Procedure`] if `$Trait:ident` != `_`.
 #[macro_export]
 macro_rules! procedures {
