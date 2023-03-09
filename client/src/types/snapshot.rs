@@ -8,7 +8,7 @@
 
 use crypto::keys::x25519;
 use engine::{
-    snapshot::{self, read, read_from as read_from_file, write, write_to as write_to_file, Key},
+    snapshot::{self, read, read0, read_from as read_from_file, write, write0, write_to as write_to_file, Key},
     store::Cache,
     vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
 };
@@ -246,7 +246,7 @@ impl Snapshot {
         let vault_id = VaultId(id.0);
         let key: snapshot::Key = random::random();
         let mut buffer = Vec::new();
-        write(&bytes, &mut buffer, &key, &[])?;
+        write0(&bytes, &mut buffer, &key, 0, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
@@ -342,7 +342,7 @@ impl Snapshot {
         self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
             let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
             let shared_key = sk.diffie_hellman(&remote_pk);
-            let pt = engine::snapshot::read(&mut bytes.as_slice(), shared_key.as_bytes(), &[])?;
+            let pt = engine::snapshot::read0(&mut bytes.as_slice(), shared_key.as_bytes(), 0, &[])?;
             *decrypted = pt;
             Ok(())
         })?;
@@ -385,7 +385,7 @@ impl Snapshot {
         let sk = x25519::SecretKey::generate()?;
         let shared_key = sk.diffie_hellman(&remote_pk);
         let pk = sk.public_key();
-        engine::snapshot::write(&compressed_plain, &mut buffer, shared_key.as_bytes(), &[])?;
+        engine::snapshot::write0(&compressed_plain, &mut buffer, shared_key.as_bytes(), 0, &[])?;
         Ok((pk, buffer))
     }
 

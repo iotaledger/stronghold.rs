@@ -57,23 +57,33 @@ pub enum WriteError {
     UnsupportedAssociatedData,
 }
 
-pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, _associated_data: &[u8]) -> Result<(), WriteError> {
+pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
+    use crypto::keys::age::*;
+    let work_factor = RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
+    write0(plain, output, key, work_factor, associated_data)
+}
+
+pub fn write0<O: Write>(plain: &[u8], output: &mut O, key: &Key, work_factor: u8, _associated_data: &[u8]) -> Result<(), WriteError> {
     use crypto::keys::age::*;
 
-    let work_factor = RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     let age = encrypt_vec(key, WorkFactor::new(work_factor), plain)
         .map_err(|e| WriteError::GenerateRandom(format!("{e:?}")))?;
     output.write_all(&age[..])?;
     Ok(())
 }
 
-pub fn read<I: Read>(input: &mut I, key: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+    use crypto::keys::age::*;
+    let max_work_factor = RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
+    read0(input, key, max_work_factor, associated_data)
+}
+
+pub fn read0<I: Read>(input: &mut I, key: &Key, max_work_factor: u8, _associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     use crypto::keys::age::*;
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
 
-    let work_factor = RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
-    decrypt_vec(key, work_factor, &age[..]).map_err(|_| ReadError::InvalidFile)
+    decrypt_vec(key, max_work_factor, &age[..]).map_err(|_| ReadError::InvalidFile)
 }
 
 /// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified
