@@ -145,7 +145,7 @@ pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<V
     f.read_exact(&mut version)?;
     guard(version == VERSION_V2, Error::BadSnapshotVersion)?;
 
-    let pt = read(&mut f, &key, aad)?;
+    let pt = read(&mut f, key, aad)?;
 
     decompress(&pt).map_err(|_| Error::DecompressFailed)
 }
