@@ -1,3 +1,6 @@
+// Copyright 2023 IOTA Stiftung
+// SPDX-License-Identifier: Apache-2.0
+
 use crypto::keys::age;
 use thiserror::Error as DeriveError;
 
