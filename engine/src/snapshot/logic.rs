@@ -57,13 +57,43 @@ pub enum WriteError {
     UnsupportedAssociatedData,
 }
 
-pub fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
+/// Encrypt snapshot content with key using work factor recommended for password-based (weak) keys.
+///
+/// # Security
+///
+/// Weak low-entropy (password-based) keys must be strengthened with key derivation.
+/// Secure key derivation in this case is resource-consuming, ie. it can use a lot of RAM
+/// and should take approx. 1 second. Strong keys generated with cryptographically secure RNG
+/// don't need strengthening.
+///
+/// This function expects key to be password-based (blake2b hash of the user provided password).
+/// It uses recommended work factor (approx. 20) to derive encryption key.
+/// It is safe to use with strong keys, although computing resources may be wasted.
+/// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
+///
+pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
     use crypto::keys::age::*;
     let work_factor = RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
-    write0(plain, output, key, work_factor, associated_data)
+    // TODO: work_factor is intentionally 0 just for development.
+    // Use proper value in production.
+    // let work_factor = 0;
+    encrypt_content_with_work_factor(plain, output, key, work_factor, associated_data)
 }
 
-pub fn write0<O: Write>(
+/// Encrypt snapshot content with key using custom work factor.
+///
+/// # Security warning
+///
+/// Work factor is used to strengthen weak low-entropy (password-based) keys.
+/// Recommended value for such keys is approx. 20, ie. key derivation should take approx. 1 second.
+/// Key derivation time grows exponentially with work factor.
+///
+/// Strong keys generated with cryptographically secure RNG do not need strengthening and
+/// can use minimal (0) work factor.
+///
+/// Using low work factor with weak low-entropy keys can lead to full compromise of encrypted data!
+///
+pub fn encrypt_content_with_work_factor<O: Write>(
     plain: &[u8],
     output: &mut O,
     key: &Key,
@@ -78,13 +108,31 @@ pub fn write0<O: Write>(
     Ok(())
 }
 
-pub fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+/// Decrypt snapshot content with key using maximum work factor recommended for password-based (weak) keys.
+///
+/// Decryption may fail if the required amount of computation (work factor) exceeds the recommended value.
+/// In this case `decrypt_content_with_work_factor` with a larger work factor.
+pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     use crypto::keys::age::*;
     let max_work_factor = RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
-    read0(input, key, max_work_factor, associated_data)
+    decrypt_content_with_work_factor(input, key, max_work_factor, associated_data)
 }
 
-pub fn read0<I: Read>(
+/// Decrypt snapshot content with key using custom maximum work factor.
+///
+/// Decryption may fail if the required amount of computation (work factor) exceeds the provided value.
+/// In this case a larger maximum work factor value can be used.
+///
+/// Strong keys are expected to use small/zero work factor.
+/// Small/zero maximum work factor can be used in such case.
+///
+/// # Security
+///
+/// Key derivation time grows exponentially with work factor.
+/// Maximum work factor should not be too large.
+/// Large values of maximum work factor when exploited by an attacker can cause Denial-of-Service.
+///
+pub fn decrypt_content_with_work_factor<I: Read>(
     input: &mut I,
     key: &Key,
     max_work_factor: u8,
@@ -97,13 +145,13 @@ pub fn read0<I: Read>(
     decrypt_vec(key, max_work_factor, &age[..]).map_err(|_| ReadError::InvalidFile)
 }
 
-/// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified
+/// Put magic and version bytes as file-header, [`encrypt_content`][self::encrypt_content] the specified
 /// plaintext to the specified path.
 ///
 /// This is achieved by creating a temporary file in the same directory as the specified path (same
 /// filename with a salted suffix). This is currently known to be problematic if the path is a
 /// symlink and/or if the target path resides in a directory without user write permission.
-pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
+pub fn encrypt_file(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
     // TODO: if path exists and is a symlink, resolve it and then append the salt
     // TODO: if the sibling tempfile isn't writeable (e.g. directory permissions), write to
     if !associated_data.is_empty() {
@@ -124,7 +172,7 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     // write magic and version bytes
     f.write_all(&MAGIC)?;
     f.write_all(&VERSION)?;
-    write(&compressed_plain, &mut f, key, associated_data)?;
+    encrypt_content(&compressed_plain, &mut f, key, associated_data)?;
     f.sync_all()?;
 
     rename(tmp, path)?;
@@ -132,8 +180,8 @@ pub fn write_to(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]) ->
     Ok(())
 }
 
-/// Check the file header, [`read`][self::read], and decompress the ciphertext from the specified path.
-pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+/// Check the file header, [`decrypt_content`][self::decrypt_content], and decompress the ciphertext from the specified path.
+pub fn decrypt_file(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
     // check the header for structure.
@@ -141,7 +189,7 @@ pub fn read_from(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u
     if !associated_data.is_empty() {
         return Err(ReadError::UnsupportedAssociatedData);
     }
-    let pt = read(&mut f, key, associated_data)?;
+    let pt = decrypt_content(&mut f, key, associated_data)?;
 
     decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
 }
@@ -207,8 +255,8 @@ mod test {
         let ad = random_bytestring();
 
         let mut buf = Vec::new();
-        write(&bs0, &mut buf, &key, &ad).unwrap();
-        let read = read(&mut buf.as_slice(), &key, &ad).unwrap();
+        encrypt_content(&bs0, &mut buf, &key, &ad).unwrap();
+        let read = decrypt_content(&mut buf.as_slice(), &key, &ad).unwrap();
         assert_eq!(bs0, read);
     }
 
@@ -220,9 +268,9 @@ mod test {
         let ad = random_bytestring();
 
         let mut buf = Vec::new();
-        write(&bs0, &mut buf, &key, &ad).unwrap();
+        encrypt_content(&bs0, &mut buf, &key, &ad).unwrap();
         corrupt(&mut buf);
-        read(&mut buf.as_slice(), &key, &ad).unwrap();
+        decrypt_content(&mut buf.as_slice(), &key, &ad).unwrap();
     }
 
     #[test]
@@ -234,8 +282,8 @@ mod test {
         let key: Key = random_key();
         let bs0 = random_bytestring();
 
-        write_to(&bs0, &pb, &key, &[]).unwrap();
-        let bs1 = read_from(&pb, &key, &[]).unwrap();
+        encrypt_file(&bs0, &pb, &key, &[]).unwrap();
+        let bs1 = decrypt_file(&pb, &key, &[]).unwrap();
         assert_eq!(bs0, bs1);
     }
 
@@ -249,9 +297,9 @@ mod test {
         let key: Key = random_key();
         let bs0 = random_bytestring();
 
-        write_to(&bs0, &pb, &key, &[]).unwrap();
+        encrypt_file(&bs0, &pb, &key, &[]).unwrap();
         corrupt_file_at(&pb);
-        read_from(&pb, &key, &[]).unwrap();
+        decrypt_file(&pb, &key, &[]).unwrap();
     }
 
     #[test]
@@ -260,12 +308,12 @@ mod test {
         let mut pb = f.into_path();
         pb.push("snapshot");
 
-        write_to(&random_bytestring(), &pb, &random_key(), &[]).unwrap();
+        encrypt_file(&random_bytestring(), &pb, &random_key(), &[]).unwrap();
 
         let key: Key = random_key();
         let bs0 = random_bytestring();
-        write_to(&bs0, &pb, &key, &[]).unwrap();
-        let bs1 = read_from(&pb, &key, &[]).unwrap();
+        encrypt_file(&bs0, &pb, &key, &[]).unwrap();
+        let bs1 = decrypt_file(&pb, &key, &[]).unwrap();
         assert_eq!(bs0, bs1);
     }
 
@@ -316,7 +364,7 @@ mod test {
 
             // check the header for structure.
             check_header(&mut slice).unwrap();
-            let pt = read(&mut slice, &key, &ad).unwrap();
+            let pt = decrypt_content(&mut slice, &key, &ad).unwrap();
 
             assert_eq!(pt, data);
         }
