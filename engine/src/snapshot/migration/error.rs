@@ -24,18 +24,24 @@ pub enum Error {
     /// Authenticated associated data is not supported by snapshot format.
     #[error("Authenticated associated data is not supported by snapshot format")]
     AadNotSupported,
-    /// Failed to encrypt.
-    #[error("Failed to encrypt")]
-    EncryptFailed,
+    /// Failed to generate randomness.
+    #[error("Failed to generate randomness")]
+    RngFailed,
     /// Age format error.
     #[error("Age format error")]
-    AgeError(age::Error),
+    AgeFormatError(age::DecError),
     /// I/O error.
     #[error("I/O error")]
     IoError(std::io::Error),
     /// Crypto error.
     #[error("Crypto error")]
     CryptoError(crypto::Error),
+}
+
+impl From<age::DecError> for Error {
+    fn from(e: age::DecError) -> Self {
+        Self::AgeFormatError(e)
+    }
 }
 
 impl From<std::io::Error> for Error {

@@ -108,8 +108,7 @@ pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associate
     let mut ct = vec![0; plain.len()];
 
     // decrypt the plain text into the ciphertext buffer.
-    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)
-        .map_err(|_| Error::EncryptFailed)?;
+    XChaCha20Poly1305::try_encrypt(&shared.to_bytes(), &nonce, associated_data, plain, &mut ct, &mut tag)?;
 
     // write tag and ciphertext into the output.
     output.write_all(&tag)?;

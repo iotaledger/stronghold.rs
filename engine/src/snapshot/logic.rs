@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    convert::TryInto,
     fs::{rename, File, OpenOptions},
     io::{Read, Write},
     path::Path,
 };
 
 use crypto::utils::rand;
+use crypto::keys::age;
 use thiserror::Error as DeriveError;
 
 use crate::snapshot::{compress, decompress};
@@ -40,6 +42,15 @@ pub enum ReadError {
 
     #[error("unsupported associated data")]
     UnsupportedAssociatedData,
+
+    #[error("crypto error: {0:?}")]
+    AgeFormatError(age::DecError),
+}
+
+impl From<age::DecError> for ReadError {
+    fn from(e: age::DecError) -> Self {
+        Self::AgeFormatError(e)
+    }
 }
 
 #[derive(Debug, DeriveError)]
@@ -55,6 +66,9 @@ pub enum WriteError {
 
     #[error("unsupported associated data")]
     UnsupportedAssociatedData,
+
+    #[error("incorrect work factor")]
+    IncorrectWorkFactor,
 }
 
 /// Encrypt snapshot content with key using work factor recommended for password-based (weak) keys.
@@ -72,8 +86,7 @@ pub enum WriteError {
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
 ///
 pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
-    use crypto::keys::age::*;
-    let work_factor = RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
+    let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     // TODO: work_factor is intentionally 0 just for development.
     // Use proper value in production.
     // let work_factor = 0;
@@ -100,10 +113,11 @@ pub fn encrypt_content_with_work_factor<O: Write>(
     work_factor: u8,
     _associated_data: &[u8],
 ) -> Result<(), WriteError> {
-    use crypto::keys::age::*;
-
-    let age = encrypt_vec(key, WorkFactor::new(work_factor), plain)
-        .map_err(|e| WriteError::GenerateRandom(format!("{e:?}")))?;
+    let work_factor = work_factor
+        .try_into()
+        .map_err(|_| WriteError::IncorrectWorkFactor)?;
+    let age = age::encrypt_vec(key, work_factor, plain)
+        .map_err(|e| WriteError::GenerateRandom(format!("failed to generate age randomness: {e:?}")))?;
     output.write_all(&age[..])?;
     Ok(())
 }
@@ -113,8 +127,7 @@ pub fn encrypt_content_with_work_factor<O: Write>(
 /// Decryption may fail if the required amount of computation (work factor) exceeds the recommended value.
 /// In this case `decrypt_content_with_work_factor` with a larger work factor.
 pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
-    use crypto::keys::age::*;
-    let max_work_factor = RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
+    let max_work_factor = age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
     decrypt_content_with_work_factor(input, key, max_work_factor, associated_data)
 }
 
@@ -138,11 +151,10 @@ pub fn decrypt_content_with_work_factor<I: Read>(
     max_work_factor: u8,
     _associated_data: &[u8],
 ) -> Result<Vec<u8>, ReadError> {
-    use crypto::keys::age::*;
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
 
-    decrypt_vec(key, max_work_factor, &age[..]).map_err(|_| ReadError::InvalidFile)
+    age::decrypt_vec(key, max_work_factor, &age[..]).map_err(From::from)
 }
 
 /// Put magic and version bytes as file-header, [`encrypt_content`][self::encrypt_content] the specified
