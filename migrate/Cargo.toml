@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 stronghold_engine = { path = "../engine" }
-iota-crypto = { version = "0.16.1", features = [ "pbkdf" ] }
+iota-crypto = { version = "0.17.0", features = [ "pbkdf2" ] }
