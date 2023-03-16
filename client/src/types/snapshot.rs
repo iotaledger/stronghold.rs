@@ -11,6 +11,7 @@ use engine::{
     snapshot::{self, Key},
     store::Cache,
     vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
+    runtime::utils::random_vec,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,8 +21,8 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
-use stronghold_utils::random;
-use zeroize::Zeroize;
+// use stronghold_utils::random;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     procedures::{DeriveSecret, X25519DiffieHellman},
@@ -242,11 +243,12 @@ impl Snapshot {
             Cache<Vec<u8>, Vec<u8>>,
         ),
     ) -> Result<(), SnapshotError> {
-        let bytes = bincode::serialize(&(keys, db))?;
+        let bytes = Zeroizing::new(bincode::serialize(&(keys, db))?);
         let vault_id = VaultId(id.0);
-        let key: snapshot::Key = random::random();
+        let key = random_vec(snapshot::KEY_SIZE);
+        let key_ref: &[u8; 32] = unsafe { (key.deref().as_ptr() as *const [u8; 32]).as_ref().unwrap() };
         let mut buffer = Vec::new();
-        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, &key, 0, &[])?;
+        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, 0, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));

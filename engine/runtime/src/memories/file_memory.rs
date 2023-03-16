@@ -22,7 +22,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const FILENAME_SIZE: usize = 16;
 
@@ -32,7 +32,7 @@ pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: PathBuf,
     // Noise data to xor with data in file
-    noise: Vec<u8>,
+    noise: Zeroizing<Vec<u8>>,
     // Size of the decrypted data
     size: usize,
 }

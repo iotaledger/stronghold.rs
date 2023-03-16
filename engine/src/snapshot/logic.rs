@@ -22,7 +22,7 @@ pub const VERSION: [u8; 2] = [0x3, 0x0];
 // pub const OLD_VERSION: [u8; 2] = [0x2, 0x0];
 
 /// Key size for the ephemeral key
-const KEY_SIZE: usize = 32;
+pub const KEY_SIZE: usize = 32;
 /// Key type alias.
 pub type Key = [u8; KEY_SIZE];
 

@@ -21,7 +21,7 @@ use core::{
 
 // use crypto::hashes::sha;
 use crypto::hashes::{blake2b, Digest};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -145,7 +145,7 @@ impl NonContiguousMemory {
         Ok(())
     }
 
-    fn get_shards_data(&self) -> Result<(Vec<u8>, Vec<u8>), MemoryError> {
+    fn get_shards_data(&self) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), MemoryError> {
         let m1 = self.shard1.lock().expect(POISONED_LOCK);
         let m2 = self.shard2.lock().expect(POISONED_LOCK);
         let shard1 = &*m1.borrow();
@@ -214,22 +214,22 @@ impl MemoryShard {
         }
     }
 
-    fn get(&self) -> Result<Vec<u8>, MemoryError> {
+    fn get(&self) -> Result<Zeroizing<Vec<u8>>, MemoryError> {
         match self {
             File(fm) => {
                 let buf = fm.unlock()?;
-                let v = buf.borrow().to_vec();
+                let v = buf.borrow().to_vec().into();
                 Ok(v)
             }
             Ram(ram) => {
                 let buf = ram.unlock()?;
-                let v = buf.borrow().to_vec();
+                let v = buf.borrow().to_vec().into();
                 Ok(v)
             }
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             Frag(frag) => {
                 if frag.is_live() {
-                    Ok(frag.get()?.to_vec())
+                    Ok(frag.get()?.to_vec().into())
                 } else {
                     Err(IllegalZeroizedUsage)
                 }

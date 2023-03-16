@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use random::{distributions::Alphanumeric, thread_rng, Rng, RngCore};
+use zeroize::Zeroizing;
 
 pub fn xor(data: &mut [u8], payload: &[u8], noise: &[u8], size: usize) {
     for i in 0..size {
@@ -15,9 +16,9 @@ pub fn xor_mut(payload: &mut [u8], noise: &[u8], size: usize) {
     }
 }
 
-pub fn random_vec(size: usize) -> Vec<u8> {
+pub fn random_vec(size: usize) -> Zeroizing<Vec<u8>> {
     let mut rng = thread_rng();
-    let mut v = vec![0u8; size];
+    let mut v = Zeroizing::new(vec![0u8; size]);
     rng.fill_bytes(&mut v);
 
     v

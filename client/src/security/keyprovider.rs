@@ -12,7 +12,7 @@ use engine::{
 };
 use std::ops::Deref;
 use stronghold_utils::GuardDebug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{internal::Provider, ClientError};
 
@@ -27,10 +27,10 @@ pub struct KeyProvider {
     inner: engine::vault::NCKey<Provider>,
 }
 
-impl TryFrom<Vec<u8>> for KeyProvider {
+impl TryFrom<Zeroizing<Vec<u8>>> for KeyProvider {
     type Error = MemoryError;
 
-    fn try_from(data: Vec<u8>) -> Result<Self, MemoryError> {
+    fn try_from(data: Zeroizing<Vec<u8>>) -> Result<Self, MemoryError> {
         match NCKey::load(data) {
             Some(inner) => Ok(Self { inner }),
             None => Err(MemoryError::NCSizeNotAllowed),
@@ -84,7 +84,7 @@ impl KeyProvider {
     {
         let p = passphrase.as_ref();
         let n = core::cmp::min(KEY_SIZE_HASHED, p.len());
-        let mut key = vec![0u8; KEY_SIZE_HASHED];
+        let mut key = Zeroizing::new(vec![0u8; KEY_SIZE_HASHED]);
         key[..n].copy_from_slice(&p[..n]);
         passphrase.zeroize();
 
@@ -144,7 +144,7 @@ impl KeyProvider {
     {
         digest.update(passphrase.as_ref());
         passphrase.zeroize();
-        let mut key = vec![0_u8; <D as Digest>::output_size()];
+        let mut key = Zeroizing::new(vec![0_u8; <D as Digest>::output_size()]);
         digest.finalize_into((&mut key[..]).into());
 
         Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
@@ -253,6 +253,7 @@ impl KeyProvider {
 
         let key = argon2::hash_raw(passphrase.as_ref(), salt.as_ref(), &config)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
+        let key = Zeroizing::new(key);
         passphrase.zeroize();
         salt.zeroize();
 
@@ -270,9 +271,10 @@ impl KeyProvider {
     /// ```no_run
     /// use iota_stronghold::KeyProvider;
     /// use std::ops::Deref;
+    /// use zeroize::Zeroizing;
     ///
     /// // crate some key data
-    /// let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+    /// let keydata = Zeroizing::new(vec![6; 32]);
     ///
     /// // create the keyprovider
     /// let keyprovider = KeyProvider::try_from(keydata.clone()).expect("Fail to create keyprovider");
@@ -289,7 +291,7 @@ impl KeyProvider {
     ///
     /// // deref the inner key
     /// let inner_key = buffer_ref.deref();
-    /// assert_eq!(keydata, inner_key.to_vec());
+    /// assert_eq!(keydata.deref(), &inner_key.to_vec());
     /// ```
     pub fn try_unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         match self.inner.key.unlock() {
@@ -306,13 +308,13 @@ mod tests {
 
     #[test]
     fn test_keyprovider_create() {
-        let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+        let keydata = Zeroizing::new(Vec::from_iter(std::iter::repeat(6).take(32)));
         assert!(KeyProvider::try_from(keydata).is_ok());
     }
 
     #[test]
     fn test_keyprovider_get() {
-        let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+        let keydata = Zeroizing::new(Vec::from_iter(std::iter::repeat(6).take(32)));
         let keyprovider = KeyProvider::try_from(keydata.clone()).expect("Fail to create keyprovider");
 
         let buffer = keyprovider.try_unlock();
@@ -322,6 +324,6 @@ mod tests {
         let buffer_ref = buffer.borrow();
         let inner_key = buffer_ref.deref();
 
-        assert_eq!(keydata, inner_key.to_vec());
+        assert_eq!(keydata, inner_key.to_vec().into());
     }
 }
