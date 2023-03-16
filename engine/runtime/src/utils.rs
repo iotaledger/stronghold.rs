@@ -3,12 +3,16 @@
 
 use random::{distributions::Alphanumeric, thread_rng, Rng, RngCore};
 
-pub fn xor(payload: &[u8], noise: &[u8], size: usize) -> Vec<u8> {
-    let mut data = vec![0u8; size];
+pub fn xor(data: &mut [u8], payload: &[u8], noise: &[u8], size: usize) {
     for i in 0..size {
         data[i] = noise[i] ^ payload[i];
     }
-    data
+}
+
+pub fn xor_mut(payload: &mut [u8], noise: &[u8], size: usize) {
+    for i in 0..size {
+        payload[i] = noise[i] ^ payload[i];
+    }
 }
 
 pub fn random_vec(size: usize) -> Vec<u8> {
