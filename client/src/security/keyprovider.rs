@@ -77,25 +77,18 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected, "Key does not match expected {:?}", key);
     /// ```
+    #[deprecated]
     pub fn with_passphrase_truncated<P>(mut passphrase: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
     {
-        let mut key: [u8; KEY_SIZE_HASHED] = [0u8; KEY_SIZE_HASHED];
-        passphrase
-            .as_ref()
-            .iter()
-            .enumerate()
-            .take(KEY_SIZE_HASHED)
-            .for_each(|(i, value)| {
-                key[i] = *value;
-            });
-
-        let result = Self::try_from(key.to_vec()).map_err(|e| ClientError::Inner(e.to_string()));
-        key.zeroize();
+        let p = passphrase.as_ref();
+        let n = core::cmp::min(KEY_SIZE_HASHED, p.len());
+        let mut key = vec![0u8; KEY_SIZE_HASHED];
+        key[..n].copy_from_slice(&p[..n]);
         passphrase.zeroize();
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Creates a new [`KeyProvider`] from a passphrase, that will be hashed by a custom supplied hashing
@@ -150,18 +143,11 @@ impl KeyProvider {
         D: Digest,
     {
         digest.update(passphrase.as_ref());
-        let key = digest.finalize().to_vec();
-
-        if key.len() != KEY_SIZE_HASHED {
-            // This restriction refers to the current implementation of the non-contiguous types
-            // and may be lifted in the future. This error will only be thrown, if digests will return
-            // another size than 32 bytes.
-            return Err(ClientError::IllegalKeySize(32));
-        }
-        let result = Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()));
         passphrase.zeroize();
+        let mut key = vec![0_u8; <D as Digest>::output_size()];
+        digest.finalize_into((&mut key[..]).into());
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Creates a new [`KeyProvider`] from a passphrase, that will be hashed by `blake2b`.
@@ -258,6 +244,7 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected);
     /// ```
+    #[deprecated]
     pub fn with_passphrase_hashed_argon2<P>(mut passphrase: P, mut salt: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
@@ -266,12 +253,10 @@ impl KeyProvider {
 
         let key = argon2::hash_raw(passphrase.as_ref(), salt.as_ref(), &config)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
-
-        let result = Self::try_from(key.to_vec()).map_err(|e| ClientError::Inner(e.to_string()));
         passphrase.zeroize();
         salt.zeroize();
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 }
 
