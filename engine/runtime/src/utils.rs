@@ -12,7 +12,7 @@ pub fn xor(data: &mut [u8], payload: &[u8], noise: &[u8], size: usize) {
 
 pub fn xor_mut(payload: &mut [u8], noise: &[u8], size: usize) {
     for i in 0..size {
-        payload[i] = noise[i] ^ payload[i];
+        payload[i] ^= noise[i];
     }
 }
 
