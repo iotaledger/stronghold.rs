@@ -17,7 +17,7 @@ const VERSION_V2: [u8; 2] = [0x2, 0x0];
 
 /// Read ciphertext from the input, decrypts it using the specified key and the associated data
 /// specified during encryption and returns the plaintext
-pub(crate) fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
     // create ephemeral private key.
     let mut ephemeral_pk = [0; x25519::PUBLIC_KEY_LENGTH];
     // get ephemeral private key from input.
@@ -55,7 +55,7 @@ pub(crate) fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) ->
     input.read_to_end(&mut ct)?;
 
     // create plain text buffer.
-    let mut pt = vec![0; ct.len()];
+    let mut pt = Zeroizing::new(vec![0; ct.len()]);
 
     // decrypt the ciphertext into the plain text buffer.
     XChaCha20Poly1305::try_decrypt(&shared.to_bytes(), &nonce, associated_data, &mut pt, &ct, &tag)
@@ -129,7 +129,7 @@ pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associate
 ///
 /// - `crypto.rs`
 /// - `crate::snapshot::decompress`
-pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
 
     // check min file length
@@ -147,7 +147,9 @@ pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<V
     f.read_exact(&mut version)?;
     guard(version == VERSION_V2, Error::BadSnapshotVersion)?;
 
-    let pt = read(&mut f, key, aad)?;
+    let pt = Zeroizing::new(read(&mut f, key, aad)?);
 
-    decompress(&pt).map_err(|_| Error::DecompressFailed)
+    decompress(&pt)
+        .map(Zeroizing::new)
+        .map_err(|_| Error::DecompressFailed)
 }

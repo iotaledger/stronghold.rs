@@ -128,7 +128,7 @@ impl Display for SnapshotPath {
 
 #[derive(Clone, Debug)]
 pub enum UseKey {
-    Key(snapshot::Key),
+    Key(Zeroizing<snapshot::Key>),
     Stored(Location),
 }
 
@@ -213,7 +213,7 @@ impl Snapshot {
     /// TODO: Add associated data.
     pub fn write_to_snapshot(&self, snapshot_path: &SnapshotPath, use_key: UseKey) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
-        let data = bincode::serialize(&state)?;
+        let data = Zeroizing::new(bincode::serialize(&state)?);
 
         let key = match use_key {
             UseKey::Key(k) => k,
@@ -226,7 +226,7 @@ impl Snapshot {
                     data.extend_from_slice(&guarded_data);
                     Ok(())
                 })?;
-                data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
+                data.try_into().map(Zeroizing::new).map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
             }
         };
 
@@ -340,17 +340,19 @@ impl Snapshot {
             .get_key(vid)
             .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
 
-        let decrypted = &mut Vec::new();
+        let mut decrypted = Zeroizing::new(Vec::new());
         self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
             let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
             let shared_key = sk.diffie_hellman(&remote_pk);
             let pt = snapshot::decrypt_content_with_work_factor(&mut bytes.as_slice(), shared_key.as_bytes(), 0, &[])?;
-            *decrypted = pt;
+            decrypted = pt;
             Ok(())
         })?;
         let data =
-            snapshot::decompress(decrypted).map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
-        let state: SnapshotState = bincode::deserialize(&data)?;
+            snapshot::decompress(decrypted.as_ref())
+            .map(Zeroizing::new)
+            .map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
+        let state: SnapshotState = bincode::deserialize(&*data)?;
         self.merge_state(state, config)
     }
 
@@ -379,8 +381,8 @@ impl Snapshot {
         }
 
         blank.import_records(export, &old_keys, &SyncSnapshotsConfig::default())?;
-        let data = bincode::serialize(&blank)?;
-        let compressed_plain = snapshot::compress(data.as_slice());
+        let data = Zeroizing::new(bincode::serialize(&blank)?);
+        let compressed_plain = Zeroizing::new(snapshot::compress(data.as_slice()));
         let mut buffer = Vec::new();
 
         // Perform a handshake with the remote's public key and an ephemeral local key to create the snapshot key.

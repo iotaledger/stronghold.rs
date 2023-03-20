@@ -14,7 +14,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use stronghold_utils::GuardDebug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Writes a single [`Client`] into snapshot
 /// We use a macro instead of a function due to locks lifetime
@@ -307,7 +307,7 @@ impl Stronghold {
         let key = buffer_ref.deref();
 
         snapshot
-            .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().unwrap()))
+            .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().map(Zeroizing::new).unwrap()))
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
         Ok(())

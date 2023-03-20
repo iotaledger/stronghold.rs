@@ -11,6 +11,7 @@ use std::{
 use crypto::utils::rand;
 use crypto::keys::age;
 use thiserror::Error as DeriveError;
+use zeroize::Zeroizing;
 
 use crate::snapshot::{compress, decompress};
 
@@ -89,7 +90,7 @@ pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key, associ
     let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     // TODO: work_factor is intentionally 0 just for development.
     // Use proper value in production.
-    // let work_factor = 0;
+    // let work_factor = 1;
     encrypt_content_with_work_factor(plain, output, key, work_factor, associated_data)
 }
 
@@ -126,7 +127,7 @@ pub fn encrypt_content_with_work_factor<O: Write>(
 ///
 /// Decryption may fail if the required amount of computation (work factor) exceeds the recommended value.
 /// In this case `decrypt_content_with_work_factor` with a larger work factor.
-pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let max_work_factor = age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
     decrypt_content_with_work_factor(input, key, max_work_factor, associated_data)
 }
@@ -150,11 +151,13 @@ pub fn decrypt_content_with_work_factor<I: Read>(
     key: &Key,
     max_work_factor: u8,
     _associated_data: &[u8],
-) -> Result<Vec<u8>, ReadError> {
+) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
 
-    age::decrypt_vec(key, max_work_factor, &age[..]).map_err(From::from)
+    age::decrypt_vec(key, max_work_factor, &age[..])
+        .map(Zeroizing::new)
+        .map_err(From::from)
 }
 
 /// Put magic and version bytes as file-header, [`encrypt_content`][self::encrypt_content] the specified
@@ -170,7 +173,7 @@ pub fn encrypt_file(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]
         return Err(WriteError::UnsupportedAssociatedData);
     }
 
-    let compressed_plain = compress(plain);
+    let compressed_plain = Zeroizing::new(compress(plain));
 
     let mut salt = [0u8; 6];
     rand::fill(&mut salt).map_err(|e| WriteError::GenerateRandom(format!("{}", e)))?;
@@ -193,7 +196,7 @@ pub fn encrypt_file(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]
 }
 
 /// Check the file header, [`decrypt_content`][self::decrypt_content], and decompress the ciphertext from the specified path.
-pub fn decrypt_file(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Vec<u8>, ReadError> {
+pub fn decrypt_file(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;
     // check the header for structure.
@@ -201,9 +204,11 @@ pub fn decrypt_file(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Ve
     if !associated_data.is_empty() {
         return Err(ReadError::UnsupportedAssociatedData);
     }
-    let pt = decrypt_content(&mut f, key, associated_data)?;
+    let pt = Zeroizing::new(decrypt_content(&mut f, key, associated_data)?);
 
-    decompress(&pt).map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
+    decompress(&pt)
+        .map(Zeroizing::new)
+        .map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
 }
 
 fn check_min_file_len(input: &mut File) -> Result<(), ReadError> {
@@ -269,7 +274,7 @@ mod test {
         let mut buf = Vec::new();
         encrypt_content(&bs0, &mut buf, &key, &ad).unwrap();
         let read = decrypt_content(&mut buf.as_slice(), &key, &ad).unwrap();
-        assert_eq!(bs0, read);
+        assert_eq!(bs0, *read);
     }
 
     #[test]
@@ -296,7 +301,7 @@ mod test {
 
         encrypt_file(&bs0, &pb, &key, &[]).unwrap();
         let bs1 = decrypt_file(&pb, &key, &[]).unwrap();
-        assert_eq!(bs0, bs1);
+        assert_eq!(bs0, *bs1);
     }
 
     #[test]
@@ -326,7 +331,7 @@ mod test {
         let bs0 = random_bytestring();
         encrypt_file(&bs0, &pb, &key, &[]).unwrap();
         let bs1 = decrypt_file(&pb, &key, &[]).unwrap();
-        assert_eq!(bs0, bs1);
+        assert_eq!(bs0, *bs1);
     }
 
     struct TestVector {
@@ -378,7 +383,7 @@ mod test {
             check_header(&mut slice).unwrap();
             let pt = decrypt_content(&mut slice, &key, &ad).unwrap();
 
-            assert_eq!(pt, data);
+            assert_eq!(*pt, data);
         }
     }
 }

@@ -21,6 +21,7 @@ use crypto::{
 // otherwise migration will work differently.
 pub use self::error::Error;
 use crate::snapshot::{compress, decompress};
+use zeroize::Zeroizing;
 
 pub enum Version<'a> {
     V2 {

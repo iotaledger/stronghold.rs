@@ -37,13 +37,13 @@ pub(crate) fn write<O: Write>(
 /// symlink and/or if the target path resides in a directory without user write permission.
 pub(crate) fn write_snapshot(plain: &[u8], path: &Path, password: &[u8], aad: &[u8]) -> Result<(), Error> {
     guard(aad.is_empty(), Error::AadNotSupported)?;
-    let compressed_plain = compress(plain);
+    let compressed_plain = Zeroizing::new(compress(plain));
 
     // emulate constructor `KeyProvider::with_passphrase_hashed` with `D = blake2b`
-    let mut password_hash = [0_u8; KEY_SIZE];
+    let mut password_hash = Zeroizing::new([0_u8; KEY_SIZE]);
     let mut h = crypto::hashes::blake2b::Blake2b256::default();
     h.update(password);
-    h.finalize_into((&mut password_hash).into());
+    h.finalize_into((password_hash.as_mut()).into());
 
     let mut f = OpenOptions::new().write(true).create_new(true).open(path)?;
     // write magic and version bytes
