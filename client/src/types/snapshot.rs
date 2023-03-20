@@ -246,7 +246,7 @@ impl Snapshot {
         let bytes = Zeroizing::new(bincode::serialize(&(keys, db))?);
         let vault_id = VaultId(id.0);
         let key = random_vec(snapshot::KEY_SIZE);
-        let key_ref: &[u8; 32] = unsafe { (key.deref().as_ptr() as *const [u8; 32]).as_ref().unwrap() };
+        let key_ref: &[u8; 32] = (*key).as_slice().try_into().unwrap();
         let mut buffer = Vec::new();
         snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, 0, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
