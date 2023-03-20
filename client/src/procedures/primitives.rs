@@ -1,8 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::convert::TryInto;
-use std::str::FromStr;
+use std::{convert::TryInto, str::FromStr};
 
 use super::types::*;
 use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
@@ -365,10 +364,7 @@ impl GenerateSecret for BIP39Generate {
         let mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
 
         let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let mut passphrase: &str = self.passphrase
-            .as_ref()
-            .map(String::as_str)
-            .unwrap_or("");
+        let mut passphrase: &str = self.passphrase.as_ref().map(String::as_str).unwrap_or("");
         let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
         bip39::mnemonic_to_seed(&mnemonic, passphrase, seed_mut);
 
@@ -403,10 +399,7 @@ impl GenerateSecret for BIP39Recover {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let mut passphrase: &str = self.passphrase
-            .as_ref()
-            .map(String::as_str)
-            .unwrap_or("");
+        let mut passphrase: &str = self.passphrase.as_ref().map(String::as_str).unwrap_or("");
         let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
         bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, seed_mut);
 

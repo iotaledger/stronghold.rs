@@ -8,8 +8,7 @@ use std::{
     path::Path,
 };
 
-use crypto::utils::rand;
-use crypto::keys::age;
+use crypto::{keys::age, utils::rand};
 use thiserror::Error as DeriveError;
 use zeroize::Zeroizing;
 
@@ -85,8 +84,12 @@ pub enum WriteError {
 /// It uses recommended work factor (approx. 20) to derive encryption key.
 /// It is safe to use with strong keys, although computing resources may be wasted.
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
-///
-pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), WriteError> {
+pub fn encrypt_content<O: Write>(
+    plain: &[u8],
+    output: &mut O,
+    key: &Key,
+    associated_data: &[u8],
+) -> Result<(), WriteError> {
     let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     // TODO: work_factor is intentionally 0 just for development.
     // Use proper value in production.
@@ -106,7 +109,6 @@ pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key, associ
 /// can use minimal (0) work factor.
 ///
 /// Using low work factor with weak low-entropy keys can lead to full compromise of encrypted data!
-///
 pub fn encrypt_content_with_work_factor<O: Write>(
     plain: &[u8],
     output: &mut O,
@@ -114,9 +116,7 @@ pub fn encrypt_content_with_work_factor<O: Write>(
     work_factor: u8,
     _associated_data: &[u8],
 ) -> Result<(), WriteError> {
-    let work_factor = work_factor
-        .try_into()
-        .map_err(|_| WriteError::IncorrectWorkFactor)?;
+    let work_factor = work_factor.try_into().map_err(|_| WriteError::IncorrectWorkFactor)?;
     let age = age::encrypt_vec(key, work_factor, plain)
         .map_err(|e| WriteError::GenerateRandom(format!("failed to generate age randomness: {e:?}")))?;
     output.write_all(&age[..])?;
@@ -127,7 +127,11 @@ pub fn encrypt_content_with_work_factor<O: Write>(
 ///
 /// Decryption may fail if the required amount of computation (work factor) exceeds the recommended value.
 /// In this case `decrypt_content_with_work_factor` with a larger work factor.
-pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ReadError> {
+pub fn decrypt_content<I: Read>(
+    input: &mut I,
+    key: &Key,
+    associated_data: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let max_work_factor = age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
     decrypt_content_with_work_factor(input, key, max_work_factor, associated_data)
 }
@@ -145,7 +149,6 @@ pub fn decrypt_content<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]
 /// Key derivation time grows exponentially with work factor.
 /// Maximum work factor should not be too large.
 /// Large values of maximum work factor when exploited by an attacker can cause Denial-of-Service.
-///
 pub fn decrypt_content_with_work_factor<I: Read>(
     input: &mut I,
     key: &Key,
@@ -195,7 +198,8 @@ pub fn encrypt_file(plain: &[u8], path: &Path, key: &Key, associated_data: &[u8]
     Ok(())
 }
 
-/// Check the file header, [`decrypt_content`][self::decrypt_content], and decompress the ciphertext from the specified path.
+/// Check the file header, [`decrypt_content`][self::decrypt_content], and decompress the ciphertext from the specified
+/// path.
 pub fn decrypt_file(path: &Path, key: &Key, associated_data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let mut f: File = OpenOptions::new().read(true).open(path)?;
     check_min_file_len(&mut f)?;

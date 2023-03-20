@@ -8,10 +8,10 @@
 
 use crypto::keys::x25519;
 use engine::{
+    runtime::utils::random_vec,
     snapshot,
     store::Cache,
     vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
-    runtime::utils::random_vec,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -220,11 +220,15 @@ impl Snapshot {
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
                 let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
-                Ok(self.db.get_guard::<_, SnapshotError, _>(&pkey, vid, rid, |guarded_data| {
-                    let key_ref = guarded_data.borrow();
-                    let key: &snapshot::Key = (*key_ref).try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?;
-                    Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key, &[])?)
-                })?)
+                Ok(self
+                    .db
+                    .get_guard::<_, SnapshotError, _>(&pkey, vid, rid, |guarded_data| {
+                        let key_ref = guarded_data.borrow();
+                        let key: &snapshot::Key = (*key_ref)
+                            .try_into()
+                            .map_err(|_| SnapshotError::SnapshotKey(vid, rid))?;
+                        Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key, &[])?)
+                    })?)
             }
         }
     }
@@ -334,13 +338,19 @@ impl Snapshot {
             .get_key(vid)
             .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
 
-        let decrypted = self.db.get_guard::<_, SnapshotError, _>(&vault_key, vid, rid, |guard| {
-            let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
-            let shared_key = sk.diffie_hellman(&remote_pk);
-            Ok(snapshot::decrypt_content_with_work_factor(&mut bytes.as_slice(), shared_key.as_bytes(), 0, &[])?)
-        })?;
-        let data =
-            snapshot::decompress(decrypted.as_ref())
+        let decrypted = self
+            .db
+            .get_guard::<_, SnapshotError, _>(&vault_key, vid, rid, |guard| {
+                let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
+                let shared_key = sk.diffie_hellman(&remote_pk);
+                Ok(snapshot::decrypt_content_with_work_factor(
+                    &mut bytes.as_slice(),
+                    shared_key.as_bytes(),
+                    0,
+                    &[],
+                )?)
+            })?;
+        let data = snapshot::decompress(decrypted.as_ref())
             .map(Zeroizing::new)
             .map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
         let state: SnapshotState = bincode::deserialize(&*data)?;

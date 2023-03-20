@@ -43,8 +43,7 @@ pub enum WrapperError {
 }
 
 impl StrongholdWrapper {
-    pub fn from_file(snapshot_path: String, key_as_hash: Zeroizing<Vec<u8>>) -> Result<Self, WrapperError>
-    {
+    pub fn from_file(snapshot_path: String, key_as_hash: Zeroizing<Vec<u8>>) -> Result<Self, WrapperError> {
         let stronghold = Stronghold::default();
 
         log::info!("[Rust] Loading snapshot => {}", snapshot_path);
@@ -66,8 +65,7 @@ impl StrongholdWrapper {
         })
     }
 
-    pub fn create_new(snapshot_path: String, key_as_hash: Zeroizing<Vec<u8>>) -> Result<Self, WrapperError>
-    {
+    pub fn create_new(snapshot_path: String, key_as_hash: Zeroizing<Vec<u8>>) -> Result<Self, WrapperError> {
         let stronghold = Stronghold::default();
 
         let client = match stronghold.create_client(CLIENT_PATH) {
@@ -94,8 +92,7 @@ impl StrongholdWrapper {
         Ok(result)
     }
 
-    fn commit_with_key(&self, key_as_hash: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError>
-    {
+    fn commit_with_key(&self, key_as_hash: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError> {
         log::info!("[Rust] Committing to snapshot");
 
         let commit_snapshot_path = &SnapshotPath::from_path(self.snapshot_path.clone());
@@ -131,8 +128,12 @@ impl StrongholdWrapper {
         Ok(output)
     }
 
-    pub fn write_vault(&self, key_as_hash: Zeroizing<Vec<u8>>, record_path: String, data: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError>
-    {
+    pub fn write_vault(
+        &self,
+        key_as_hash: Zeroizing<Vec<u8>>,
+        record_path: String,
+        data: Zeroizing<Vec<u8>>,
+    ) -> Result<bool, WrapperError> {
         let location = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),
@@ -165,8 +166,7 @@ impl StrongholdWrapper {
         Ok(signature)
     }
 
-    pub fn derive_seed(&self, key_as_hash: Zeroizing<Vec<u8>>, address_index: u32) -> Result<ChainCode, WrapperError>
-    {
+    pub fn derive_seed(&self, key_as_hash: Zeroizing<Vec<u8>>, address_index: u32) -> Result<ChainCode, WrapperError> {
         let seed_derived_path = format!("{RECORD_PATH_SEED}.{address_index}");
 
         let seed_location = Location::Generic {
@@ -215,8 +215,7 @@ impl StrongholdWrapper {
         }
     }
 
-    pub fn generate_seed(&self, key_as_hash: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError>
-    {
+    pub fn generate_seed(&self, key_as_hash: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError> {
         let output = Location::Generic {
             record_path: RECORD_PATH_SEED.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),
@@ -245,8 +244,11 @@ impl StrongholdWrapper {
         self.commit_with_key(key_as_hash)
     }
 
-    pub fn generate_ed25519_keypair(&self, key_as_hash: Zeroizing<Vec<u8>>, record_path: String) -> Result<bool, WrapperError>
-    {
+    pub fn generate_ed25519_keypair(
+        &self,
+        key_as_hash: Zeroizing<Vec<u8>>,
+        record_path: String,
+    ) -> Result<bool, WrapperError> {
         let output = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),
             vault_path: VAULT_PATH.as_bytes().to_vec(),

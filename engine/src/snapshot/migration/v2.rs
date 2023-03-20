@@ -149,7 +149,5 @@ pub(crate) fn read_snapshot(path: &Path, key: &[u8; 32], aad: &[u8]) -> Result<Z
 
     let pt = Zeroizing::new(read(&mut f, key, aad)?);
 
-    decompress(&pt)
-        .map(Zeroizing::new)
-        .map_err(|_| Error::DecompressFailed)
+    decompress(&pt).map(Zeroizing::new).map_err(|_| Error::DecompressFailed)
 }
