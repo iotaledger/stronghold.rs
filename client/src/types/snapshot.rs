@@ -8,7 +8,7 @@
 
 use crypto::keys::x25519;
 use engine::{
-    snapshot::{self, Key},
+    snapshot,
     store::Cache,
     vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
     runtime::utils::random_vec,
@@ -136,12 +136,12 @@ impl Snapshot {
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn from_state(
         state: SnapshotState,
-        snapshot_key: Key,
+        snapshot_key: &snapshot::Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
         let mut snapshot = Snapshot::default();
         if let Some((vid, rid)) = write_key {
-            snapshot.store_snapshot_key(snapshot_key, vid, rid)?;
+            snapshot.store_snapshot_key(&snapshot_key, vid, rid)?;
         }
         for (client_id, state) in state.0 {
             snapshot.add_data(client_id, state)?;
@@ -200,10 +200,10 @@ impl Snapshot {
     /// TODO: Add associated data.
     pub fn read_from_snapshot(
         snapshot_path: &SnapshotPath,
-        key: Key,
+        key: &snapshot::Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        let data = snapshot::decrypt_file(snapshot_path.as_path(), &key, &[])?;
+        let data = snapshot::decrypt_file(snapshot_path.as_path(), key, &[])?;
 
         let state = bincode::deserialize(&data)?;
         Snapshot::from_state(state, key, write_key)
@@ -215,22 +215,18 @@ impl Snapshot {
         let state = self.get_snapshot_state()?;
         let data = Zeroizing::new(bincode::serialize(&state)?);
 
-        let key = match use_key {
-            UseKey::Key(k) => k,
+        match use_key {
+            UseKey::Key(k) => snapshot::encrypt_file(&data, snapshot_path.as_path(), &k, &[]).map_err(|e| e.into()),
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
                 let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
-                let mut data = Vec::new();
-                self.db.get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
-                    let guarded_data = guarded_data.borrow();
-                    data.extend_from_slice(&guarded_data);
-                    Ok(())
-                })?;
-                data.try_into().map(Zeroizing::new).map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
+                Ok(self.db.get_guard::<_, SnapshotError, _>(&pkey, vid, rid, |guarded_data| {
+                    let key_ref = guarded_data.borrow();
+                    let key: &snapshot::Key = (*key_ref).try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?;
+                    Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key, &[])?)
+                })?)
             }
-        };
-
-        snapshot::encrypt_file(&data, snapshot_path.as_path(), &key, &[]).map_err(|e| e.into())
+        }
     }
 
     /// Adds data to the snapshot state hashmap.
@@ -258,7 +254,7 @@ impl Snapshot {
     /// Adds data to the snapshot state hashmap.
     pub fn store_snapshot_key(
         &mut self,
-        mut snapshot_key: snapshot::Key,
+        snapshot_key: &snapshot::Key,
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
@@ -268,11 +264,9 @@ impl Snapshot {
             &key,
             vault_id,
             record_id,
-            &snapshot_key,
+            snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
-
-        snapshot_key.zeroize();
 
         Ok(())
     }
@@ -340,13 +334,10 @@ impl Snapshot {
             .get_key(vid)
             .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
 
-        let mut decrypted = Zeroizing::new(Vec::new());
-        self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
+        let decrypted = self.db.get_guard::<_, SnapshotError, _>(&vault_key, vid, rid, |guard| {
             let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
             let shared_key = sk.diffie_hellman(&remote_pk);
-            let pt = snapshot::decrypt_content_with_work_factor(&mut bytes.as_slice(), shared_key.as_bytes(), 0, &[])?;
-            decrypted = pt;
-            Ok(())
+            Ok(snapshot::decrypt_content_with_work_factor(&mut bytes.as_slice(), shared_key.as_bytes(), 0, &[])?)
         })?;
         let data =
             snapshot::decompress(decrypted.as_ref())

@@ -213,7 +213,7 @@ pub unsafe extern "C" fn stronghold_write_vault(
 
     info!("[Rust] Got Stronghold instance from Box");
 
-    if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec()) {
+    if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec().into()) {
         set_last_error(err);
         return false;
     }

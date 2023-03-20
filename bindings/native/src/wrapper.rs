@@ -131,7 +131,7 @@ impl StrongholdWrapper {
         Ok(output)
     }
 
-    pub fn write_vault(&self, key_as_hash: Zeroizing<Vec<u8>>, record_path: String, data: Vec<u8>) -> Result<bool, WrapperError>
+    pub fn write_vault(&self, key_as_hash: Zeroizing<Vec<u8>>, record_path: String, data: Zeroizing<Vec<u8>>) -> Result<bool, WrapperError>
     {
         let location = Location::Generic {
             record_path: record_path.as_bytes().to_vec(),

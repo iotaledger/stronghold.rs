@@ -66,7 +66,7 @@ macro_rules! load_snapshot {
                 .map_err(|e| ClientError::Inner(format!("{:?}", e)))?;
             let buffer_ref = buffer.borrow().deref().try_into().unwrap();
 
-            *($snapshot) = Snapshot::read_from_snapshot(($snapshot_path), buffer_ref, None)
+            *($snapshot) = Snapshot::read_from_snapshot(($snapshot_path), &buffer_ref, None)
                 .map_err(|e| ClientError::Inner(e.to_string()))?;
             // END CRITICAL SECTION
         }

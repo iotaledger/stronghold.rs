@@ -3,6 +3,7 @@
 
 use crate::{derive_vault_id, procedures::Runner, Client, ClientError, Location};
 use engine::vault::VaultId;
+use zeroize::Zeroizing;
 
 pub const DEFAULT_RANDOM_HINT_SIZE: usize = 24;
 
@@ -22,7 +23,7 @@ impl ClientVault {
     /// Writes a secret into the vault
     ///
     /// # Example
-    pub fn write_secret(&self, location: Location, payload: Vec<u8>) -> Result<(), ClientError> {
+    pub fn write_secret(&self, location: Location, payload: Zeroizing<Vec<u8>>) -> Result<(), ClientError> {
         self.client.write_to_vault(&location, payload)?;
         Ok(())
     }
@@ -77,20 +78,15 @@ impl ClientVault {
     ///
     /// THE CALL TO THIS METHOD IS INSECURE AS IT WILL EXPOSE SECRETS STORED INSIDE A VAULT.
     #[cfg(test)]
-    pub fn read_secret<P>(&self, record_path: P) -> Result<Vec<u8>, ClientError>
+    pub fn read_secret<P>(&self, record_path: P) -> Result<Zeroizing<Vec<u8>>, ClientError>
     where
         P: AsRef<[u8]>,
     {
         let location = Location::generic(self.vault_path.clone(), record_path.as_ref().to_vec());
 
-        let mut data = Vec::new();
-
-        self.client.get_guard(&location, |guarded_data| {
+        Ok(self.client.get_guard(&location, |guarded_data| {
             let guarded_data = guarded_data.borrow();
-            data.extend_from_slice(&guarded_data);
-            Ok(())
-        })?;
-
-        Ok(data)
+            Ok(guarded_data.to_vec().into())
+        })?)
     }
 }

@@ -122,7 +122,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     // create a new secret inside the vault
     assert!(vault
-        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec()), vec![],)
+        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec().into()), vec![].into(),)
         .is_ok());
 
     // write client into snapshot
@@ -214,7 +214,7 @@ fn purge_client() {
     let vault = client.vault(vault_path.clone());
 
     let loc_secret = Location::const_generic(vault_path.clone(), record_path.clone());
-    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024));
+    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024).into());
 
     assert!(result.is_ok());
 
@@ -278,7 +278,7 @@ fn write_client_to_snapshot() {
         vault
             .write_secret(
                 Location::const_generic(vault_path, record_path),
-                fixed_random_bytes(1024),
+                fixed_random_bytes(1024).into(),
             )
             .expect("Failed to write secret into vault");
     }
@@ -320,7 +320,7 @@ fn test_load_client_from_snapshot() {
 
     let result = vault.write_secret(
         Location::const_generic(vault_path, record_path),
-        fixed_random_bytes(1024),
+        fixed_random_bytes(1024).into(),
     );
 
     assert!(result.is_ok());
@@ -405,7 +405,7 @@ fn test_create_snapshot_file_in_custom_directory() {
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
     let record_path = b"record_path".to_vec();
-    let payload = b"payload".to_vec();
+    let payload: Zeroizing<Vec<u8>> = b"payload".to_vec().into();
     let location = Location::const_generic(vault_path.clone(), record_path.clone());
     let stronghold = Stronghold::default();
     let mut temp_dir = std::env::temp_dir();
@@ -628,7 +628,7 @@ fn test_stronghold_with_key_location_for_snapshot() {
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
     let record_path = b"record_path".to_vec();
-    let payload = b"payload".to_vec();
+    let payload = b"payload".to_vec().into();
     let secret_location = Location::const_generic(vault_path.clone(), record_path);
     let key = rand::fixed_bytestring(32);
     let salt = rand::fixed_bytestring(32);
