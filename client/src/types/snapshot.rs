@@ -21,7 +21,6 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
-// use stronghold_utils::random;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
@@ -133,6 +132,9 @@ pub enum UseKey {
 }
 
 impl Snapshot {
+    /// Age work factor used with strong passwords (random keys).
+    const STRONG_KEY_WORK_FACTOR: u8 = 0;
+
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn from_state(
         state: SnapshotState,
@@ -246,9 +248,9 @@ impl Snapshot {
         let bytes = Zeroizing::new(bincode::serialize(&(keys, db))?);
         let vault_id = VaultId(id.0);
         let key = random_vec(snapshot::KEY_SIZE);
-        let key_ref: &[u8; 32] = (*key).as_slice().try_into().unwrap();
+        let key_ref: &[u8; snapshot::KEY_SIZE] = (*key).as_slice().try_into().unwrap();
         let mut buffer = Vec::new();
-        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, 0, &[])?;
+        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, Self::STRONG_KEY_WORK_FACTOR, &[])?;
         let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
@@ -346,7 +348,7 @@ impl Snapshot {
                 Ok(snapshot::decrypt_content_with_work_factor(
                     &mut bytes.as_slice(),
                     shared_key.as_bytes(),
-                    0,
+                    Self::STRONG_KEY_WORK_FACTOR,
                     &[],
                 )?)
             })?;
@@ -390,7 +392,13 @@ impl Snapshot {
         let sk = x25519::SecretKey::generate()?;
         let shared_key = sk.diffie_hellman(&remote_pk);
         let pk = sk.public_key();
-        snapshot::encrypt_content_with_work_factor(&compressed_plain, &mut buffer, shared_key.as_bytes(), 0, &[])?;
+        snapshot::encrypt_content_with_work_factor(
+            &compressed_plain,
+            &mut buffer,
+            shared_key.as_bytes(),
+            Self::STRONG_KEY_WORK_FACTOR,
+            &[],
+        )?;
         Ok((pk, buffer))
     }
 
