@@ -825,12 +825,12 @@ fn test_usecase_concatkdf() {
 
     let result = client.execute_procedure_chained(vec![
         WriteVault {
-            data: b"abcdefg".to_vec(),
+            data: b"abcdefg".to_vec().into(),
             location: location_a.clone(),
         }
         .into(),
         WriteVault {
-            data: b"hijklmn".to_vec(),
+            data: b"hijklmn".to_vec().into(),
             location: location_b.clone(),
         }
         .into(),
