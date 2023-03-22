@@ -77,7 +77,7 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected, "Key does not match expected {:?}", key);
     /// ```
-    #[deprecated]
+    #[deprecated = "This constructor promotes misuse of long passphrases"]
     pub fn with_passphrase_truncated<P>(mut passphrase: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
@@ -244,7 +244,7 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected);
     /// ```
-    #[deprecated]
+    #[deprecated = "This constructor promotes misuse of salt in KDF"]
     pub fn with_passphrase_hashed_argon2<P>(mut passphrase: P, mut salt: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
