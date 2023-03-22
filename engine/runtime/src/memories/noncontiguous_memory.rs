@@ -124,7 +124,6 @@ impl NonContiguousMemory {
 
     // Refresh the shards to increase security, may be called every _n_ seconds or
     // punctually
-    #[deprecated]
     pub fn refresh(&self) -> Result<(), MemoryError> {
         let d = random_vec(NC_DATA_SIZE);
         let (mut r, mut m) = self.get_shards_data()?;
