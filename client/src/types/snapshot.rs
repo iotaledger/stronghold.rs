@@ -143,7 +143,7 @@ impl Snapshot {
     ) -> Result<Self, SnapshotError> {
         let mut snapshot = Snapshot::default();
         if let Some((vid, rid)) = write_key {
-            snapshot.store_snapshot_key(&snapshot_key, vid, rid)?;
+            snapshot.store_snapshot_key(snapshot_key, vid, rid)?;
         }
         for (client_id, state) in state.0 {
             snapshot.add_data(client_id, state)?;
@@ -251,7 +251,7 @@ impl Snapshot {
         let key_ref: &[u8; snapshot::KEY_SIZE] = (*key).as_slice().try_into().unwrap();
         let mut buffer = Vec::new();
         snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, Self::STRONG_KEY_WORK_FACTOR, &[])?;
-        let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
+        let pkey = PKey::load(key).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
         Ok(())
@@ -355,7 +355,7 @@ impl Snapshot {
         let data = snapshot::decompress(decrypted.as_ref())
             .map(Zeroizing::new)
             .map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
-        let state: SnapshotState = bincode::deserialize(&*data)?;
+        let state: SnapshotState = bincode::deserialize(&data)?;
         self.merge_state(state, config)
     }
 

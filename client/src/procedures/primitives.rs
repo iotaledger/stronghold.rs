@@ -227,7 +227,7 @@ impl GenerateSecret for WriteVault {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         Ok(Products {
-            secret: self.data.into(),
+            secret: self.data,
             output: (),
         })
     }
@@ -364,7 +364,7 @@ impl GenerateSecret for BIP39Generate {
         let mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
 
         let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let passphrase: &str = self.passphrase.as_ref().map(String::as_str).unwrap_or("");
+        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
         let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
         bip39::mnemonic_to_seed(&mnemonic, passphrase, seed_mut);
 
@@ -399,9 +399,9 @@ impl GenerateSecret for BIP39Recover {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let passphrase: &str = self.passphrase.as_ref().map(String::as_str).unwrap_or("");
+        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
         let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
-        bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, seed_mut);
+        bip39::mnemonic_to_seed(&self.mnemonic, passphrase, seed_mut);
 
         Ok(Products {
             secret: seed,

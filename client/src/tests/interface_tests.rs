@@ -1,5 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+#![allow(deprecated)]
 
 use std::{
     borrow::BorrowMut,
@@ -123,7 +124,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     // create a new secret inside the vault
     assert!(vault
         .write_secret(
-            Location::const_generic(vault_path, b"record-path".to_vec().into()),
+            Location::const_generic(vault_path, b"record-path".to_vec()),
             vec![].into(),
         )
         .is_ok());

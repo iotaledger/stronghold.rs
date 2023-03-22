@@ -145,6 +145,7 @@ impl NonContiguousMemory {
         Ok(())
     }
 
+    #[allow(clippy::type_complexity)]
     fn get_shards_data(&self) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), MemoryError> {
         let m1 = self.shard1.lock().expect(POISONED_LOCK);
         let m2 = self.shard2.lock().expect(POISONED_LOCK);
