@@ -5,7 +5,7 @@ use riker::actors::*;
 
 use futures::future::RemoteHandle;
 use std::{collections::HashMap, path::PathBuf, time::Duration};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use engine::vault::RecordHint;
 
@@ -389,7 +389,7 @@ impl Stronghold {
             None
         };
 
-        let mut key: [u8; 32] = [0u8; 32];
+        let mut key = Zeroizing::new([0u8; 32]);
 
         let keydata = keydata.as_ref();
 
@@ -426,7 +426,7 @@ impl Stronghold {
         let num_of_actors = self.clients.len();
 
         let mut futures = vec![];
-        let mut key: [u8; 32] = [0u8; 32];
+        let mut key = Zeroizing::new([0u8; 32]);
 
         let keydata = keydata.as_ref();
 
@@ -641,7 +641,10 @@ impl Stronghold {
     /// ```no_run
     /// use iota_stronghold::SHRequestPermission;
     ///
-    /// let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
+    /// let permissions = vec![
+    ///     SHRequestPermission::CheckVault,
+    ///     SHRequestPermission::CheckRecord,
+    /// ];
     /// ```
     /// Existing permissions for other `SHRequestPermission`s will not be changed by this.
     /// If no rule has been set for a given peer, the default rule will be used as basis.
@@ -666,7 +669,10 @@ impl Stronghold {
     /// ```no_run
     /// use iota_stronghold::SHRequestPermission;
     ///
-    /// let permissions = vec![SHRequestPermission::CheckVault, SHRequestPermission::CheckRecord];
+    /// let permissions = vec![
+    ///     SHRequestPermission::CheckVault,
+    ///     SHRequestPermission::CheckRecord,
+    /// ];
     /// ```
     /// Existing permissions for other `SHRequestPermission`s will not be changed
     /// by this. If no rule has been set for a given peer, the default rule will be used as basis.

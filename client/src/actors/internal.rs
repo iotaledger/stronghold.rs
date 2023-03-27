@@ -7,7 +7,7 @@ use riker::actors::*;
 
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     path::PathBuf,
 };
 
@@ -37,6 +37,8 @@ use crate::{
     utils::{ResultMessage, StatusMessage},
 };
 
+use zeroize::Zeroizing;
+
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
     client_id: ClientId,
     keystore: KeyStore<P>,
@@ -56,7 +58,7 @@ pub enum InternalMsg {
     CheckRecord(VaultId, RecordId),
 
     ReadSnapshot(
-        snapshot::Key,
+        Zeroizing<snapshot::Key>,
         Option<String>,
         Option<PathBuf>,
         ClientId,
@@ -96,14 +98,14 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     BIP39Generate {
-        passphrase: String,
+        passphrase: Zeroizing<String>,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
     },
     BIP39Recover {
-        mnemonic: String,
-        passphrase: String,
+        mnemonic: Zeroizing<String>,
+        passphrase: Zeroizing<String>,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
@@ -389,8 +391,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut seed = vec![0u8; size_bytes];
-                fill(&mut seed).expect(line_error!());
+                let mut seed = Zeroizing::new(vec![0u8; size_bytes]);
+                fill(seed.as_mut()).expect(line_error!());
 
                 self.db
                     .write(&key, vault_id, record_id, &seed, hint)
@@ -529,17 +531,18 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 record_id,
                 hint,
             } => {
-                let mut entropy = [0u8; 32];
-                fill(&mut entropy).expect(line_error!());
+                let mut entropy = Zeroizing::new([0u8; 32]);
+                fill(entropy.as_mut()).expect(line_error!());
 
                 let mnemonic = bip39::wordlist::encode(
-                    &entropy,
+                    entropy.as_ref(),
                     &bip39::wordlist::ENGLISH, // TODO: make this user configurable
                 )
                 .expect(line_error!());
 
-                let mut seed = [0u8; 64];
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                let mut seed = Zeroizing::new([0u8; 64]);
+                let seed_mut = seed.as_mut().try_into().unwrap();
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, seed_mut);
 
                 let key = if !self.keystore.vault_exists(vault_id) {
                     let k = self.keystore.create_key(vault_id);
@@ -555,7 +558,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
                 self.db
-                    .write(&key, vault_id, record_id, &seed, hint)
+                    .write(&key, vault_id, record_id, seed.as_ref(), hint)
                     .expect(line_error!());
 
                 let cstr: String = self.client_id.into();
@@ -585,13 +588,14 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut seed = [0u8; 64];
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                let mut seed = Zeroizing::new([0u8; 64]);
+                let seed_mut = seed.as_mut().try_into().unwrap();
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, seed_mut);
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
                 self.db
-                    .write(&key, vault_id, record_id, &seed, hint)
+                    .write(&key, vault_id, record_id, seed.as_ref(), hint)
                     .expect(line_error!());
 
                 let cstr: String = self.client_id.into();
@@ -613,7 +617,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.db
                         .get_guard(&key, vault_id, record_id, |data| {
                             let raw = data.borrow();
-                            let mut raw = (*raw).to_vec();
+                            let mut raw = Zeroizing::new((*raw).to_vec());
 
                             if raw.len() < 32 {
                                 client.try_tell(
@@ -626,14 +630,15 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 );
                             }
                             raw.truncate(32);
-                            let mut bs = [0; 32];
+                            let mut bs = Zeroizing::new([0; 32]);
                             bs.copy_from_slice(&raw);
-                            let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                            let sk = ed25519::SecretKey::from_bytes(*bs);
                             let pk = sk.public_key();
+                            // sk.zeroize();
 
                             client.try_tell(
                                 ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                    ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk.to_compressed_bytes())),
+                                    ProcResult::Ed25519PublicKey(ResultMessage::Ok(pk.to_bytes())),
                                 )),
                                 sender,
                             );
@@ -663,7 +668,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                     self.db
                         .get_guard(&pkey, vault_id, record_id, |data| {
                             let raw = data.borrow();
-                            let mut raw = (*raw).to_vec();
+                            let mut raw = Zeroizing::new((*raw).to_vec());
 
                             if raw.len() <= 32 {
                                 client.try_tell(
@@ -676,11 +681,12 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 );
                             }
                             raw.truncate(32);
-                            let mut bs = [0; 32];
+                            let mut bs = Zeroizing::new([0; 32]);
                             bs.copy_from_slice(&raw);
-                            let sk = ed25519::SecretKey::from_le_bytes(bs).expect(line_error!());
+                            let sk = ed25519::SecretKey::from_bytes(*bs);
 
                             let sig = sk.sign(&msg);
+                            // sk.zeroize();
 
                             client.try_tell(
                                 ClientMsg::InternalResults(InternalResults::ReturnControlRequest(

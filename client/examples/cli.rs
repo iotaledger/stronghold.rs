@@ -7,7 +7,7 @@ use futures::executor::block_on;
 
 use riker::actors::*;
 
-use clap::{load_yaml, App, ArgMatches};
+use clap::{builder::Command, load_yaml, ArgMatches};
 
 use std::path::{Path, PathBuf};
 
@@ -340,7 +340,7 @@ fn purge_command(matches: &ArgMatches, stronghold: &mut iota_stronghold::Strongh
 
 fn main() {
     let yaml = load_yaml!("cli.yml");
-    let matches = App::from(yaml).get_matches();
+    let matches = Command::from_yaml(yaml).get_matches();
     let system = ActorSystem::new().expect(line_error!());
     let client_path = b"actor_path".to_vec();
     let mut stronghold = Stronghold::init_stronghold_system(system, client_path.clone(), vec![]);

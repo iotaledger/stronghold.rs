@@ -27,6 +27,8 @@ use core::{
 };
 use std::{path::PathBuf, time::Duration};
 
+use zeroize::Zeroizing;
+
 #[cfg(feature = "communication")]
 use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
 
@@ -63,15 +65,15 @@ pub enum Procedure {
     /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
     /// a BIP39 seed and store it in the `output` location
     BIP39Recover {
-        mnemonic: String,
-        passphrase: Option<String>,
+        mnemonic: Zeroizing<String>,
+        passphrase: Option<Zeroizing<String>>,
         output: Location,
         hint: RecordHint,
     },
     /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in the `output` location
     BIP39Generate {
-        passphrase: Option<String>,
+        passphrase: Option<Zeroizing<String>>,
         output: Location,
         hint: RecordHint,
     },
@@ -106,7 +108,7 @@ pub enum ProcResult {
     /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
-    Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
     /// Generic Error return message.
@@ -124,7 +126,7 @@ impl TryFrom<SerdeProcResult> for ProcResult {
             SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
             SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
             SerdeProcResult::Ed25519PublicKey(msg) => {
-                let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
+                let msg: ResultMessage<[u8; crypto::signatures::ed25519::PUBLIC_KEY_LENGTH]> = match msg {
                     ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
                     ResultMessage::Error(e) => ResultMessage::Error(e),
                 };
@@ -235,7 +237,7 @@ pub enum SHRequest {
     // Reads from the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
         cid: ClientId,
@@ -244,7 +246,7 @@ pub enum SHRequest {
     // Writes to the snapshot file. Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
@@ -619,7 +621,7 @@ impl Receive<SHRequest> for Client {
 
                         internal.try_tell(
                             InternalMsg::BIP39Generate {
-                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                passphrase: passphrase.unwrap_or_else(|| Zeroizing::new("".into())),
                                 vault_id,
                                 record_id,
                                 hint,
@@ -642,7 +644,7 @@ impl Receive<SHRequest> for Client {
                         internal.try_tell(
                             InternalMsg::BIP39Recover {
                                 mnemonic,
-                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                passphrase: passphrase.unwrap_or_else(|| Zeroizing::new("".into())),
                                 vault_id,
                                 record_id,
                                 hint,

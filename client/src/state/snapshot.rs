@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use engine::{
-    snapshot::{self, read_from, write_to, Key},
+    snapshot,
     vault::{ClientId, DbView, Key as PKey, VaultId},
 };
 
@@ -42,27 +42,29 @@ impl Snapshot {
 
     /// Reads state from the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<Self> {
+    pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: &snapshot::Key) -> crate::Result<Self> {
         let state = match path {
-            Some(p) => read_from(p, &key, &[])?,
-            None => read_from(&snapshot::files::get_path(name)?, &key, &[])?,
+            Some(p) => snapshot::decrypt_file(p, key, &[]).map_err(|e| engine::Error::from(e))?,
+            None => snapshot::decrypt_file(&snapshot::files::get_path(name)?, key, &[])
+                .map_err(|e| engine::Error::from(e))?,
         };
 
-        let data = SnapshotState::deserialize(state);
+        let data = SnapshotState::deserialize(state.as_ref());
 
         Ok(Self::new(data))
     }
 
     /// Writes state to the specified named snapshot or the specified path
     /// TODO: Add associated data.
-    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: Key) -> crate::Result<()> {
+    pub fn write_to_snapshot(&self, name: Option<&str>, path: Option<&Path>, key: &snapshot::Key) -> crate::Result<()> {
         let data = self.state.serialize();
 
         // TODO: This is a hack and probably should be removed when we add proper error handling.
         let f = move || {
             match path {
-                Some(p) => write_to(&data, p, &key, &[])?,
-                None => write_to(&data, &snapshot::files::get_path(name)?, &key, &[])?,
+                Some(p) => snapshot::encrypt_file(&data, p, key, &[]).map_err(|e| engine::Error::from(e))?,
+                None => snapshot::encrypt_file(&data, &snapshot::files::get_path(name)?, key, &[])
+                    .map_err(|e| engine::Error::from(e))?,
             }
             Ok(())
         };
@@ -89,7 +91,7 @@ impl SnapshotState {
         bincode::serialize(&self).expect(line_error!())
     }
 
-    pub fn deserialize(data: Vec<u8>) -> Self {
+    pub fn deserialize(data: &[u8]) -> Self {
         bincode::deserialize(&data).expect(line_error!())
     }
 }

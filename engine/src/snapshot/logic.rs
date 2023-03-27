@@ -53,6 +53,12 @@ impl From<age::DecError> for ReadError {
     }
 }
 
+impl From<ReadError> for crate::Error {
+    fn from(e: ReadError) -> Self {
+        Self::SnapshotError(format!("snapshot::ReadError: {e:?}").into())
+    }
+}
+
 #[derive(Debug, DeriveError)]
 pub enum WriteError {
     #[error("I/O error: {0}")]
@@ -69,6 +75,12 @@ pub enum WriteError {
 
     #[error("incorrect work factor")]
     IncorrectWorkFactor,
+}
+
+impl From<WriteError> for crate::Error {
+    fn from(e: WriteError) -> Self {
+        Self::SnapshotError(format!("snapshot::WriteError: {e:?}").into())
+    }
 }
 
 /// Encrypt snapshot content with key using work factor recommended for password-based (weak) keys.
@@ -90,10 +102,10 @@ pub fn encrypt_content<O: Write>(
     key: &Key,
     associated_data: &[u8],
 ) -> Result<(), WriteError> {
-    let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
+    // let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     // TODO: work_factor is intentionally 0 just for development.
     // Use proper value in production.
-    // let work_factor = 1;
+    let work_factor = 1;
     encrypt_content_with_work_factor(plain, output, key, work_factor, associated_data)
 }
 
@@ -252,16 +264,14 @@ fn check_header<I: Read>(input: &mut I) -> Result<(), ReadError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use stronghold_utils::{
-        test_utils::{corrupt, corrupt_file_at},
-    };
+    use stronghold_utils::test_utils::{corrupt, corrupt_file_at};
 
     fn variable_bytestring(max_len: usize) -> Vec<u8> {
         let mut len_bytes = [0_u8; (usize::BITS / 8) as usize];
-        rand::fill(&mut len_bytes);
+        rand::fill(&mut len_bytes).unwrap();
         let len = usize::from_ne_bytes(len_bytes) % (max_len - 1) + 1;
         let mut bs = vec![0_u8; len];
-        rand::fill(&mut bs);
+        rand::fill(&mut bs).unwrap();
         bs
     }
 

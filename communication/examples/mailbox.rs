@@ -79,7 +79,7 @@
 //! ```
 
 use async_std::task;
-use clap::{load_yaml, App, ArgMatches};
+use clap::{builder::Command, load_yaml, ArgMatches};
 use communication::{
     behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent},
     libp2p::{ConnectedPoint, Keypair, Multiaddr, Swarm, SwarmEvent},
@@ -317,7 +317,7 @@ async fn get_record(matches: &ArgMatches) {
 
 fn main() {
     let yaml = load_yaml!("cli_mailbox.yml");
-    let matches = App::from(yaml).get_matches();
+    let matches = Command::from_yaml(yaml).get_matches();
     if matches.subcommand_matches("start-mailbox").is_some() {
         task::block_on(run_mailbox())
     }

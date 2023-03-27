@@ -9,6 +9,8 @@ use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, Stronghold}
 
 use super::fresh;
 
+use zeroize::Zeroizing;
+
 fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     let sys = ActorSystem::new().unwrap();
 
@@ -41,7 +43,7 @@ fn usecase_ed25519() {
         }
     } else {
         match futures::executor::block_on(sh.runtime_exec(Procedure::BIP39Generate {
-            passphrase: fresh::passphrase(),
+            passphrase: fresh::passphrase().map(Zeroizing::new),
             output: seed.clone(),
             hint: fresh::record_hint(),
         })) {
@@ -82,7 +84,7 @@ fn usecase_ed25519() {
 
     {
         use crypto::signatures::ed25519::{PublicKey, Signature};
-        let pk = PublicKey::from_compressed_bytes(pk).unwrap();
+        let pk = PublicKey::try_from_bytes(pk).unwrap();
         let sig = Signature::from_bytes(sig);
         assert!(pk.verify(&sig, &msg));
     }

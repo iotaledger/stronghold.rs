@@ -27,11 +27,13 @@ use crate::{
 
 use std::collections::HashMap;
 
+use zeroize::Zeroizing;
+
 /// Messages used for the Snapshot Actor.
 #[derive(Clone, GuardDebug)]
 pub enum SMsg {
     WriteSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
@@ -40,7 +42,7 @@ pub enum SMsg {
         id: ClientId,
     },
     ReadFromSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
         id: ClientId,
@@ -100,7 +102,7 @@ impl Receive<SMsg> for Snapshot {
                         sender,
                     );
                 } else {
-                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), key) {
+                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), &*key) {
                         Ok(mut snapshot) => {
                             let data = snapshot.get_state(cid);
 
@@ -132,7 +134,7 @@ impl Receive<SMsg> for Snapshot {
                 };
             }
             SMsg::WriteSnapshot { key, filename, path } => {
-                self.write_to_snapshot(filename.as_deref(), path.as_deref(), key)
+                self.write_to_snapshot(filename.as_deref(), path.as_deref(), &*key)
                     .expect(line_error!());
 
                 self.state = SnapshotState::default();
