@@ -26,6 +26,7 @@
 mod compression;
 pub mod files;
 pub mod kdf;
+pub mod migration;
 
 mod logic;
 pub use compression::{compress, decompress};
