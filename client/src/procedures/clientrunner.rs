@@ -54,22 +54,10 @@ impl Runner for Client {
     where
         F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>,
     {
-        let mut ret = None;
-        let execute_procedure = |guard: [Buffer<u8>; N]| {
-            ret = Some(f(guard)?);
-            Ok(())
-        };
-
         let keystore = self.keystore.read().map_err(|_| VaultError::LockPoisoned)?;
         let db = self.db.read().map_err(|_| VaultError::LockPoisoned)?;
         let ids: [(Key<Provider>, VaultId, RecordId); N] = resolve_locations!(self, locations, keystore)?;
-
-        let res = db.get_guards(ids, execute_procedure);
-
-        match res {
-            Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(e),
-        }
+        db.get_guards(ids, f)
     }
 
     fn exec_proc<F, T, const N: usize>(
