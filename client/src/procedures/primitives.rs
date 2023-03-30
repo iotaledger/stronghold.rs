@@ -502,33 +502,30 @@ impl DeriveSecret<1> for Slip10Derive {
 }
 
 fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
-    let raw = (*raw).to_vec();
-    if raw.len() != x25519::SECRET_KEY_LENGTH {
+    let raw_slice: &[u8] = &*raw;
+    if raw_slice.len() != x25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
-            has: raw.len(),
+            has: raw_slice.len(),
             needs: x25519::SECRET_KEY_LENGTH,
             name: "data buffer",
         };
         return Err(e);
     }
-    x25519::SecretKey::try_from_slice(&raw)
+    x25519::SecretKey::try_from_slice(raw_slice)
 }
 
 fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
-    let mut raw = (*raw).to_vec();
-    if raw.len() < ed25519::SECRET_KEY_LENGTH {
+    let raw_slice: &[u8] = &*raw;
+    if raw_slice.len() < ed25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
-            has: raw.len(),
+            has: raw_slice.len(),
             needs: ed25519::SECRET_KEY_LENGTH,
             name: "data buffer",
         };
         return Err(e);
     }
-    raw.truncate(ed25519::SECRET_KEY_LENGTH);
-    let mut bs = [0; ed25519::SECRET_KEY_LENGTH];
-    bs.copy_from_slice(&raw);
 
-    Ok(ed25519::SecretKey::from_bytes(bs))
+    Ok(ed25519::SecretKey::from_bytes(raw_slice[..ed25519::SECRET_KEY_LENGTH].try_into().unwrap()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
