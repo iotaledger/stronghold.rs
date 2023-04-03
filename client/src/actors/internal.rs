@@ -634,7 +634,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             bs.copy_from_slice(&raw);
                             let sk = ed25519::SecretKey::from_bytes(*bs);
                             let pk = sk.public_key();
-                            // sk.zeroize();
 
                             client.try_tell(
                                 ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
