@@ -59,6 +59,8 @@ pub use engine::snapshot::{
 
 pub use engine::vault::RecordHint;
 
+pub use engine;
+
 /// TODO: Should be replaced with proper errors.
 #[macro_export]
 macro_rules! line_error {
