@@ -585,20 +585,21 @@ pub struct PublicKey {
 }
 
 impl UseSecret<1> for PublicKey {
-    type Output = [u8; 32];
+    type Output = Vec<u8>;
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         match self.ty {
             KeyType::Ed25519 => {
                 let sk = ed25519_secret_key(guards[0].borrow())?;
-                Ok(sk.public_key().to_bytes())
+                Ok(sk.public_key().to_bytes().to_vec())
             }
             KeyType::X25519 => {
                 let sk = x25519_secret_key(guards[0].borrow())?;
-                Ok(sk.public_key().to_bytes())
+                Ok(sk.public_key().to_bytes().to_vec())
             }
             KeyType::Secp256k1Ecdsa => {
-                Err(FatalProcedureError::from("Invalid key type".to_owned()))
+                let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;
+                Ok(sk.public_key().to_bytes().to_vec())
             }
         }
     }

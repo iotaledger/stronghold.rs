@@ -270,7 +270,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
         private_key: key.clone(),
         ty: KeyType::Ed25519,
     };
-    let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = client.execute_procedure(ed25519_pk).unwrap();
+    let pk = client.execute_procedure(ed25519_pk).unwrap();
 
     let msg = fresh::variable_bytestring(4096);
 
@@ -280,7 +280,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     };
     let sig: [u8; ed25519::SIGNATURE_LENGTH] = client.execute_procedure(ed25519_sign).unwrap();
 
-    let pk = ed25519::PublicKey::try_from_bytes(pk).unwrap();
+    let pk = ed25519::PublicKey::try_from_bytes(pk[..].try_into().unwrap()).unwrap();
     let sig = ed25519::Signature::from_bytes(sig);
     assert!(pk.verify(&sig, &msg));
 
@@ -301,10 +301,19 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     };
     assert!(client.execute_procedure(secp256k1_ecdsa_generate).is_ok());
 
+    let secp256k1_ecdsa_public_key = PublicKey {
+        private_key: key.clone(),
+        ty: KeyType::Secp256k1Ecdsa,
+    };
+    let pk_vec = client.execute_procedure(secp256k1_ecdsa_public_key).unwrap();
+    let pk = secp256k1_ecdsa::PublicKey::try_from_slice(&pk_vec).unwrap();
+
     let evm_address = GetEvmAddress {
         private_key: key.clone(),
     };
     let evm_addr: [u8; secp256k1_ecdsa::ADDRESS_LENGTH] = client.execute_procedure(evm_address).unwrap();
+
+    assert_eq!(&evm_addr, pk.to_address().as_ref());
 
     Ok(())
 }
