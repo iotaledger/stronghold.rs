@@ -23,7 +23,7 @@ use crypto::{
         slip10, x25519,
     },
     macs::hmac::{HMAC_SHA256, HMAC_SHA384, HMAC_SHA512},
-    signatures::ed25519,
+    signatures::{ed25519, secp256k1_ecdsa},
     utils::rand::fill,
 };
 
@@ -47,6 +47,7 @@ pub enum StrongholdProcedure {
     BIP39Generate(BIP39Generate),
     BIP39Recover(BIP39Recover),
     PublicKey(PublicKey),
+    GetEvmAddress(GetEvmAddress),
     GenerateKey(GenerateKey),
     Ed25519Sign(Ed25519Sign),
     X25519DiffieHellman(X25519DiffieHellman),
@@ -80,6 +81,7 @@ impl Procedure for StrongholdProcedure {
             BIP39Recover(proc) => proc.execute(runner).map(|o| o.into()),
             GenerateKey(proc) => proc.execute(runner).map(|o| o.into()),
             PublicKey(proc) => proc.execute(runner).map(|o| o.into()),
+            GetEvmAddress(proc) => proc.execute(runner).map(|o| o.into()),
             Ed25519Sign(proc) => proc.execute(runner).map(|o| o.into()),
             X25519DiffieHellman(proc) => proc.execute(runner).map(|o| o.into()),
             Hmac(proc) => proc.execute(runner).map(|o| o.into()),
@@ -111,6 +113,7 @@ impl StrongholdProcedure {
                 ..
             })
             | StrongholdProcedure::PublicKey(PublicKey { private_key: input, .. })
+            | StrongholdProcedure::GetEvmAddress(GetEvmAddress { private_key: input, })
             | StrongholdProcedure::Ed25519Sign(Ed25519Sign { private_key: input, .. })
             | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { private_key: input, .. })
             | StrongholdProcedure::Hkdf(Hkdf { ikm: input, .. })
@@ -201,7 +204,7 @@ generic_procedures! {
 
 generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
-    UseSecret<1> => { PublicKey, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    UseSecret<1> => { PublicKey, GetEvmAddress, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
     UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt },
@@ -319,6 +322,7 @@ pub enum AeadCipher {
 pub enum KeyType {
     Ed25519,
     X25519,
+    Secp256k1Ecdsa,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -534,6 +538,20 @@ fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error>
     Ok(ed25519::SecretKey::from_bytes(bs))
 }
 
+fn secp256k1_ecdsa_secret_key(raw: Ref<u8>) -> Result<secp256k1_ecdsa::SecretKey, crypto::Error> {
+    let raw_slice: &[u8] = &*raw;
+    if raw_slice.len() < secp256k1_ecdsa::SECRET_KEY_LENGTH {
+        let e = crypto::Error::BufferSize {
+            has: raw_slice.len(),
+            needs: secp256k1_ecdsa::SECRET_KEY_LENGTH,
+            name: "data buffer",
+        };
+        return Err(e);
+    }
+
+    secp256k1_ecdsa::SecretKey::try_from_bytes(raw_slice[..secp256k1_ecdsa::SECRET_KEY_LENGTH].try_into().unwrap())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerateKey {
     pub ty: KeyType,
@@ -547,6 +565,7 @@ impl GenerateSecret for GenerateKey {
         let secret = match self.ty {
             KeyType::Ed25519 => ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
             KeyType::X25519 => x25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
+            KeyType::Secp256k1Ecdsa => secp256k1_ecdsa::SecretKey::generate().to_bytes().to_vec(),
         };
         Ok(Products { secret, output: () })
     }
@@ -578,7 +597,28 @@ impl UseSecret<1> for PublicKey {
                 let sk = x25519_secret_key(guards[0].borrow())?;
                 Ok(sk.public_key().to_bytes())
             }
+            KeyType::Secp256k1Ecdsa => {
+                Err(FatalProcedureError::from("Invalid key type".to_owned()))
+            }
         }
+    }
+
+    fn source(&self) -> [Location; 1] {
+        [self.private_key.clone()]
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetEvmAddress {
+    pub private_key: Location,
+}
+
+impl UseSecret<1> for GetEvmAddress {
+    type Output = [u8; 20];
+
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;
+        Ok(sk.public_key().to_address().into())
     }
 
     fn source(&self) -> [Location; 1] {

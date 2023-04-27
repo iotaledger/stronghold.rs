@@ -10,7 +10,7 @@ use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
         BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType,
-        MnemonicLanguage, PublicKey, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
+        MnemonicLanguage, PublicKey, GetEvmAddress, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
         WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
@@ -20,7 +20,7 @@ use crate::{
 use crypto::{
     ciphers::{aes_gcm::Aes256Gcm, chacha::XChaCha20Poly1305},
     keys::slip10::ChainCode,
-    signatures::ed25519,
+    signatures::{ed25519, secp256k1_ecdsa},
 };
 use stronghold_utils::random;
 
@@ -293,59 +293,18 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
     let vault_path = random::variable_bytestring(1024);
-    let seed = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+    let key = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
 
-    if fresh::coinflip() {
-        let size_bytes = if fresh::coinflip() {
-            Some(fresh::usize(1024))
-        } else {
-            None
-        };
-        // TODO: Bip32Generate
-        let slip10_generate = Slip10Generate {
-            size_bytes,
-            output: seed.clone(),
-        };
-
-        assert!(client.execute_procedure(slip10_generate).is_ok());
-    } else {
-        let bip32_gen = BIP39Generate {
-            // TODO: key_type
-            passphrase: random::passphrase(),
-            output: seed.clone(),
-            language: MnemonicLanguage::English,
-        };
-        assert!(client.execute_procedure(bip32_gen).is_ok());
-    }
-
-    let (_path, chain) = fresh::hd_path();
-    let key = Location::generic(vault_path, random::variable_bytestring(1024));
-
-    // TODO: Bip32Derive
-    let slip10_derive = Slip10Derive {
-        chain,
-        input: Slip10DeriveInput::Seed(seed),
+    let secp256k1_ecdsa_generate = GenerateKey {
+        ty: KeyType::Secp256k1Ecdsa,
         output: key.clone(),
     };
-    assert!(client.execute_procedure(slip10_derive).is_ok());
+    assert!(client.execute_procedure(secp256k1_ecdsa_generate).is_ok());
 
-    let ed25519_pk = PublicKey {
+    let evm_address = GetEvmAddress {
         private_key: key.clone(),
-        ty: KeyType::Ed25519,
     };
-    let pk: [u8; ed25519::PUBLIC_KEY_LENGTH] = client.execute_procedure(ed25519_pk).unwrap();
-
-    let msg = fresh::variable_bytestring(4096);
-
-    let ed25519_sign = Ed25519Sign {
-        private_key: key,
-        msg: msg.clone(),
-    };
-    let sig: [u8; ed25519::SIGNATURE_LENGTH] = client.execute_procedure(ed25519_sign).unwrap();
-
-    let pk = ed25519::PublicKey::try_from_bytes(pk).unwrap();
-    let sig = ed25519::Signature::from_bytes(sig);
-    assert!(pk.verify(&sig, &msg));
+    let evm_addr: [u8; secp256k1_ecdsa::ADDRESS_LENGTH] = client.execute_procedure(evm_address).unwrap();
 
     Ok(())
 }
