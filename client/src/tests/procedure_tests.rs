@@ -9,7 +9,7 @@ use crate::procedures::CompareSecret;
 use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, Hkdf, KeyType,
+        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, Secp256k1EcdsaSign, GenerateKey, GenerateSecret, Hkdf, KeyType,
         MnemonicLanguage, PublicKey, GetEvmAddress, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
         WriteVault, X25519DiffieHellman,
     },
@@ -314,6 +314,22 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     let evm_addr: [u8; secp256k1_ecdsa::ADDRESS_LENGTH] = client.execute_procedure(evm_address).unwrap();
 
     assert_eq!(&evm_addr, pk.to_address().as_ref());
+
+    let msg = fresh::variable_bytestring(4096);
+
+    let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
+        private_key: key,
+        msg: msg.clone(),
+    };
+    let mut sig_bytes: [u8; secp256k1_ecdsa::SIGNATURE_LENGTH] = client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
+
+    let sig = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
+    assert!(pk.verify(&sig, &msg));
+    assert_eq!(pk, sig.verify_recover(&msg).unwrap());
+
+    sig_bytes[0] ^= 1;
+    let sig_bad = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
+    assert!(!pk.verify(&sig_bad, &msg));
 
     Ok(())
 }

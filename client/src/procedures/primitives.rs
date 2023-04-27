@@ -50,6 +50,7 @@ pub enum StrongholdProcedure {
     GetEvmAddress(GetEvmAddress),
     GenerateKey(GenerateKey),
     Ed25519Sign(Ed25519Sign),
+    Secp256k1EcdsaSign(Secp256k1EcdsaSign),
     X25519DiffieHellman(X25519DiffieHellman),
     Hmac(Hmac),
     Hkdf(Hkdf),
@@ -83,6 +84,7 @@ impl Procedure for StrongholdProcedure {
             PublicKey(proc) => proc.execute(runner).map(|o| o.into()),
             GetEvmAddress(proc) => proc.execute(runner).map(|o| o.into()),
             Ed25519Sign(proc) => proc.execute(runner).map(|o| o.into()),
+            Secp256k1EcdsaSign(proc) => proc.execute(runner).map(|o| o.into()),
             X25519DiffieHellman(proc) => proc.execute(runner).map(|o| o.into()),
             Hmac(proc) => proc.execute(runner).map(|o| o.into()),
             Hkdf(proc) => proc.execute(runner).map(|o| o.into()),
@@ -115,6 +117,7 @@ impl StrongholdProcedure {
             | StrongholdProcedure::PublicKey(PublicKey { private_key: input, .. })
             | StrongholdProcedure::GetEvmAddress(GetEvmAddress { private_key: input, })
             | StrongholdProcedure::Ed25519Sign(Ed25519Sign { private_key: input, .. })
+            | StrongholdProcedure::Secp256k1EcdsaSign(Secp256k1EcdsaSign { private_key: input, .. })
             | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { private_key: input, .. })
             | StrongholdProcedure::Hkdf(Hkdf { ikm: input, .. })
             | StrongholdProcedure::ConcatKdf(ConcatKdf {
@@ -204,7 +207,7 @@ generic_procedures! {
 
 generic_procedures! {
     // Stronghold procedures that implement the `UseSecret` trait.
-    UseSecret<1> => { PublicKey, GetEvmAddress, Ed25519Sign, Hmac, AeadEncrypt, AeadDecrypt },
+    UseSecret<1> => { PublicKey, GetEvmAddress, Ed25519Sign, Secp256k1EcdsaSign, Hmac, AeadEncrypt, AeadDecrypt },
     UseSecret<2> => { AesKeyWrapEncrypt },
     // Stronghold procedures that implement the `DeriveSecret` trait.
     DeriveSecret<1> => { CopyRecord, Slip10Derive, X25519DiffieHellman, Hkdf, ConcatKdf, AesKeyWrapDecrypt },
@@ -643,6 +646,27 @@ impl UseSecret<1> for Ed25519Sign {
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let sk = ed25519_secret_key(guards[0].borrow())?;
+        let sig = sk.sign(&self.msg);
+        Ok(sig.to_bytes())
+    }
+
+    fn source(&self) -> [Location; 1] {
+        [self.private_key.clone()]
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Secp256k1EcdsaSign {
+    pub msg: Vec<u8>,
+
+    pub private_key: Location,
+}
+
+impl UseSecret<1> for Secp256k1EcdsaSign {
+    type Output = [u8; secp256k1_ecdsa::SIGNATURE_LENGTH];
+
+    fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;
         let sig = sk.sign(&self.msg);
         Ok(sig.to_bytes())
     }
