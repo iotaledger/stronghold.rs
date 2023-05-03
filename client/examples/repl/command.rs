@@ -9,7 +9,7 @@ use crate::{
     Command, State, TermAction, HELP_MESSAGE,
 };
 use iota_stronghold::{
-    procedures::{BIP39Generate, BIP39Recover, Chain, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
+    procedures::{BIP39Generate, BIP39Recover, Chain, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
 
@@ -285,6 +285,7 @@ impl Command for Slip10DeriveCommand {
         let record_path_new = &parameters[4];
 
         client.execute_procedure(Slip10Derive {
+            curve: Curve::Ed25519,
             chain: Chain::from_u32_hardened(chain_code.parse()),
             input: Slip10DeriveInput::Seed(Location::const_generic(
                 vault_path_old.clone().into_bytes(),

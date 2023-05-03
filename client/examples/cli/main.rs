@@ -11,7 +11,7 @@ use iota_stronghold as stronghold;
 use log::*;
 use stronghold::{
     procedures::{
-        BIP39Generate, Chain, GenerateKey, KeyType, MnemonicLanguage, Slip10Derive, Slip10DeriveInput, Slip10Generate,
+        BIP39Generate, Chain, Curve, GenerateKey, KeyType, MnemonicLanguage, Slip10Derive, Slip10DeriveInput, Slip10Generate,
         StrongholdProcedure,
     },
     Client, ClientError, ClientVault, KeyProvider, Location, SnapshotPath, Store, Stronghold,
@@ -330,6 +330,7 @@ async fn command_slip10_derive(chain: ChainInput, input: VaultLocation, output: 
 
     info!("Deriving SLIP10 Child Secret");
     let slip10_derive = Slip10Derive {
+        curve: Curve::Ed25519,
         chain: chain.chain,
         input: Slip10DeriveInput::Seed(output_location),
         output: output.to_location(),

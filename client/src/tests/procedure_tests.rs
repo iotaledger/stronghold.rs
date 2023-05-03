@@ -19,7 +19,7 @@ use crate::{
 
 use crypto::{
     ciphers::{aes_gcm::Aes256Gcm, chacha::XChaCha20Poly1305},
-    keys::slip10::ChainCode,
+    keys::slip10,
     signatures::{ed25519, secp256k1_ecdsa},
 };
 use stronghold_utils::random;
@@ -260,6 +260,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
+        curve: slip10::Curve::Ed25519,
         chain,
         input: Slip10DeriveInput::Seed(seed),
         output: key.clone(),
@@ -293,43 +294,65 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
     let vault_path = random::variable_bytestring(1024);
-    let key = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+    let sk = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+    let seed = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+    let esk = Location::generic(vault_path, random::variable_bytestring(1024));
+
+    let slip10_generate = Slip10Generate {
+        size_bytes: Some(17),
+        output: seed.clone(),
+    };
+    assert!(client.execute_procedure(slip10_generate).is_ok());
+
+    let chain = slip10::Chain::from_u32([0x80000000_u32, 1, 2, 0x80000003_u32]);
+    let slip10_derive = Slip10Derive {
+        curve: slip10::Curve::Secp256k1,
+        chain,
+        input: Slip10DeriveInput::Seed(seed),
+        output: esk.clone(),
+    };
+    assert!(client.execute_procedure(slip10_derive).is_ok());
 
     let secp256k1_ecdsa_generate = GenerateKey {
         ty: KeyType::Secp256k1Ecdsa,
-        output: key.clone(),
+        output: sk.clone(),
     };
     assert!(client.execute_procedure(secp256k1_ecdsa_generate).is_ok());
 
-    let secp256k1_ecdsa_public_key = PublicKey {
-        private_key: key.clone(),
-        ty: KeyType::Secp256k1Ecdsa,
+    let run = |sk: Location| {
+        let secp256k1_ecdsa_public_key = PublicKey {
+            private_key: sk.clone(),
+            ty: KeyType::Secp256k1Ecdsa,
+        };
+        let pk_vec = client.execute_procedure(secp256k1_ecdsa_public_key).unwrap();
+        let pk = secp256k1_ecdsa::PublicKey::try_from_slice(&pk_vec).unwrap();
+
+        let evm_address = GetEvmAddress {
+            private_key: sk.clone(),
+        };
+        let evm_addr = client.execute_procedure(evm_address).unwrap();
+
+        assert_eq!(&evm_addr, pk.to_address().as_ref());
+
+        let msg = fresh::variable_bytestring(4096);
+
+        let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
+            private_key: sk.clone(),
+            msg: msg.clone(),
+        };
+        let mut sig_bytes: [u8; secp256k1_ecdsa::SIGNATURE_LENGTH] = client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
+
+        let sig = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
+        assert!(pk.verify(&sig, &msg));
+        assert_eq!(pk, sig.verify_recover(&msg).unwrap());
+
+        sig_bytes[0] ^= 1;
+        let sig_bad = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
+        assert!(!pk.verify(&sig_bad, &msg));
     };
-    let pk_vec = client.execute_procedure(secp256k1_ecdsa_public_key).unwrap();
-    let pk = secp256k1_ecdsa::PublicKey::try_from_slice(&pk_vec).unwrap();
 
-    let evm_address = GetEvmAddress {
-        private_key: key.clone(),
-    };
-    let evm_addr: [u8; secp256k1_ecdsa::ADDRESS_LENGTH] = client.execute_procedure(evm_address).unwrap();
-
-    assert_eq!(&evm_addr, pk.to_address().as_ref());
-
-    let msg = fresh::variable_bytestring(4096);
-
-    let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
-        private_key: key,
-        msg: msg.clone(),
-    };
-    let mut sig_bytes: [u8; secp256k1_ecdsa::SIGNATURE_LENGTH] = client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
-
-    let sig = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
-    assert!(pk.verify(&sig, &msg));
-    assert_eq!(pk, sig.verify_recover(&msg).unwrap());
-
-    sig_bytes[0] ^= 1;
-    let sig_bad = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
-    assert!(!pk.verify(&sig_bad, &msg));
+    run(sk);
+    run(esk);
 
     Ok(())
 }
@@ -350,8 +373,9 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
     let (_path, chain0) = fresh::hd_path();
     let (_path, chain1) = fresh::hd_path();
 
-    let cc0: ChainCode = {
+    let cc0: slip10::ChainCode = {
         let slip10_derive = Slip10Derive {
+            curve: slip10::Curve::Ed25519,
             input: Slip10DeriveInput::Seed(seed.clone()),
             chain: chain0.join(&chain1),
             output: fresh::location(),
@@ -360,10 +384,11 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
         client.execute_procedure(slip10_derive).unwrap()
     };
 
-    let cc1: ChainCode = {
+    let cc1: slip10::ChainCode = {
         let intermediate = fresh::location();
 
         let slip10_derive_intermediate = Slip10Derive {
+            curve: slip10::Curve::Ed25519,
             input: Slip10DeriveInput::Seed(seed),
             chain: chain0,
             output: intermediate.clone(),
@@ -372,6 +397,7 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
         assert!(client.execute_procedure(slip10_derive_intermediate).is_ok());
 
         let slip10_derive_child = Slip10Derive {
+            curve: slip10::Curve::Ed25519,
             input: Slip10DeriveInput::Key(intermediate),
             chain: chain1,
             output: fresh::location(),
@@ -396,6 +422,7 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
         output: fresh::location(),
     };
     let derive = Slip10Derive {
+        curve: slip10::Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate.target().clone()),
         output: fresh::location(),
         chain: fresh::hd_path().1,
@@ -443,7 +470,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
         let dk = slip10::Seed::from_bytes(&seed)
             .derive(slip10::Curve::Ed25519, &fresh::hd_path().1)
             .unwrap();
-        dk.into()
+        (*dk.extended_bytes()).into()
     };
 
     // write seed to vault
@@ -713,6 +740,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
         output: fresh::location(),
     };
     let derive_from_original = Slip10Derive {
+        curve: slip10::Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate_bip39.target().clone()),
         chain: chain.clone(),
         output: fresh::location(),
@@ -739,6 +767,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let derive_from_recovered = Slip10Derive {
+        curve: slip10::Curve::Ed25519,
         input: Slip10DeriveInput::Seed(recover_bip39.target().clone()),
         chain,
         output: fresh::location(),

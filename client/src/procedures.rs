@@ -12,7 +12,7 @@ pub use primitives::CompareSecret;
 
 pub use primitives::{
     AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-    BIP39Recover, Chain, ChainCode, ConcatKdf, ConcatSecret, CopyRecord, Ed25519Sign, Secp256k1EcdsaSign, GarbageCollect, GenerateKey,
+    BIP39Recover, Chain, ChainCode, Curve, ConcatKdf, ConcatSecret, CopyRecord, Ed25519Sign, Secp256k1EcdsaSign, GarbageCollect, GenerateKey,
     Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PublicKey, GetEvmAddress, RevokeData, Sha2Hash, Slip10Derive,
     Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
 };

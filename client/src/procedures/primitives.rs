@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use super::types::*;
 use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
-pub use crypto::keys::slip10::{Chain, ChainCode};
+pub use crypto::keys::slip10::{Chain, ChainCode, Curve};
 use crypto::{
     ciphers::{
         aes_gcm::Aes256Gcm,
@@ -474,6 +474,8 @@ pub enum Slip10DeriveInput {
 /// return the corresponding chain code
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Slip10Derive {
+    pub curve: Curve,
+
     pub chain: Chain,
 
     pub input: Slip10DeriveInput,
@@ -487,15 +489,21 @@ impl DeriveSecret<1> for Slip10Derive {
     fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<ChainCode>, FatalProcedureError> {
         let dk = match self.input {
             Slip10DeriveInput::Key(_) => {
-                slip10::Key::try_from(&*guards[0].borrow()).and_then(|parent| parent.derive(&self.chain))
+                let r = &*guards[0].borrow();
+                dbg!(r.len());
+                let ext_bytes: &[u8; 64] = r
+                    .try_into()
+                    .map_err(|_| FatalProcedureError::from("bad slip10 extended secret key size".to_owned()))?;
+                slip10::ExtendedSecretKey::try_from_extended_bytes(self.curve, ext_bytes)
+                    .and_then(|parent| parent.derive(&self.chain))
             }
             Slip10DeriveInput::Seed(_) => {
-                slip10::Seed::from_bytes(&guards[0].borrow()).derive(slip10::Curve::Ed25519, &self.chain)
+                slip10::Seed::from_bytes(&guards[0].borrow()).derive(self.curve, &self.chain)
             }
         }?;
         Ok(Products {
-            secret: dk.into(),
-            output: dk.chain_code(),
+            secret: (*dk.extended_bytes()).into(),
+            output: *dk.chain_code(),
         })
     }
 
