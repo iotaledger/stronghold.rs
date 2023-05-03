@@ -736,7 +736,7 @@ pub struct Pbkdf2Hmac {
 
     pub salt: Vec<u8>,
 
-    pub count: u32,
+    pub count: core::num::NonZeroU32,
 
     pub output: Location,
 }
@@ -748,17 +748,17 @@ impl GenerateSecret for Pbkdf2Hmac {
         let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
                 let mut buffer = [0; SHA256_LEN];
-                PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count, &mut buffer);
                 buffer.to_vec()
             }
             Sha2Hash::Sha384 => {
                 let mut buffer = [0; SHA384_LEN];
-                PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count, &mut buffer);
                 buffer.to_vec()
             }
             Sha2Hash::Sha512 => {
                 let mut buffer = [0; SHA512_LEN];
-                PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count as usize, &mut buffer)?;
+                PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count, &mut buffer);
                 buffer.to_vec()
             }
         };
