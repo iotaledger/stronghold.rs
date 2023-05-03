@@ -1,5 +1,13 @@
 # Changelog
 
+## \[1.1.0]
+
+- Bump `iota-crypto` version to 0.18.0. `Pbkdf2Hmac::count` changed to a `NonZeroU32`.
+  - [a860896c](https://www.github.com/iotaledger/stronghold.rs/commit/a860896c56a3ebae2bef9ffb37e3effff074fa79) Bump crypto on 2023-05-03
+  - [03ff2dcd](https://www.github.com/iotaledger/stronghold.rs/commit/03ff2dcd59326b923d319b7ee33224091db838b6) better changelog on 2023-05-03
+  - [74e564d2](https://www.github.com/iotaledger/stronghold.rs/commit/74e564d2d76624e267d85c02ac3a6eca1bc1af32) even more betterer changelog on 2023-05-03
+  - [6d32ae45](https://www.github.com/iotaledger/stronghold.rs/commit/6d32ae4549c02989b6d68b15f8536bb8374c40a4) remove native on 2023-05-03
+
 ## \[1.0.2]
 
 - Disable frag module for android and ios targets.
