@@ -115,7 +115,7 @@ impl StrongholdProcedure {
                 ..
             })
             | StrongholdProcedure::PublicKey(PublicKey { private_key: input, .. })
-            | StrongholdProcedure::GetEvmAddress(GetEvmAddress { private_key: input, })
+            | StrongholdProcedure::GetEvmAddress(GetEvmAddress { private_key: input })
             | StrongholdProcedure::Ed25519Sign(Ed25519Sign { private_key: input, .. })
             | StrongholdProcedure::Secp256k1EcdsaSign(Secp256k1EcdsaSign { private_key: input, .. })
             | StrongholdProcedure::X25519DiffieHellman(X25519DiffieHellman { private_key: input, .. })
@@ -497,9 +497,7 @@ impl DeriveSecret<1> for Slip10Derive {
                 slip10::ExtendedSecretKey::try_from_extended_bytes(self.curve, ext_bytes)
                     .and_then(|parent| parent.derive(&self.chain))
             }
-            Slip10DeriveInput::Seed(_) => {
-                slip10::Seed::from_bytes(&guards[0].borrow()).derive(self.curve, &self.chain)
-            }
+            Slip10DeriveInput::Seed(_) => slip10::Seed::from_bytes(&guards[0].borrow()).derive(self.curve, &self.chain),
         }?;
         Ok(Products {
             secret: (*dk.extended_bytes()).into(),
@@ -534,33 +532,33 @@ fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
 
 fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
     let mut raw = (*raw).to_vec();
-    if raw.len() < ed25519::SECRET_KEY_LENGTH {
+    if raw.len() < ed25519::SecretKey::LENGTH {
         let e = crypto::Error::BufferSize {
             has: raw.len(),
-            needs: ed25519::SECRET_KEY_LENGTH,
+            needs: ed25519::SecretKey::LENGTH,
             name: "data buffer",
         };
         return Err(e);
     }
-    raw.truncate(ed25519::SECRET_KEY_LENGTH);
-    let mut bs = [0; ed25519::SECRET_KEY_LENGTH];
+    raw.truncate(ed25519::SecretKey::LENGTH);
+    let mut bs = [0; ed25519::SecretKey::LENGTH];
     bs.copy_from_slice(&raw);
 
-    Ok(ed25519::SecretKey::from_bytes(bs))
+    Ok(ed25519::SecretKey::from_bytes(&bs))
 }
 
 fn secp256k1_ecdsa_secret_key(raw: Ref<u8>) -> Result<secp256k1_ecdsa::SecretKey, crypto::Error> {
-    let raw_slice: &[u8] = &*raw;
-    if raw_slice.len() < secp256k1_ecdsa::SECRET_KEY_LENGTH {
+    let raw_slice: &[u8] = &raw;
+    if raw_slice.len() < secp256k1_ecdsa::SecretKey::LENGTH {
         let e = crypto::Error::BufferSize {
             has: raw_slice.len(),
-            needs: secp256k1_ecdsa::SECRET_KEY_LENGTH,
+            needs: secp256k1_ecdsa::SecretKey::LENGTH,
             name: "data buffer",
         };
         return Err(e);
     }
 
-    secp256k1_ecdsa::SecretKey::try_from_bytes(raw_slice[..secp256k1_ecdsa::SECRET_KEY_LENGTH].try_into().unwrap())
+    secp256k1_ecdsa::SecretKey::try_from_bytes(raw_slice[..secp256k1_ecdsa::SecretKey::LENGTH].try_into().unwrap())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -630,7 +628,7 @@ impl UseSecret<1> for GetEvmAddress {
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;
-        Ok(sk.public_key().to_address().into())
+        Ok(sk.public_key().to_evm_address().into())
     }
 
     fn source(&self) -> [Location; 1] {
@@ -650,7 +648,7 @@ pub struct Ed25519Sign {
 }
 
 impl UseSecret<1> for Ed25519Sign {
-    type Output = [u8; ed25519::SIGNATURE_LENGTH];
+    type Output = [u8; ed25519::Signature::LENGTH];
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let sk = ed25519_secret_key(guards[0].borrow())?;
@@ -671,7 +669,7 @@ pub struct Secp256k1EcdsaSign {
 }
 
 impl UseSecret<1> for Secp256k1EcdsaSign {
-    type Output = [u8; secp256k1_ecdsa::SIGNATURE_LENGTH];
+    type Output = [u8; secp256k1_ecdsa::Signature::LENGTH];
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
         let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;

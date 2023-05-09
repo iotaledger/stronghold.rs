@@ -9,9 +9,9 @@ use crate::procedures::CompareSecret;
 use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, Secp256k1EcdsaSign, GenerateKey, GenerateSecret, Hkdf, KeyType,
-        MnemonicLanguage, PublicKey, GetEvmAddress, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure,
-        WriteVault, X25519DiffieHellman,
+        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, GetEvmAddress,
+        Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaSign, Sha2Hash, Slip10Derive, Slip10DeriveInput,
+        Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -279,7 +279,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
         private_key: key,
         msg: msg.clone(),
     };
-    let sig: [u8; ed25519::SIGNATURE_LENGTH] = client.execute_procedure(ed25519_sign).unwrap();
+    let sig: [u8; ed25519::Signature::LENGTH] = client.execute_procedure(ed25519_sign).unwrap();
 
     let pk = ed25519::PublicKey::try_from_bytes(pk[..].try_into().unwrap()).unwrap();
     let sig = ed25519::Signature::from_bytes(sig);
@@ -332,15 +332,16 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
         };
         let evm_addr = client.execute_procedure(evm_address).unwrap();
 
-        assert_eq!(&evm_addr, pk.to_address().as_ref());
+        assert_eq!(&evm_addr, pk.to_evm_address().as_ref());
 
         let msg = fresh::variable_bytestring(4096);
 
         let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
-            private_key: sk.clone(),
+            private_key: sk,
             msg: msg.clone(),
         };
-        let mut sig_bytes: [u8; secp256k1_ecdsa::SIGNATURE_LENGTH] = client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
+        let mut sig_bytes: [u8; secp256k1_ecdsa::Signature::LENGTH] =
+            client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
 
         let sig = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
         assert!(pk.verify(&sig, &msg));
@@ -439,13 +440,13 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
     let procedures = vec![generate.into(), derive.into(), get_pk.into(), sign.into()];
     let output = client.execute_procedure_chained(procedures).unwrap();
 
-    let mut pub_key_vec: [u8; ed25519::PUBLIC_KEY_LENGTH] = [0u8; ed25519::PUBLIC_KEY_LENGTH];
+    let mut pub_key_vec: [u8; ed25519::PublicKey::LENGTH] = [0u8; ed25519::PublicKey::LENGTH];
     let proc_output: Vec<u8> = output[2].clone().into();
     pub_key_vec.clone_from_slice(proc_output.as_slice());
 
     let pk = ed25519::PublicKey::try_from_bytes(pub_key_vec).unwrap();
 
-    let mut sig_vec: [u8; ed25519::SIGNATURE_LENGTH] = [0u8; ed25519::SIGNATURE_LENGTH];
+    let mut sig_vec: [u8; ed25519::Signature::LENGTH] = [0u8; ed25519::Signature::LENGTH];
     let sig_output: Vec<u8> = output[3].clone().into();
     sig_vec.clone_from_slice(sig_output.as_slice());
 
@@ -494,7 +495,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
             raw.truncate(32);
             let mut bs = [0; 32];
             bs.copy_from_slice(&raw);
-            let sk = ed25519::SecretKey::from_bytes(bs);
+            let sk = ed25519::SecretKey::from_bytes(&bs);
             sk.sign(&msg).to_bytes()
         })
         .filter(|bytes| bytes.iter().any(|b| b <= &10u8))
@@ -631,8 +632,8 @@ async fn usecase_aead() -> Result<(), Box<dyn std::error::Error>> {
     let vault = client.vault(vault_path);
     assert!(vault.write_secret(key_location.clone(), key.to_vec()).is_ok());
 
-    test_aead(&client, key_location.clone(), &key, AeadCipher::Aes256Gcm).await?;
-    test_aead(&client, key_location.clone(), &key, AeadCipher::XChaCha20Poly1305).await?;
+    test_aead(&client, key_location.clone(), &*key, AeadCipher::Aes256Gcm).await?;
+    test_aead(&client, key_location.clone(), &*key, AeadCipher::XChaCha20Poly1305).await?;
     Ok(())
 }
 

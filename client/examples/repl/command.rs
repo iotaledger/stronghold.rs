@@ -9,7 +9,9 @@ use crate::{
     Command, State, TermAction, HELP_MESSAGE,
 };
 use iota_stronghold::{
-    procedures::{BIP39Generate, BIP39Recover, Chain, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
+    procedures::{
+        BIP39Generate, BIP39Recover, Chain, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate,
+    },
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
 

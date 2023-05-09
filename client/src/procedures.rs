@@ -12,9 +12,10 @@ pub use primitives::CompareSecret;
 
 pub use primitives::{
     AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-    BIP39Recover, Chain, ChainCode, Curve, ConcatKdf, ConcatSecret, CopyRecord, Ed25519Sign, Secp256k1EcdsaSign, GarbageCollect, GenerateKey,
-    Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PublicKey, GetEvmAddress, RevokeData, Sha2Hash, Slip10Derive,
-    Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
+    BIP39Recover, Chain, ChainCode, ConcatKdf, ConcatSecret, CopyRecord, Curve, Ed25519Sign, GarbageCollect,
+    GenerateKey, GetEvmAddress, Hkdf, Hmac, KeyType, MnemonicLanguage, Pbkdf2Hmac, PublicKey, RevokeData,
+    Secp256k1EcdsaSign, Sha2Hash, Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault,
+    X25519DiffieHellman,
 };
 pub use types::{
     DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureOutput, UseSecret,
