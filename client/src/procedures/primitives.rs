@@ -490,7 +490,6 @@ impl DeriveSecret<1> for Slip10Derive {
         let dk = match self.input {
             Slip10DeriveInput::Key(_) => {
                 let r = &*guards[0].borrow();
-                dbg!(r.len());
                 let ext_bytes: &[u8; 64] = r
                     .try_into()
                     .map_err(|_| FatalProcedureError::from("bad slip10 extended secret key size".to_owned()))?;
@@ -523,7 +522,7 @@ fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
         let e = crypto::Error::BufferSize {
             has: raw.len(),
             needs: x25519::SECRET_KEY_LENGTH,
-            name: "data buffer",
+            name: "x25519 data buffer",
         };
         return Err(e);
     }
@@ -536,7 +535,7 @@ fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error>
         let e = crypto::Error::BufferSize {
             has: raw.len(),
             needs: ed25519::SecretKey::LENGTH,
-            name: "data buffer",
+            name: "ed25519 data buffer",
         };
         return Err(e);
     }
@@ -553,7 +552,7 @@ fn secp256k1_ecdsa_secret_key(raw: Ref<u8>) -> Result<secp256k1_ecdsa::SecretKey
         let e = crypto::Error::BufferSize {
             has: raw_slice.len(),
             needs: secp256k1_ecdsa::SecretKey::LENGTH,
-            name: "data buffer",
+            name: "secp256k1 data buffer",
         };
         return Err(e);
     }
