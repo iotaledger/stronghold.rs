@@ -1,7 +1,7 @@
 ---
 "iota-stronghold": major
-"stronghold-engine": patch
-"stronghold-runtime": patch
+"stronghold-engine": major
+"stronghold-runtime": major
 ---
 
 Secp256k1 ECDSA + SLIP-10 support added.
