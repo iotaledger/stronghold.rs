@@ -4,7 +4,9 @@
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
 use iota_stronghold::{
-    procedures::{Chain, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault},
+    procedures::{
+        Chain, Curve, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault,
+    },
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
 };
 use log::*;
@@ -131,7 +133,7 @@ impl StrongholdWrapper {
             Err(_err) => return Err(WrapperError::ExecuteProcedure(format!("{:?}", _err))),
         };
 
-        let output: Vec<u8> = procedure_result.into();
+        let output: Vec<u8> = procedure_result;
 
         Ok(output)
     }
@@ -199,6 +201,7 @@ impl StrongholdWrapper {
         log::info!("[Rust] Deriving Seed procedure started");
 
         let slip10_derive = Slip10Derive {
+            curve: Curve::Ed25519,
             chain,
             input: iota_stronghold::procedures::Slip10DeriveInput::Seed(seed_location),
             output: seed_derived_location,
