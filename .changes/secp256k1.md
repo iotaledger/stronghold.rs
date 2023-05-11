@@ -1,5 +1,5 @@
 ---
-"iota-stronghold": minor
+"iota-stronghold": major
 "stronghold-engine": patch
 "stronghold-runtime": patch
 ---
