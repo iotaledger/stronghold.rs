@@ -20,28 +20,28 @@ fn serialize_deserialize_ok() {
     let buf = Buffer::alloc(&data, NC_DATA_SIZE);
     let serialized = serde_json::to_string(&buf).unwrap();
     let buf: Buffer<u8> = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(&*buf.borrow(), data);
+    assert_eq!(&*buf.borrow(), &data[..]);
 
     // RamMemory
     let ram = RamMemory::alloc(&data, NC_DATA_SIZE).unwrap();
     let serialized = serde_json::to_string(&ram).unwrap();
     let ram: RamMemory = serde_json::from_str(&serialized).unwrap();
     let buf = ram.unlock().unwrap();
-    assert_eq!(&*buf.borrow(), data);
+    assert_eq!(&*buf.borrow(), &data[..]);
 
     // FileMemory
     let fmem = FileMemory::alloc(&data, NC_DATA_SIZE).unwrap();
     let serialized = serde_json::to_string(&fmem).unwrap();
     let fmem: FileMemory = serde_json::from_str(&serialized).unwrap();
     let buf = fmem.unlock().unwrap();
-    assert_eq!(&*buf.borrow(), data);
+    assert_eq!(&*buf.borrow(), &data[..]);
 
     // NonContiguousMemory
     let nc = NonContiguousMemory::alloc(&data, NC_DATA_SIZE, FullRam).unwrap();
     let serialized = serde_json::to_string(&nc).unwrap();
     let nc: NonContiguousMemory = serde_json::from_str(&serialized).unwrap();
     let buf = nc.unlock().unwrap();
-    assert_eq!(&*buf.borrow(), data);
+    assert_eq!(&*buf.borrow(), &data[..]);
 }
 
 #[test]

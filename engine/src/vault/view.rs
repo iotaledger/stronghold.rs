@@ -13,6 +13,7 @@ use runtime::memories::buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 use thiserror::Error as DeriveError;
+use zeroize::Zeroizing;
 
 use super::{crypto_box::DecryptError, types::transactions::Transaction};
 
@@ -160,15 +161,15 @@ impl<P: BoxProvider> DbView<P> {
     }
 
     /// Get access the decrypted [`Buffer`] of the specified [`Record`].
-    pub fn get_guard<E, F>(
+    pub fn get_guard<T, E, F>(
         &self,
         key: &Key<P>,
         vid: VaultId,
         rid: RecordId,
         f: F,
-    ) -> Result<(), VaultError<P::Error, E>>
+    ) -> Result<T, VaultError<P::Error, E>>
     where
-        F: FnOnce(Buffer<u8>) -> Result<(), E>,
+        F: FnOnce(Buffer<u8>) -> Result<T, E>,
         E: Debug,
     {
         let vault = self.vaults.get(&vid).ok_or(VaultError::VaultNotFound(vid))?;
@@ -176,13 +177,13 @@ impl<P: BoxProvider> DbView<P> {
         f(guard).map_err(VaultError::Procedure)
     }
 
-    pub fn get_guards<E, F, const N: usize>(
+    pub fn get_guards<T, E, F, const N: usize>(
         &self,
         ids: [(Key<P>, VaultId, RecordId); N],
         f: F,
-    ) -> Result<(), VaultError<P::Error, E>>
+    ) -> Result<T, VaultError<P::Error, E>>
     where
-        F: FnOnce([Buffer<u8>; N]) -> Result<(), E>,
+        F: FnOnce([Buffer<u8>; N]) -> Result<T, E>,
         E: Debug,
     {
         let buffers: [Buffer<u8>; N] = self.get_buffers(ids)?;
@@ -191,7 +192,7 @@ impl<P: BoxProvider> DbView<P> {
 
     /// Access the decrypted [`Buffer`]s of the specified [`Record`]s and place the return value
     /// into the target [`Record`].
-    pub fn exec_procedure<E, F, const N: usize>(
+    pub fn exec_procedure<T, E, F, const N: usize>(
         &mut self,
         sources: [(Key<P>, VaultId, RecordId); N],
         target_key: &Key<P>,
@@ -199,17 +200,19 @@ impl<P: BoxProvider> DbView<P> {
         target_rid: RecordId,
         hint: RecordHint,
         f: F,
-    ) -> Result<(), VaultError<P::Error, E>>
+    ) -> Result<T, VaultError<P::Error, E>>
     where
-        F: FnOnce([Buffer<u8>; N]) -> Result<Vec<u8>, E>,
+        F: FnOnce([Buffer<u8>; N]) -> Result<(Zeroizing<Vec<u8>>, T), E>,
         E: Debug,
     {
         let buffers: [Buffer<u8>; N] = self.get_buffers(sources)?;
 
-        let data: Vec<u8> = f(buffers).map_err(VaultError::Procedure)?;
+        let (data, result) = f(buffers).map_err(VaultError::Procedure)?;
 
         self.write(target_key, target_vid, target_rid, &data, hint)
-            .map_err(VaultError::Record)
+            .map_err(VaultError::Record)?;
+
+        Ok(result)
     }
 
     /// Add a revocation transaction to the [`Record`]

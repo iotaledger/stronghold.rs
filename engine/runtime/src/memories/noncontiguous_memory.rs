@@ -21,7 +21,7 @@ use core::{
 
 // use crypto::hashes::sha;
 use crypto::hashes::{blake2b, Digest};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
@@ -90,14 +90,14 @@ impl LockedMemory for NonContiguousMemory {
     /// Unlocks the memory and returns an unlocked Buffer
     /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
-        let (data1, data2) = self.get_shards_data()?;
-        let data1 = &blake2b::Blake2b256::digest(data1);
-        let reconstructed_data = xor(data1, &data2, NC_DATA_SIZE);
+        let (r, mut m) = self.get_shards_data()?;
+        let h = &blake2b::Blake2b256::digest(r);
+        xor_mut(&mut m, h, NC_DATA_SIZE);
 
         // Refresh the shards after each use
         self.refresh()?;
 
-        Ok(Buffer::alloc(&reconstructed_data, NC_DATA_SIZE))
+        Ok(Buffer::alloc(&m, NC_DATA_SIZE))
     }
 }
 
@@ -108,8 +108,8 @@ impl NonContiguousMemory {
             return Err(NCSizeNotAllowed);
         };
         let random = random_vec(NC_DATA_SIZE);
-        let digest = blake2b::Blake2b256::digest(&random);
-        let digest = xor(&digest, payload, NC_DATA_SIZE);
+        let mut digest = blake2b::Blake2b256::digest(&random);
+        xor_mut(&mut digest, payload, NC_DATA_SIZE);
 
         let (shard1, shard2) = MemoryShard::new_shards(&random, &digest, &config)?;
 
@@ -125,18 +125,17 @@ impl NonContiguousMemory {
     // Refresh the shards to increase security, may be called every _n_ seconds or
     // punctually
     pub fn refresh(&self) -> Result<(), MemoryError> {
-        let random = random_vec(NC_DATA_SIZE);
-        let (old_data1, old_data2) = self.get_shards_data()?;
+        let d = random_vec(NC_DATA_SIZE);
+        let (mut r, mut m) = self.get_shards_data()?;
 
-        let new_data1 = xor(&old_data1, &random, NC_DATA_SIZE);
+        let hr = &blake2b::Blake2b256::digest(&r);
+        xor_mut(&mut r, &d, NC_DATA_SIZE);
+        let hd = &blake2b::Blake2b256::digest(&r);
 
-        let hash_of_old_shard1 = &blake2b::Blake2b256::digest(&old_data1);
-        let hash_of_new_shard1 = &blake2b::Blake2b256::digest(&new_data1);
+        xor_mut(&mut m, hd, NC_DATA_SIZE);
+        xor_mut(&mut m, hr, NC_DATA_SIZE);
 
-        let new_data2 = xor(&old_data2, hash_of_old_shard1, NC_DATA_SIZE);
-        let new_data2 = xor(&new_data2, hash_of_new_shard1, NC_DATA_SIZE);
-
-        let (shard1, shard2) = MemoryShard::new_shards(&new_data1, &new_data2, &self.config)?;
+        let (shard1, shard2) = MemoryShard::new_shards(&r, &m, &self.config)?;
 
         let m1 = self.shard1.lock().expect(POISONED_LOCK);
         let m2 = self.shard2.lock().expect(POISONED_LOCK);
@@ -146,7 +145,8 @@ impl NonContiguousMemory {
         Ok(())
     }
 
-    fn get_shards_data(&self) -> Result<(Vec<u8>, Vec<u8>), MemoryError> {
+    #[allow(clippy::type_complexity)]
+    fn get_shards_data(&self) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<Vec<u8>>), MemoryError> {
         let m1 = self.shard1.lock().expect(POISONED_LOCK);
         let m2 = self.shard2.lock().expect(POISONED_LOCK);
         let shard1 = &*m1.borrow();
@@ -215,22 +215,22 @@ impl MemoryShard {
         }
     }
 
-    fn get(&self) -> Result<Vec<u8>, MemoryError> {
+    fn get(&self) -> Result<Zeroizing<Vec<u8>>, MemoryError> {
         match self {
             File(fm) => {
                 let buf = fm.unlock()?;
-                let v = buf.borrow().to_vec();
+                let v = buf.borrow().to_vec().into();
                 Ok(v)
             }
             Ram(ram) => {
                 let buf = ram.unlock()?;
-                let v = buf.borrow().to_vec();
+                let v = buf.borrow().to_vec().into();
                 Ok(v)
             }
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             Frag(frag) => {
                 if frag.is_live() {
-                    Ok(frag.get()?.to_vec())
+                    Ok(frag.get()?.to_vec().into())
                 } else {
                     Err(IllegalZeroizedUsage)
                 }

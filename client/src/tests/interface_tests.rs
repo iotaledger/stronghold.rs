@@ -1,6 +1,8 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(deprecated)]
+
 use std::{
     borrow::BorrowMut,
     error::Error,
@@ -15,7 +17,7 @@ use crate::{
 use engine::vault::RecordHint;
 use regex::Replacer;
 use stronghold_utils::random as rand;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Returns a fixed sized vector of random bytes
 fn fixed_random_bytes(length: usize) -> Vec<u8> {
@@ -77,7 +79,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let stronghold = Stronghold::default();
 
     let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
-    let keyprovider = KeyProvider::try_from(key).map_err(|e| format!("Error {:?}", e))?;
+    let keyprovider = KeyProvider::try_from(Zeroizing::new(key)).map_err(|e| format!("Error {:?}", e))?;
     let snapshot_path: SnapshotPath = SnapshotPath::named("testing-snapshot.snapshot");
 
     let snapshot = Snapshot::default();
@@ -122,7 +124,10 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
 
     // create a new secret inside the vault
     assert!(vault
-        .write_secret(Location::const_generic(vault_path, b"record-path".to_vec()), vec![],)
+        .write_secret(
+            Location::const_generic(vault_path, b"record-path".to_vec()),
+            vec![].into(),
+        )
         .is_ok());
 
     // write client into snapshot
@@ -214,11 +219,11 @@ fn purge_client() {
     let vault = client.vault(vault_path.clone());
 
     let loc_secret = Location::const_generic(vault_path.clone(), record_path.clone());
-    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024));
+    let result = vault.write_secret(loc_secret, fixed_random_bytes(1024).into());
 
     assert!(result.is_ok());
 
-    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    let result = KeyProvider::try_from(Zeroizing::new(fixed_random_bytes(32)));
     assert!(result.is_ok());
 
     let key_provider = result.unwrap();
@@ -265,7 +270,7 @@ fn write_client_to_snapshot() {
 
     let keyprovider = {
         let key = fixed_random_bytes(32);
-        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+        KeyProvider::try_from(Zeroizing::new(key)).expect("Failed to create keyprovider")
     };
 
     // create a client and write some secret into the state
@@ -278,7 +283,7 @@ fn write_client_to_snapshot() {
         vault
             .write_secret(
                 Location::const_generic(vault_path, record_path),
-                fixed_random_bytes(1024),
+                fixed_random_bytes(1024).into(),
             )
             .expect("Failed to write secret into vault");
     }
@@ -320,12 +325,12 @@ fn test_load_client_from_snapshot() {
 
     let result = vault.write_secret(
         Location::const_generic(vault_path, record_path),
-        fixed_random_bytes(1024),
+        fixed_random_bytes(1024).into(),
     );
 
     assert!(result.is_ok());
 
-    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    let result = KeyProvider::try_from(Zeroizing::new(fixed_random_bytes(32)));
     assert!(result.is_ok());
 
     let key_provider = result.unwrap();
@@ -360,7 +365,7 @@ fn test_load_multiple_clients_from_snapshot() {
 
     let keyprovider = {
         let key = fixed_random_bytes(32);
-        KeyProvider::try_from(key).expect("Failed to create keyprovider")
+        KeyProvider::try_from(Zeroizing::new(key)).expect("Failed to create keyprovider")
     };
 
     client_path_vec.iter().for_each(|path| {
@@ -387,7 +392,7 @@ fn test_load_client_from_non_existing_snapshot() {
     let stronghold = Stronghold::default();
     let snapshot_path = SnapshotPath::named(base64::encode(fixed_random_bytes(8)));
     let password = rand::fixed_bytestring(32);
-    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+    let keyprovider = KeyProvider::try_from(Zeroizing::new(password)).expect("KeyProvider failed");
 
     let result = match stronghold.load_client_from_snapshot(client_path, &keyprovider, &snapshot_path) {
         Err(client_error) => {
@@ -405,7 +410,7 @@ fn test_create_snapshot_file_in_custom_directory() {
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
     let record_path = b"record_path".to_vec();
-    let payload = b"payload".to_vec();
+    let payload: Zeroizing<Vec<u8>> = b"payload".to_vec().into();
     let location = Location::const_generic(vault_path.clone(), record_path.clone());
     let stronghold = Stronghold::default();
     let mut temp_dir = std::env::temp_dir();
@@ -417,7 +422,7 @@ fn test_create_snapshot_file_in_custom_directory() {
 
     let snapshot_path = SnapshotPath::from_path(temp_dir.as_path());
     let password = rand::fixed_bytestring(32);
-    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+    let keyprovider = KeyProvider::try_from(Zeroizing::new(password)).expect("KeyProvider failed");
 
     let result = stronghold.create_client(client_path);
     assert!(result.is_ok());
@@ -469,7 +474,7 @@ fn test_clear_stronghold_state() {
 
     let snapshot_path = SnapshotPath::from_path(defer.as_path());
     let password = rand::fixed_bytestring(32);
-    let keyprovider = KeyProvider::try_from(password).expect("KeyProvider failed");
+    let keyprovider = KeyProvider::try_from(Zeroizing::new(password)).expect("KeyProvider failed");
 
     // init stronghold
     let stronghold = Stronghold::default();
@@ -628,7 +633,7 @@ fn test_stronghold_with_key_location_for_snapshot() {
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
     let record_path = b"record_path".to_vec();
-    let payload = b"payload".to_vec();
+    let payload = b"payload".to_vec().into();
     let secret_location = Location::const_generic(vault_path.clone(), record_path);
     let key = rand::fixed_bytestring(32);
     let salt = rand::fixed_bytestring(32);
@@ -687,7 +692,7 @@ fn test_load_unload_client() {
 
     assert!(stronghold.load_client(client_path).is_err());
 
-    let result = KeyProvider::try_from(fixed_random_bytes(32));
+    let result = KeyProvider::try_from(Zeroizing::new(fixed_random_bytes(32)));
     assert!(result.is_ok());
     let key_provider = result.unwrap();
 

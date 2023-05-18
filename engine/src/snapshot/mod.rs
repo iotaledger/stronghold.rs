@@ -25,7 +25,8 @@
 
 mod compression;
 pub mod files;
-
 mod logic;
+pub mod migration;
+
 pub use compression::{compress, decompress, Lz4DecodeError};
 pub use logic::*;

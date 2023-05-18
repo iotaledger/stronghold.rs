@@ -226,6 +226,12 @@ impl From<EngineReadError> for SnapshotError {
                 "Unsupported version: expected {:?}, found {:?}.",
                 expected, found
             )),
+            EngineReadError::UnsupportedAssociatedData => {
+                SnapshotError::Engine("Unsupported snapshot associated data".into())
+            }
+            EngineReadError::AgeFormatError(dec_error) => {
+                SnapshotError::InvalidFile(format!("failed to decode/decrypt age content {dec_error:?}"))
+            }
         }
     }
 }
@@ -236,6 +242,10 @@ impl From<EngineWriteError> for SnapshotError {
             EngineWriteError::Io(io) => SnapshotError::Io(io),
             EngineWriteError::CorruptedData(e) => SnapshotError::CorruptedContent(e),
             EngineWriteError::GenerateRandom(_) => SnapshotError::Io(std::io::ErrorKind::Other.into()),
+            EngineWriteError::UnsupportedAssociatedData => {
+                SnapshotError::Engine("Unsupported snapshot associated data".into())
+            }
+            EngineWriteError::IncorrectWorkFactor => SnapshotError::Engine("Incorrect work factor".into()),
         }
     }
 }

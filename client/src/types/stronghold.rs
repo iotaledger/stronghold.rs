@@ -1,5 +1,6 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     procedures::Runner,
     sync::{SnapshotHierarchy, SyncSnapshots, SyncSnapshotsConfig},
@@ -14,7 +15,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use stronghold_utils::GuardDebug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Writes a single [`Client`] into snapshot
 /// We use a macro instead of a function due to locks lifetime
@@ -66,7 +67,7 @@ macro_rules! load_snapshot {
                 .map_err(|e| ClientError::Inner(format!("{:?}", e)))?;
             let buffer_ref = buffer.borrow().deref().try_into().unwrap();
 
-            *($snapshot) = Snapshot::read_from_snapshot(($snapshot_path), buffer_ref, None)
+            *($snapshot) = Snapshot::read_from_snapshot(($snapshot_path), &buffer_ref, None)
                 .map_err(|e| ClientError::Inner(e.to_string()))?;
             // END CRITICAL SECTION
         }
@@ -307,7 +308,7 @@ impl Stronghold {
         let key = buffer_ref.deref();
 
         snapshot
-            .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().unwrap()))
+            .write_to_snapshot(snapshot_path, UseKey::Key(key.try_into().map(Zeroizing::new).unwrap()))
             .map_err(|e| ClientError::Inner(e.to_string()))?;
 
         Ok(())

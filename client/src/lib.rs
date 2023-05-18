@@ -13,6 +13,7 @@ pub use crate::{internal::Provider, security::*, types::*, utils::*};
 
 #[cfg(feature = "std")]
 pub use engine::runtime::MemoryError;
+pub use engine;
 
 #[cfg(feature = "std")]
 pub(crate) use crate::sync::SnapshotHierarchy;

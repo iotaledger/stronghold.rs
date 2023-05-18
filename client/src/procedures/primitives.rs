@@ -1,7 +1,7 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use std::str::FromStr;
+use std::{convert::TryInto, str::FromStr};
 
 use super::types::*;
 use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
@@ -30,7 +30,7 @@ use crypto::{
 use engine::runtime::memories::buffer::{Buffer, Ref};
 use serde::{Deserialize, Serialize};
 use stronghold_utils::GuardDebug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Enum that wraps all cryptographic procedures that are supported by Stronghold.
 ///
@@ -224,7 +224,7 @@ procedures! {
 /// Write data to the specified [`Location`].
 #[derive(Clone, GuardDebug, Serialize, Deserialize)]
 pub struct WriteVault {
-    pub data: Vec<u8>,
+    pub data: Zeroizing<Vec<u8>>,
     pub location: Location,
 }
 
@@ -294,7 +294,7 @@ impl DeriveSecret<1> for CopyRecord {
 
     fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
         let products = Products {
-            secret: (*guards[0].borrow()).to_vec(),
+            secret: (*guards[0].borrow()).to_vec().into(),
             output: (),
         };
         Ok(products)
@@ -360,24 +360,23 @@ impl GenerateSecret for BIP39Generate {
     type Output = String;
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut entropy = [0u8; 32];
-        fill(&mut entropy)?;
+        let mut entropy = Zeroizing::new([0u8; 32]);
+        fill(entropy.as_mut())?;
 
         let wordlist = match self.language {
             MnemonicLanguage::English => bip39::wordlist::ENGLISH,
             MnemonicLanguage::Japanese => bip39::wordlist::JAPANESE,
         };
 
-        let mnemonic = bip39::wordlist::encode(&entropy, &wordlist).unwrap();
+        let mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
 
-        let mut seed = [0u8; 64];
-        let mut passphrase = self.passphrase.clone().unwrap_or_else(|| "".into());
-        bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
-
-        passphrase.zeroize();
+        let mut seed = Zeroizing::new(vec![0u8; 64]);
+        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
+        let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
+        bip39::mnemonic_to_seed(&mnemonic, passphrase, seed_mut);
 
         Ok(Products {
-            secret: seed.to_vec(),
+            secret: seed,
             output: mnemonic,
         })
     }
@@ -406,15 +405,13 @@ impl GenerateSecret for BIP39Recover {
     type Output = ();
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut seed = [0u8; 64];
-        let mut passphrase = self.passphrase.clone().unwrap_or_else(|| "".into());
-        bip39::mnemonic_to_seed(&self.mnemonic, &passphrase, &mut seed);
-
-        // explicitly clear passphrase
-        passphrase.zeroize();
+        let mut seed = Zeroizing::new(vec![0u8; 64]);
+        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
+        let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
+        bip39::mnemonic_to_seed(&self.mnemonic, passphrase, seed_mut);
 
         Ok(Products {
-            secret: seed.to_vec(),
+            secret: seed,
             output: (),
         })
     }
@@ -450,8 +447,8 @@ impl GenerateSecret for Slip10Generate {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let size_bytes = self.size_bytes.unwrap_or(64);
-        let mut seed = vec![0u8; size_bytes];
-        fill(&mut seed)?;
+        let mut seed = Zeroizing::new(vec![0u8; size_bytes]);
+        fill(seed.as_mut())?;
         Ok(Products {
             secret: seed,
             output: (),
@@ -499,7 +496,7 @@ impl DeriveSecret<1> for Slip10Derive {
             Slip10DeriveInput::Seed(_) => slip10::Seed::from_bytes(&guards[0].borrow()).derive(self.curve, &self.chain),
         }?;
         Ok(Products {
-            secret: (*dk.extended_bytes()).into(),
+            secret: Zeroizing::new((*dk.extended_bytes()).into()),
             output: *dk.chain_code(),
         })
     }
@@ -517,33 +514,30 @@ impl DeriveSecret<1> for Slip10Derive {
 }
 
 fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
-    let raw = (*raw).to_vec();
-    if raw.len() != x25519::SECRET_KEY_LENGTH {
+    let raw_slice: &[u8] = &*raw;
+    if raw_slice.len() != x25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
-            has: raw.len(),
+            has: raw_slice.len(),
             needs: x25519::SECRET_KEY_LENGTH,
             name: "x25519 data buffer",
         };
         return Err(e);
     }
-    x25519::SecretKey::try_from_slice(&raw)
+    x25519::SecretKey::try_from_slice(raw_slice)
 }
 
 fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
-    let mut raw = (*raw).to_vec();
-    if raw.len() < ed25519::SecretKey::LENGTH {
+    let raw_slice: &[u8] = &*raw;
+    if raw_slice.len() < ed25519::SecretKey::LENGTH {
         let e = crypto::Error::BufferSize {
-            has: raw.len(),
+            has: raw_slice.len(),
             needs: ed25519::SecretKey::LENGTH,
             name: "ed25519 data buffer",
         };
         return Err(e);
     }
-    raw.truncate(ed25519::SecretKey::LENGTH);
-    let mut bs = [0; ed25519::SecretKey::LENGTH];
-    bs.copy_from_slice(&raw);
 
-    Ok(ed25519::SecretKey::from_bytes(&bs))
+    Ok(ed25519::SecretKey::from_bytes(raw_slice[..ed25519::SecretKey::LENGTH].try_into().unwrap()))
 }
 
 fn secp256k1_ecdsa_secret_key(raw: Ref<u8>) -> Result<secp256k1_ecdsa::SecretKey, crypto::Error> {
@@ -571,9 +565,9 @@ impl GenerateSecret for GenerateKey {
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let secret = match self.ty {
-            KeyType::Ed25519 => ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
-            KeyType::X25519 => x25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec())?,
-            KeyType::Secp256k1Ecdsa => secp256k1_ecdsa::SecretKey::generate().to_bytes().to_vec(),
+            KeyType::Ed25519 => ed25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec().into())?,
+            KeyType::X25519 => x25519::SecretKey::generate().map(|sk| sk.to_bytes().to_vec().into())?,
+            KeyType::Secp256k1Ecdsa => secp256k1_ecdsa::SecretKey::generate().to_bytes().to_vec().into(),
         };
         Ok(Products { secret, output: () })
     }
@@ -699,7 +693,7 @@ impl DeriveSecret<1> for X25519DiffieHellman {
         let shared_key = sk.diffie_hellman(&public);
 
         Ok(Products {
-            secret: shared_key.to_bytes().to_vec(),
+            secret: shared_key.to_bytes().to_vec().into(),
             output: (),
         })
     }
@@ -765,25 +759,25 @@ impl DeriveSecret<1> for Hkdf {
     fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
         let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
-                let mut okm = [0; SHA256_LEN];
+                let mut okm = Zeroizing::new(vec![0; SHA256_LEN]);
                 hkdf::Hkdf::<Sha256>::new(Some(&self.salt), &guards[0].borrow())
-                    .expand(&self.label, &mut okm)
+                    .expand(&self.label, okm.as_mut())
                     .expect("okm is the correct length");
-                okm.to_vec()
+                okm
             }
             Sha2Hash::Sha384 => {
-                let mut okm = [0; SHA384_LEN];
+                let mut okm = Zeroizing::new(vec![0; SHA384_LEN]);
                 hkdf::Hkdf::<Sha384>::new(Some(&self.salt), &guards[0].borrow())
-                    .expand(&self.label, &mut okm)
+                    .expand(&self.label, okm.as_mut())
                     .expect("okm is the correct length");
-                okm.to_vec()
+                okm
             }
             Sha2Hash::Sha512 => {
-                let mut okm = [0; SHA512_LEN];
+                let mut okm = Zeroizing::new(vec![0; SHA512_LEN]);
                 hkdf::Hkdf::<Sha512>::new(Some(&self.salt), &guards[0].borrow())
-                    .expand(&self.label, &mut okm)
+                    .expand(&self.label, okm.as_mut())
                     .expect("okm is the correct length");
-                okm.to_vec()
+                okm
             }
         };
         Ok(Products { secret, output: () })
@@ -817,19 +811,19 @@ impl GenerateSecret for Pbkdf2Hmac {
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let secret = match self.hash_type {
             Sha2Hash::Sha256 => {
-                let mut buffer = [0; SHA256_LEN];
-                PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count, &mut buffer);
-                buffer.to_vec()
+                let mut buffer = Zeroizing::new(vec![0; SHA256_LEN]);
+                PBKDF2_HMAC_SHA256(&self.password, &self.salt, self.count, buffer.as_mut());
+                buffer
             }
             Sha2Hash::Sha384 => {
-                let mut buffer = [0; SHA384_LEN];
-                PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count, &mut buffer);
-                buffer.to_vec()
+                let mut buffer = Zeroizing::new(vec![0; SHA384_LEN]);
+                PBKDF2_HMAC_SHA384(&self.password, &self.salt, self.count, buffer.as_mut());
+                buffer
             }
             Sha2Hash::Sha512 => {
-                let mut buffer = [0; SHA512_LEN];
-                PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count, &mut buffer);
-                buffer.to_vec()
+                let mut buffer = Zeroizing::new(vec![0; SHA512_LEN]);
+                PBKDF2_HMAC_SHA512(&self.password, &self.salt, self.count, buffer.as_mut());
+                buffer
             }
         };
         Ok(Products { secret, output: () })
@@ -969,7 +963,7 @@ impl DeriveSecret<1> for ConcatKdf {
     type Output = ();
 
     fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<()>, FatalProcedureError> {
-        let derived_key_material: Vec<u8> = match self.hash {
+        let derived_key_material = match self.hash {
             Sha2Hash::Sha256 => self.concat_kdf::<Sha256>(guards[0].borrow().as_ref()),
             Sha2Hash::Sha384 => self.concat_kdf::<Sha384>(guards[0].borrow().as_ref()),
             Sha2Hash::Sha512 => self.concat_kdf::<Sha512>(guards[0].borrow().as_ref()),
@@ -995,7 +989,7 @@ impl ConcatKdf {
     fn concat_kdf<D: Digest + hkdf::hmac::digest::FixedOutputReset>(
         &self,
         z: &[u8],
-    ) -> Result<Vec<u8>, FatalProcedureError> {
+    ) -> Result<Zeroizing<Vec<u8>>, FatalProcedureError> {
         let mut digest: D = D::new();
         let alg: &str = self.algorithm_id.as_ref();
         let len: usize = self.key_len;
@@ -1004,7 +998,7 @@ impl ConcatKdf {
         let pub_info: &[u8] = self.pub_info.as_ref();
         let prv_info: &[u8] = self.priv_info.as_ref();
 
-        let mut output: Vec<u8> = Vec::new();
+        let mut output = Zeroizing::new(Vec::new());
 
         let target: usize = (len + (<D as Digest>::output_size() - 1)) / <D as Digest>::output_size();
         let rounds: u32 =
@@ -1103,7 +1097,7 @@ impl DeriveSecret<1> for AesKeyWrapDecrypt {
     type Output = ();
 
     fn derive(self, guard: [Buffer<u8>; 1]) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let plaintext: Vec<u8> = self.unwrap_key(guard[0].borrow().as_ref())?;
+        let plaintext = self.unwrap_key(guard[0].borrow().as_ref())?;
         Ok(Products {
             secret: plaintext,
             output: (),
@@ -1120,7 +1114,7 @@ impl DeriveSecret<1> for AesKeyWrapDecrypt {
 }
 
 impl AesKeyWrapDecrypt {
-    fn unwrap_key(&self, decryption_key: &[u8]) -> Result<Vec<u8>, FatalProcedureError> {
+    fn unwrap_key(&self, decryption_key: &[u8]) -> Result<Zeroizing<Vec<u8>>, FatalProcedureError> {
         // This uses Aes256Kw unconditionally, since AesKeyWrapCipher has just one variant.
         // The enum was added for future proofing so support for other variants can be added non-breakingly.
         let plaintext_len: usize = self.wrapped_key.len().checked_sub(Aes256Kw::BLOCK).ok_or_else(|| {
@@ -1129,10 +1123,10 @@ impl AesKeyWrapDecrypt {
                 Aes256Kw::BLOCK
             ))
         })?;
-        let mut plaintext: Vec<u8> = vec![0; plaintext_len];
+        let mut plaintext = Zeroizing::new(vec![0; plaintext_len]);
 
         let wrap: Aes256Kw = Aes256Kw::new(decryption_key);
-        wrap.unwrap_key(self.wrapped_key.as_ref(), &mut plaintext)?;
+        wrap.unwrap_key(self.wrapped_key.as_ref(), plaintext.as_mut())?;
 
         Ok(plaintext)
     }
@@ -1194,7 +1188,7 @@ impl DeriveSecret<2> for ConcatSecret {
         let b: &[u8] = b.as_ref();
 
         Ok(Products {
-            secret: [a, b].concat(),
+            secret: [a, b].concat().into(),
             output: (),
         })
     }

@@ -9,6 +9,7 @@ use engine::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, string::FromUtf8Error};
 use thiserror::Error as DeriveError;
+use zeroize::Zeroizing;
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
@@ -32,7 +33,7 @@ pub trait Runner {
     where
         F: FnOnce([Buffer<u8>; N]) -> Result<Products<T>, FatalProcedureError>;
 
-    fn write_to_vault(&self, location1: &Location, value: Vec<u8>) -> Result<(), RecordError>;
+    fn write_to_vault(&self, location1: &Location, value: Zeroizing<Vec<u8>>) -> Result<(), RecordError>;
 
     fn revoke_data(&self, location: &Location) -> Result<(), RecordError>;
 
@@ -42,7 +43,7 @@ pub trait Runner {
 /// Products of a procedure.
 pub struct Products<T> {
     /// New secret.
-    pub secret: Vec<u8>,
+    pub secret: Zeroizing<Vec<u8>>,
     /// Non-secret Output.
     pub output: T,
 }

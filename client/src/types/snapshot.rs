@@ -8,7 +8,8 @@
 
 use crypto::keys::x25519;
 use engine::{
-    snapshot::{self, read, read_from as read_from_file, write, write_to as write_to_file, Key},
+    runtime::utils::random_vec,
+    snapshot,
     store::Cache,
     vault::{view::Record, BlobId, BoxProvider, ClientId, DbView, Key as PKey, RecordHint, RecordId, VaultId},
 };
@@ -20,8 +21,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
-use stronghold_utils::random;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     procedures::{DeriveSecret, X25519DiffieHellman},
@@ -90,7 +90,7 @@ impl SnapshotPath {
     where
         P: AsRef<Path>,
     {
-        let path = engine::snapshot::files::home_dir().unwrap();
+        let path = snapshot::files::home_dir().unwrap();
 
         Self { path: path.join(name) }
     }
@@ -127,15 +127,18 @@ impl Display for SnapshotPath {
 
 #[derive(Clone, Debug)]
 pub enum UseKey {
-    Key(snapshot::Key),
+    Key(Zeroizing<snapshot::Key>),
     Stored(Location),
 }
 
 impl Snapshot {
+    /// Age work factor used with strong passwords (random keys).
+    const STRONG_KEY_WORK_FACTOR: u8 = 0;
+
     /// Creates a new [`Snapshot`] from a buffer of [`SnapshotState`] state.
     pub fn from_state(
         state: SnapshotState,
-        snapshot_key: Key,
+        snapshot_key: &snapshot::Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
         let mut snapshot = Snapshot::default();
@@ -173,7 +176,7 @@ impl Snapshot {
             Some(t) => t,
             None => return Ok((HashMap::default(), DbView::default(), Cache::default())),
         };
-        let decrypted = read(&mut encrypted.as_slice(), &key, &[])?;
+        let decrypted = snapshot::decrypt_content(&mut encrypted.as_slice(), &key, &[])?;
         let (keys, db) = bincode::deserialize(&decrypted)?;
         Ok((keys, db, store.clone()))
     }
@@ -199,10 +202,10 @@ impl Snapshot {
     /// TODO: Add associated data.
     pub fn read_from_snapshot(
         snapshot_path: &SnapshotPath,
-        key: Key,
+        key: &snapshot::Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        let data = read_from_file(snapshot_path.as_path(), &key, &[])?;
+        let data = snapshot::decrypt_file(snapshot_path.as_path(), key, &[])?;
 
         let state = bincode::deserialize(&data)?;
         Snapshot::from_state(state, key, write_key)
@@ -212,24 +215,24 @@ impl Snapshot {
     /// TODO: Add associated data.
     pub fn write_to_snapshot(&self, snapshot_path: &SnapshotPath, use_key: UseKey) -> Result<(), SnapshotError> {
         let state = self.get_snapshot_state()?;
-        let data = bincode::serialize(&state)?;
+        let data = Zeroizing::new(bincode::serialize(&state)?);
 
-        let key = match use_key {
-            UseKey::Key(k) => k,
+        match use_key {
+            UseKey::Key(k) => snapshot::encrypt_file(&data, snapshot_path.as_path(), &k, &[]).map_err(|e| e.into()),
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
                 let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
-                let mut data = Vec::new();
-                self.db.get_guard::<Infallible, _>(&pkey, vid, rid, |guarded_data| {
-                    let guarded_data = guarded_data.borrow();
-                    data.extend_from_slice(&guarded_data);
-                    Ok(())
-                })?;
-                data.try_into().map_err(|_| SnapshotError::SnapshotKey(vid, rid))?
+                Ok(self
+                    .db
+                    .get_guard::<_, SnapshotError, _>(&pkey, vid, rid, |guarded_data| {
+                        let key_ref = guarded_data.borrow();
+                        let key: &snapshot::Key = (*key_ref)
+                            .try_into()
+                            .map_err(|_| SnapshotError::SnapshotKey(vid, rid))?;
+                        Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key, &[])?)
+                    })?)
             }
-        };
-
-        write_to_file(&data, snapshot_path.as_path(), &key, &[]).map_err(|e| e.into())
+        }
     }
 
     /// Adds data to the snapshot state hashmap.
@@ -242,12 +245,13 @@ impl Snapshot {
             Cache<Vec<u8>, Vec<u8>>,
         ),
     ) -> Result<(), SnapshotError> {
-        let bytes = bincode::serialize(&(keys, db))?;
+        let bytes = Zeroizing::new(bincode::serialize(&(keys, db))?);
         let vault_id = VaultId(id.0);
-        let key: snapshot::Key = random::random();
+        let key = random_vec(snapshot::KEY_SIZE);
+        let key_ref: &[u8; snapshot::KEY_SIZE] = (*key).as_slice().try_into().unwrap();
         let mut buffer = Vec::new();
-        write(&bytes, &mut buffer, &key, &[])?;
-        let pkey = PKey::load(key.into()).expect("Provider::box_key_len == KEY_SIZE == 32");
+        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, Self::STRONG_KEY_WORK_FACTOR, &[])?;
+        let pkey = PKey::load(key).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
         Ok(())
@@ -256,7 +260,7 @@ impl Snapshot {
     /// Adds data to the snapshot state hashmap.
     pub fn store_snapshot_key(
         &mut self,
-        mut snapshot_key: snapshot::Key,
+        snapshot_key: &snapshot::Key,
         vault_id: VaultId,
         record_id: RecordId,
     ) -> Result<(), SnapshotError> {
@@ -266,11 +270,9 @@ impl Snapshot {
             &key,
             vault_id,
             record_id,
-            &snapshot_key,
+            snapshot_key,
             RecordHint::new("").expect("0 <= 24"),
         )?;
-
-        snapshot_key.zeroize();
 
         Ok(())
     }
@@ -338,16 +340,21 @@ impl Snapshot {
             .get_key(vid)
             .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
 
-        let decrypted = &mut Vec::new();
-        self.db.get_guard::<SnapshotError, _>(&vault_key, vid, rid, |guard| {
-            let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
-            let shared_key = sk.diffie_hellman(&remote_pk);
-            let pt = engine::snapshot::read(&mut bytes.as_slice(), shared_key.as_bytes(), &[])?;
-            *decrypted = pt;
-            Ok(())
-        })?;
-        let data =
-            engine::snapshot::decompress(decrypted).map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
+        let decrypted = self
+            .db
+            .get_guard::<_, SnapshotError, _>(&vault_key, vid, rid, |guard| {
+                let sk = x25519::SecretKey::try_from_slice(&guard.borrow())?;
+                let shared_key = sk.diffie_hellman(&remote_pk);
+                Ok(snapshot::decrypt_content_with_work_factor(
+                    &mut bytes.as_slice(),
+                    shared_key.as_bytes(),
+                    Self::STRONG_KEY_WORK_FACTOR,
+                    &[],
+                )?)
+            })?;
+        let data = snapshot::decompress(decrypted.as_ref())
+            .map(Zeroizing::new)
+            .map_err(|e| SnapshotError::CorruptedContent(e.to_string()))?;
         let state: SnapshotState = bincode::deserialize(&data)?;
         self.merge_state(state, config)
     }
@@ -377,15 +384,21 @@ impl Snapshot {
         }
 
         blank.import_records(export, &old_keys, &SyncSnapshotsConfig::default())?;
-        let data = bincode::serialize(&blank)?;
-        let compressed_plain = engine::snapshot::compress(data.as_slice());
+        let data = Zeroizing::new(bincode::serialize(&blank)?);
+        let compressed_plain = Zeroizing::new(snapshot::compress(data.as_slice()));
         let mut buffer = Vec::new();
 
         // Perform a handshake with the remote's public key and an ephemeral local key to create the snapshot key.
         let sk = x25519::SecretKey::generate()?;
         let shared_key = sk.diffie_hellman(&remote_pk);
         let pk = sk.public_key();
-        engine::snapshot::write(&compressed_plain, &mut buffer, shared_key.as_bytes(), &[])?;
+        snapshot::encrypt_content_with_work_factor(
+            &compressed_plain,
+            &mut buffer,
+            shared_key.as_bytes(),
+            Self::STRONG_KEY_WORK_FACTOR,
+            &[],
+        )?;
         Ok((pk, buffer))
     }
 

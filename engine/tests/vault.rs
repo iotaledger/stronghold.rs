@@ -39,7 +39,7 @@ fn test_vaults() {
     assert_eq!(list0.len(), 2);
 
     // read from vault0 and record0
-    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
+    view.get_guard::<_, Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test0", &(*g.borrow()));
 
         Ok(())
@@ -47,7 +47,7 @@ fn test_vaults() {
     .unwrap();
 
     // read from vault0 and record01
-    view.get_guard::<Infallible, _>(&key0, vid0, rid01, |g| {
+    view.get_guard::<_, Infallible, _>(&key0, vid0, rid01, |g| {
         assert_eq!(b"test01", &(*g.borrow()));
 
         Ok(())
@@ -55,7 +55,7 @@ fn test_vaults() {
     .unwrap();
 
     // read from vault1 and record1
-    view.get_guard::<Infallible, _>(&key1, vid1, rid1, |g| {
+    view.get_guard::<_, Infallible, _>(&key1, vid1, rid1, |g| {
         assert_eq!(b"test1", &(*g.borrow()));
 
         Ok(())
@@ -86,7 +86,7 @@ fn test_vaults() {
     assert!(!b);
 
     // read vid0 and rid0.
-    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
+    view.get_guard::<_, Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test0", &(*g.borrow()));
 
         Ok(())
@@ -106,7 +106,7 @@ fn test_vaults() {
         .unwrap();
 
     // execute a procedure and put the result into a new record
-    view.exec_procedure::<Infallible, _, 1>(
+    view.exec_procedure::<_, Infallible, _, 1>(
         [(key0.clone(), vid0, rid0)],
         &key1,
         vid1,
@@ -119,13 +119,13 @@ fn test_vaults() {
             ret.extend(data.iter());
             ret.extend(data.iter());
 
-            Ok(ret)
+            Ok((ret.into(), ()))
         },
     )
     .unwrap();
 
     // read vid0 and rid0.
-    view.get_guard::<Infallible, _>(&key0, vid0, rid0, |g| {
+    view.get_guard::<_, Infallible, _>(&key0, vid0, rid0, |g| {
         assert_eq!(b"test", &(*g.borrow()));
 
         Ok(())
@@ -133,7 +133,7 @@ fn test_vaults() {
     .unwrap();
 
     // read vid1 and rid1.
-    view.get_guard::<Infallible, _>(&key1, vid1, rid1, |g| {
+    view.get_guard::<_, Infallible, _>(&key1, vid1, rid1, |g| {
         assert_eq!(b"testtest", &(*g.borrow()));
 
         Ok(())

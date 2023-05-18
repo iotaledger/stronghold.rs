@@ -1,5 +1,6 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 extern crate core;
 
 mod shared;
@@ -213,7 +214,7 @@ pub unsafe extern "C" fn stronghold_write_vault(
 
     info!("[Rust] Got Stronghold instance from Box");
 
-    if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec()) {
+    if let Err(err) = stronghold_wrapper.write_vault(key_as_hash, record_path, data.to_vec().into()) {
         set_last_error(err);
         return false;
     }

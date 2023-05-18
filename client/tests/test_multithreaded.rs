@@ -7,6 +7,7 @@ use iota_stronghold::{
 };
 use std::{error::Error, sync::mpsc::channel};
 use threadpool::ThreadPool;
+use zeroize::Zeroizing;
 
 const NB_THREADS: usize = 10;
 
@@ -63,7 +64,7 @@ fn test_full_stronghold_access_multithreaded() {
 
     let stronghold = Stronghold::default();
     let snapshot_path: SnapshotPath = SnapshotPath::named("testing-snapshot.snapshot");
-    let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
+    let key = Zeroizing::new(b"abcdefghijklmnopqrstuvwxyz123456".to_vec());
     let vault_path = b"vault_path".to_vec();
     let client_path = b"client_path".to_vec();
     stronghold.create_client(client_path.clone()).unwrap();

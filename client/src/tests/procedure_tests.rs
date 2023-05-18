@@ -23,6 +23,7 @@ use crypto::{
     signatures::{ed25519, secp256k1_ecdsa},
 };
 use stronghold_utils::random;
+use zeroize::Zeroizing;
 
 #[test]
 fn usecase_diffie_hellman_concat_kdf() {
@@ -131,7 +132,8 @@ fn test_concat_kdf_with_jwa() {
         data: vec![
             158, 86, 217, 29, 129, 113, 53, 211, 114, 131, 66, 131, 191, 132, 38, 156, 251, 49, 110, 163, 218, 128,
             106, 72, 246, 218, 167, 121, 140, 254, 144, 196,
-        ],
+        ]
+        .into(),
         location: secret_location,
     };
 
@@ -159,7 +161,7 @@ fn test_concat_kdf_with_jwa() {
         .unwrap();
 
     assert_eq!(
-        derived_key_material,
+        *derived_key_material,
         vec![86, 170, 141, 234, 248, 35, 109, 32, 92, 34, 40, 205, 113, 167, 16, 26]
     );
 }
@@ -167,14 +169,16 @@ fn test_concat_kdf_with_jwa() {
 #[test]
 fn test_aes_256_keywrap_roundtrip() {
     // Test Vector from https://tools.ietf.org/html/rfc3394#section-4.6.
-    let encryption_key: Vec<u8> = vec![
+    let encryption_key: Zeroizing<Vec<u8>> = vec![
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
         30, 31,
-    ];
-    let plaintext: Vec<u8> = vec![
+    ]
+    .into();
+    let plaintext: Zeroizing<Vec<u8>> = vec![
         0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
         12, 13, 14, 15,
-    ];
+    ]
+    .into();
     let ciphertext: Vec<u8> = vec![
         40, 201, 244, 4, 196, 184, 16, 244, 203, 204, 179, 92, 251, 135, 248, 38, 63, 87, 134, 226, 216, 14, 211, 38,
         203, 199, 240, 231, 26, 153, 244, 59, 251, 152, 139, 155, 122, 2, 221, 33,
@@ -219,7 +223,7 @@ fn test_aes_256_keywrap_roundtrip() {
         })
         .unwrap();
 
-    let ptx: Vec<u8> = client
+    let ptx = client
         .vault(plaintext_location.vault_path())
         .read_secret(plaintext_location.record_path())
         .unwrap();
@@ -462,7 +466,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
-    let key: Vec<u8> = {
+    let key: Zeroizing<Vec<u8>> = {
         let size_bytes = fresh::coinflip().then(|| fresh::usize(1024)).unwrap_or(64);
         let mut seed = vec![0u8; size_bytes];
 
@@ -471,7 +475,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
         let dk = slip10::Seed::from_bytes(&seed)
             .derive(slip10::Curve::Ed25519, &fresh::hd_path().1)
             .unwrap();
-        (*dk.extended_bytes()).into()
+        Zeroizing::new((*dk.extended_bytes()).into())
     };
 
     // write seed to vault
@@ -630,7 +634,7 @@ async fn usecase_aead() -> Result<(), Box<dyn std::error::Error>> {
     let vault_path = key_location.vault_path();
 
     let vault = client.vault(vault_path);
-    assert!(vault.write_secret(key_location.clone(), key.to_vec()).is_ok());
+    assert!(vault.write_secret(key_location.clone(), key.to_vec().into()).is_ok());
 
     test_aead(&client, key_location.clone(), &*key, AeadCipher::Aes256Gcm).await?;
     test_aead(&client, key_location.clone(), &*key, AeadCipher::XChaCha20Poly1305).await?;
@@ -898,12 +902,12 @@ fn test_usecase_concatkdf() {
 
     let result = client.execute_procedure_chained(vec![
         WriteVault {
-            data: b"abcdefg".to_vec(),
+            data: b"abcdefg".to_vec().into(),
             location: location_a.clone(),
         }
         .into(),
         WriteVault {
-            data: b"hijklmn".to_vec(),
+            data: b"hijklmn".to_vec().into(),
             location: location_b.clone(),
         }
         .into(),

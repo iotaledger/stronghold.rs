@@ -392,6 +392,7 @@ pub(crate) trait SyncSnapshots {
 #[cfg(test)]
 mod test {
     use std::convert::Infallible;
+    use zeroize::Zeroizing;
 
     use super::*;
 
@@ -403,8 +404,8 @@ mod test {
         random::random::<[u8; 24]>().into()
     }
 
-    fn test_value() -> Vec<u8> {
-        random::variable_bytestring(4096)
+    fn test_value() -> Zeroizing<Vec<u8>> {
+        random::variable_bytestring(4096).into()
     }
 
     fn test_location() -> Location {

@@ -12,7 +12,7 @@ use engine::{
 };
 use std::ops::Deref;
 use stronghold_utils::GuardDebug;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{internal::Provider, ClientError};
 
@@ -27,10 +27,10 @@ pub struct KeyProvider {
     inner: engine::vault::NCKey<Provider>,
 }
 
-impl TryFrom<Vec<u8>> for KeyProvider {
+impl TryFrom<Zeroizing<Vec<u8>>> for KeyProvider {
     type Error = MemoryError;
 
-    fn try_from(data: Vec<u8>) -> Result<Self, MemoryError> {
+    fn try_from(data: Zeroizing<Vec<u8>>) -> Result<Self, MemoryError> {
         match NCKey::load(data) {
             Some(inner) => Ok(Self { inner }),
             None => Err(MemoryError::NCSizeNotAllowed),
@@ -77,25 +77,18 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected, "Key does not match expected {:?}", key);
     /// ```
+    #[deprecated = "This constructor promotes misuse of long passphrases"]
     pub fn with_passphrase_truncated<P>(mut passphrase: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
     {
-        let mut key: [u8; KEY_SIZE_HASHED] = [0u8; KEY_SIZE_HASHED];
-        passphrase
-            .as_ref()
-            .iter()
-            .enumerate()
-            .take(KEY_SIZE_HASHED)
-            .for_each(|(i, value)| {
-                key[i] = *value;
-            });
-
-        let result = Self::try_from(key.to_vec()).map_err(|e| ClientError::Inner(e.to_string()));
-        key.zeroize();
+        let p = passphrase.as_ref();
+        let n = core::cmp::min(KEY_SIZE_HASHED, p.len());
+        let mut key = Zeroizing::new(vec![0u8; KEY_SIZE_HASHED]);
+        key[..n].copy_from_slice(&p[..n]);
         passphrase.zeroize();
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Creates a new [`KeyProvider`] from a passphrase, that will be hashed by a custom supplied hashing
@@ -150,18 +143,11 @@ impl KeyProvider {
         D: Digest,
     {
         digest.update(passphrase.as_ref());
-        let key = digest.finalize().to_vec();
-
-        if key.len() != KEY_SIZE_HASHED {
-            // This restriction refers to the current implementation of the non-contiguous types
-            // and may be lifted in the future. This error will only be thrown, if digests will return
-            // another size than 32 bytes.
-            return Err(ClientError::IllegalKeySize(32));
-        }
-        let result = Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()));
         passphrase.zeroize();
+        let mut key = Zeroizing::new(vec![0_u8; <D as Digest>::output_size()]);
+        digest.finalize_into((&mut key[..]).into());
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 
     /// Creates a new [`KeyProvider`] from a passphrase, that will be hashed by `blake2b`.
@@ -258,6 +244,7 @@ impl KeyProvider {
     ///
     /// assert_eq!(key, expected);
     /// ```
+    #[deprecated = "This constructor promotes misuse of salt in KDF"]
     pub fn with_passphrase_hashed_argon2<P>(mut passphrase: P, mut salt: P) -> Result<Self, ClientError>
     where
         P: AsRef<[u8]> + Zeroize,
@@ -266,12 +253,11 @@ impl KeyProvider {
 
         let key = argon2::hash_raw(passphrase.as_ref(), salt.as_ref(), &config)
             .map_err(|e| ClientError::Inner(e.to_string()))?;
-
-        let result = Self::try_from(key.to_vec()).map_err(|e| ClientError::Inner(e.to_string()));
+        let key = Zeroizing::new(key);
         passphrase.zeroize();
         salt.zeroize();
 
-        result
+        Self::try_from(key).map_err(|e| ClientError::Inner(e.to_string()))
     }
 }
 
@@ -285,9 +271,10 @@ impl KeyProvider {
     /// ```no_run
     /// use iota_stronghold::KeyProvider;
     /// use std::ops::Deref;
+    /// use zeroize::Zeroizing;
     ///
     /// // crate some key data
-    /// let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+    /// let keydata = Zeroizing::new(vec![6; 32]);
     ///
     /// // create the keyprovider
     /// let keyprovider = KeyProvider::try_from(keydata.clone()).expect("Fail to create keyprovider");
@@ -304,7 +291,7 @@ impl KeyProvider {
     ///
     /// // deref the inner key
     /// let inner_key = buffer_ref.deref();
-    /// assert_eq!(keydata, inner_key.to_vec());
+    /// assert_eq!(keydata.deref(), &inner_key.to_vec());
     /// ```
     pub fn try_unlock(&self) -> Result<Buffer<u8>, MemoryError> {
         match self.inner.key.unlock() {
@@ -321,13 +308,13 @@ mod tests {
 
     #[test]
     fn test_keyprovider_create() {
-        let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+        let keydata = Zeroizing::new(Vec::from_iter(std::iter::repeat(6).take(32)));
         assert!(KeyProvider::try_from(keydata).is_ok());
     }
 
     #[test]
     fn test_keyprovider_get() {
-        let keydata = Vec::from_iter(std::iter::repeat(6).take(32));
+        let keydata = Zeroizing::new(Vec::from_iter(std::iter::repeat(6).take(32)));
         let keyprovider = KeyProvider::try_from(keydata.clone()).expect("Fail to create keyprovider");
 
         let buffer = keyprovider.try_unlock();
@@ -337,6 +324,6 @@ mod tests {
         let buffer_ref = buffer.borrow();
         let inner_key = buffer_ref.deref();
 
-        assert_eq!(keydata, inner_key.to_vec());
+        assert_eq!(keydata, inner_key.to_vec().into());
     }
 }
