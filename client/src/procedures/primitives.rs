@@ -514,7 +514,7 @@ impl DeriveSecret<1> for Slip10Derive {
 }
 
 fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
-    let raw_slice: &[u8] = &*raw;
+    let raw_slice: &[u8] = &raw;
     if raw_slice.len() != x25519::SECRET_KEY_LENGTH {
         let e = crypto::Error::BufferSize {
             has: raw_slice.len(),
@@ -527,7 +527,7 @@ fn x25519_secret_key(raw: Ref<u8>) -> Result<x25519::SecretKey, crypto::Error> {
 }
 
 fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error> {
-    let raw_slice: &[u8] = &*raw;
+    let raw_slice: &[u8] = &raw;
     if raw_slice.len() < ed25519::SecretKey::LENGTH {
         let e = crypto::Error::BufferSize {
             has: raw_slice.len(),
@@ -537,7 +537,9 @@ fn ed25519_secret_key(raw: Ref<u8>) -> Result<ed25519::SecretKey, crypto::Error>
         return Err(e);
     }
 
-    Ok(ed25519::SecretKey::from_bytes(raw_slice[..ed25519::SecretKey::LENGTH].try_into().unwrap()))
+    Ok(ed25519::SecretKey::from_bytes(
+        raw_slice[..ed25519::SecretKey::LENGTH].try_into().unwrap(),
+    ))
 }
 
 fn secp256k1_ecdsa_secret_key(raw: Ref<u8>) -> Result<secp256k1_ecdsa::SecretKey, crypto::Error> {
