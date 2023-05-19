@@ -176,7 +176,7 @@ impl Snapshot {
             Some(t) => t,
             None => return Ok((HashMap::default(), DbView::default(), Cache::default())),
         };
-        let decrypted = snapshot::decrypt_content(&mut encrypted.as_slice(), &key, &[])?;
+        let decrypted = snapshot::decrypt_content(&mut encrypted.as_slice(), &key)?;
         let (keys, db) = bincode::deserialize(&decrypted)?;
         Ok((keys, db, store.clone()))
     }
@@ -205,7 +205,7 @@ impl Snapshot {
         key: &snapshot::Key,
         write_key: Option<(VaultId, RecordId)>,
     ) -> Result<Self, SnapshotError> {
-        let data = snapshot::decrypt_file(snapshot_path.as_path(), key, &[])?;
+        let data = snapshot::decrypt_file(snapshot_path.as_path(), key)?;
 
         let state = bincode::deserialize(&data)?;
         Snapshot::from_state(state, key, write_key)
@@ -218,7 +218,7 @@ impl Snapshot {
         let data = Zeroizing::new(bincode::serialize(&state)?);
 
         match use_key {
-            UseKey::Key(k) => snapshot::encrypt_file(&data, snapshot_path.as_path(), &k, &[]).map_err(|e| e.into()),
+            UseKey::Key(k) => snapshot::encrypt_file(&data, snapshot_path.as_path(), &k).map_err(|e| e.into()),
             UseKey::Stored(loc) => {
                 let (vid, rid) = loc.resolve();
                 let pkey = self.keystore.get_key(vid).ok_or(SnapshotError::SnapshotKey(vid, rid))?;
@@ -229,7 +229,7 @@ impl Snapshot {
                         let key: &snapshot::Key = (*key_ref)
                             .try_into()
                             .map_err(|_| SnapshotError::SnapshotKey(vid, rid))?;
-                        Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key, &[])?)
+                        Ok(snapshot::encrypt_file(&data, snapshot_path.as_path(), key)?)
                     })?)
             }
         }
@@ -250,7 +250,7 @@ impl Snapshot {
         let key = random_vec(snapshot::KEY_SIZE);
         let key_ref: &[u8; snapshot::KEY_SIZE] = (*key).as_slice().try_into().unwrap();
         let mut buffer = Vec::new();
-        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, Self::STRONG_KEY_WORK_FACTOR, &[])?;
+        snapshot::encrypt_content_with_work_factor(&bytes, &mut buffer, key_ref, Self::STRONG_KEY_WORK_FACTOR)?;
         let pkey = PKey::load(key).expect("Provider::box_key_len == KEY_SIZE == 32");
         self.keystore.insert_key(vault_id, pkey)?;
         self.states.insert(id, (buffer, store));
@@ -349,7 +349,6 @@ impl Snapshot {
                     &mut bytes.as_slice(),
                     shared_key.as_bytes(),
                     Self::STRONG_KEY_WORK_FACTOR,
-                    &[],
                 )?)
             })?;
         let data = snapshot::decompress(decrypted.as_ref())
@@ -397,7 +396,6 @@ impl Snapshot {
             &mut buffer,
             shared_key.as_bytes(),
             Self::STRONG_KEY_WORK_FACTOR,
-            &[],
         )?;
         Ok((pk, buffer))
     }
