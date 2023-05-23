@@ -5,7 +5,7 @@ use std::{convert::TryInto, str::FromStr};
 
 use super::types::*;
 use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
-pub use crypto::keys::slip10::{Chain, ChainCode, Curve};
+pub use crypto::keys::slip10::{Chain, ChainCode};
 use crypto::{
     ciphers::{
         aes_gcm::Aes256Gcm,
@@ -467,6 +467,12 @@ pub enum Slip10DeriveInput {
     Key(Location),
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum Curve {
+    Secp256k1,
+    Ed25519,
+}
+
 /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
 /// return the corresponding chain code
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -484,20 +490,41 @@ impl DeriveSecret<1> for Slip10Derive {
     type Output = ChainCode;
 
     fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<ChainCode>, FatalProcedureError> {
-        let dk = match self.input {
+        let (extended_bytes, chain_code) = match self.input {
             Slip10DeriveInput::Key(_) => {
                 let r = &*guards[0].borrow();
-                let ext_bytes: &[u8; 64] = r
+                let ext_bytes: &[u8; 65] = r
                     .try_into()
                     .map_err(|_| FatalProcedureError::from("bad slip10 extended secret key size".to_owned()))?;
-                slip10::ExtendedSecretKey::try_from_extended_bytes(self.curve, ext_bytes)
-                    .and_then(|parent| parent.derive(&self.chain))
+                match self.curve {
+                    Curve::Ed25519 => {
+                        slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(ext_bytes)
+                            .and_then(|parent| parent.derive(&self.chain))
+                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
+                    },
+                    Curve::Secp256k1 => {
+                        slip10::Slip10::<secp256k1_ecdsa::SecretKey>::try_from_extended_bytes(ext_bytes)
+                            .and_then(|parent| parent.derive(&self.chain))
+                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
+                    },
+                }
             }
-            Slip10DeriveInput::Seed(_) => slip10::Seed::from_bytes(&guards[0].borrow()).derive(self.curve, &self.chain),
+            Slip10DeriveInput::Seed(_) => {
+                match self.curve {
+                    Curve::Ed25519 => {
+                        slip10::Seed::from_bytes(&guards[0].borrow()).derive::<ed25519::SecretKey>(&self.chain)
+                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
+                    },
+                    Curve::Secp256k1 => {
+                        slip10::Seed::from_bytes(&guards[0].borrow()).derive::<secp256k1_ecdsa::SecretKey>(&self.chain)
+                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
+                    },
+                }
+            },
         }?;
         Ok(Products {
-            secret: Zeroizing::new((*dk.extended_bytes()).into()),
-            output: *dk.chain_code(),
+            secret: extended_bytes,
+            output: chain_code,
         })
     }
 

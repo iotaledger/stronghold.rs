@@ -9,7 +9,7 @@ use crate::procedures::CompareSecret;
 use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-        BIP39Recover, ConcatKdf, CopyRecord, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, GetEvmAddress,
+        BIP39Recover, ConcatKdf, CopyRecord, Curve, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, GetEvmAddress,
         Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaSign, Sha2Hash, Slip10Derive, Slip10DeriveInput,
         Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
     },
@@ -264,7 +264,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
-        curve: slip10::Curve::Ed25519,
+        curve: Curve::Ed25519,
         chain,
         input: Slip10DeriveInput::Seed(seed),
         output: key.clone(),
@@ -310,7 +310,7 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
 
     let chain = slip10::Chain::from_u32([0x80000000_u32, 1, 2, 0x80000003_u32]);
     let slip10_derive = Slip10Derive {
-        curve: slip10::Curve::Secp256k1,
+        curve: Curve::Secp256k1,
         chain,
         input: Slip10DeriveInput::Seed(seed),
         output: esk.clone(),
@@ -380,7 +380,7 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
 
     let cc0: slip10::ChainCode = {
         let slip10_derive = Slip10Derive {
-            curve: slip10::Curve::Ed25519,
+            curve: Curve::Ed25519,
             input: Slip10DeriveInput::Seed(seed.clone()),
             chain: chain0.join(&chain1),
             output: fresh::location(),
@@ -393,7 +393,7 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
         let intermediate = fresh::location();
 
         let slip10_derive_intermediate = Slip10Derive {
-            curve: slip10::Curve::Ed25519,
+            curve: Curve::Ed25519,
             input: Slip10DeriveInput::Seed(seed),
             chain: chain0,
             output: intermediate.clone(),
@@ -402,7 +402,7 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
         assert!(client.execute_procedure(slip10_derive_intermediate).is_ok());
 
         let slip10_derive_child = Slip10Derive {
-            curve: slip10::Curve::Ed25519,
+            curve: Curve::Ed25519,
             input: Slip10DeriveInput::Key(intermediate),
             chain: chain1,
             output: fresh::location(),
@@ -427,7 +427,7 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
         output: fresh::location(),
     };
     let derive = Slip10Derive {
-        curve: slip10::Curve::Ed25519,
+        curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate.target().clone()),
         output: fresh::location(),
         chain: fresh::hd_path().1,
@@ -473,7 +473,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
         assert!(fill(&mut seed).is_ok(), "Failed to fill seed with random data");
 
         let dk = slip10::Seed::from_bytes(&seed)
-            .derive(slip10::Curve::Ed25519, &fresh::hd_path().1)
+            .derive::<ed25519::SecretKey>(&fresh::hd_path().1)
             .unwrap();
         Zeroizing::new((*dk.extended_bytes()).into())
     };
@@ -745,7 +745,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
         output: fresh::location(),
     };
     let derive_from_original = Slip10Derive {
-        curve: slip10::Curve::Ed25519,
+        curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate_bip39.target().clone()),
         chain: chain.clone(),
         output: fresh::location(),
@@ -772,7 +772,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let derive_from_recovered = Slip10Derive {
-        curve: slip10::Curve::Ed25519,
+        curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(recover_bip39.target().clone()),
         chain,
         output: fresh::location(),
