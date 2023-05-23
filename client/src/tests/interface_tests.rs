@@ -79,7 +79,7 @@ async fn test_full_stronghold_access() -> Result<(), Box<dyn Error>> {
     let stronghold = Stronghold::default();
 
     let key = b"abcdefghijklmnopqrstuvwxyz123456".to_vec();
-    let keyprovider = KeyProvider::try_from(Zeroizing::new(key)).map_err(|e| format!("Error {:?}", e))?;
+    let keyprovider = KeyProvider::try_from(Zeroizing::new(key)).map_err(|e| format!("error {:?}", e))?;
     let snapshot_path: SnapshotPath = SnapshotPath::named("testing-snapshot.snapshot");
 
     let snapshot = Snapshot::default();

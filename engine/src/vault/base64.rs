@@ -41,7 +41,7 @@ impl Base64 {
             Err(e) => {
                 let error = e.utf8_error();
                 let valid_up_to = error.valid_up_to();
-                let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
+                let error_msg = format!("fail encoding to base64: valid_up_to({})", valid_up_to);
                 panic!("{}", error_msg)
             }
         }
