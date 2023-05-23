@@ -9,4 +9,5 @@
 ---
 
 Upgraded snapshot format to age-encryption with password-based recipient stanza.
+Snapshot encryption doesn't use associated data.
 Sensitive data zeroization.

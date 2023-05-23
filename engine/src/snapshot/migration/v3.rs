@@ -11,7 +11,7 @@ pub type Key = [u8; KEY_SIZE];
 const VERSION_V3: [u8; 2] = [0x3, 0x0];
 
 #[allow(dead_code)]
-pub(crate) fn read<I: Read>(input: &mut I, password: &Key, _associated_data: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn read<I: Read>(input: &mut I, password: &Key) -> Result<Vec<u8>, Error> {
     let mut age = Vec::new();
     input.read_to_end(&mut age)?;
     age::decrypt_vec(password, age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR, &age[..]).map_err(From::from)
@@ -21,7 +21,6 @@ pub(crate) fn write<O: Write>(
     plain: &[u8],
     output: &mut O,
     password: &Key,
-    _associated_data: &[u8],
 ) -> Result<(), Error> {
     let work_factor = age::WorkFactor::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
     let age = age::encrypt_vec(password, work_factor, plain).map_err(|_| Error::RngFailed)?;
@@ -35,8 +34,7 @@ pub(crate) fn write<O: Write>(
 /// This is achieved by creating a temporary file in the same directory as the specified path (same
 /// filename with a salted suffix). This is currently known to be problematic if the path is a
 /// symlink and/or if the target path resides in a directory without user write permission.
-pub(crate) fn write_snapshot(plain: &[u8], path: &Path, password: &[u8], aad: &[u8]) -> Result<(), Error> {
-    guard(aad.is_empty(), Error::AadNotSupported)?;
+pub(crate) fn write_snapshot(plain: &[u8], path: &Path, password: &[u8]) -> Result<(), Error> {
     let compressed_plain = Zeroizing::new(compress(plain));
 
     // emulate constructor `KeyProvider::with_passphrase_hashed` with `D = blake2b`
@@ -50,7 +48,7 @@ pub(crate) fn write_snapshot(plain: &[u8], path: &Path, password: &[u8], aad: &[
     f.write_all(&MAGIC)?;
     f.write_all(&VERSION_V3)?;
     // blake2b hash of password is used as encryption password in age
-    write(&compressed_plain, &mut f, &password_hash, aad)?;
+    write(&compressed_plain, &mut f, &password_hash)?;
     f.sync_all()?;
 
     Ok(())
