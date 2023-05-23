@@ -53,7 +53,7 @@ pub struct BlobId([u8; 24]);
 pub struct Val([u8; 8]);
 
 #[derive(DeriveError, Debug)]
-#[error("Invalid Length: Expected: `{expected}`, Found: `{found}`")]
+#[error("invalid length: expected: `{expected}`, found: `{found}`")]
 pub struct InvalidLength {
     expected: usize,
     found: usize,

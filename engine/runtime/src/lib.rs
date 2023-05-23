@@ -19,34 +19,34 @@ pub const DEBUG_MSG: &str = "Content of Locked Memory is hidden";
 /// The different types of Error that may be encountered while using this crate
 #[derive(Debug, DeriveError)]
 pub enum MemoryError {
-    #[error("Encryption Error")]
+    #[error("encryption error")]
     EncryptionError,
 
-    #[error("Decryption Error")]
+    #[error("decryption error")]
     DecryptionError,
 
-    #[error("Illegal non-contiguous size")]
+    #[error("illegal non-contiguous size")]
     NCSizeNotAllowed,
 
-    #[error("Error while refreshing non-contiguous memory")]
+    #[error("error while refreshing non-contiguous memory")]
     NCRefreshError,
 
-    #[error("Lock unavailable")]
+    #[error("lock unavailable")]
     LockNotAvailable,
 
-    #[error("File System Error")]
+    #[error("file system error")]
     FileSystemError,
 
-    #[error("Illegal zero-sized value provided")]
+    #[error("illegal zero-sized value provided")]
     ZeroSizedNotAllowed,
 
-    #[error("Failed to allocate memory ({0})")]
+    #[error("failed to allocate memory ({0})")]
     Allocation(String),
 
-    #[error("Intended operation failed: ({0})")]
+    #[error("intended operation failed: ({0})")]
     Operation(String),
 
-    #[error("Illegal tentative of using zeroized memory")]
+    #[error("illegal tentative of using zeroized memory")]
     IllegalZeroizedUsage,
 }
 

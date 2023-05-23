@@ -21,22 +21,22 @@ pub type Result<T> = core::result::Result<T, TransactionError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
-    #[error("Transaction failed")]
+    #[error("transaction failed")]
     Failed,
 
-    #[error("Transaction already running")]
+    #[error("transaction already running")]
     InProgress,
 
-    #[error("Inner error occured ({0})")]
+    #[error("inner error occured ({0})")]
     Inner(String),
 
-    #[error("Operation aborted")]
+    #[error("operation aborted")]
     Abort,
 
-    #[error("No copy present")]
+    #[error("no copy present")]
     NoCopyPresent,
 
-    #[error("Would block")]
+    #[error("would block")]
     Blocking,
 }
 

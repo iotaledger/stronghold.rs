@@ -23,43 +23,43 @@ use std::io;
 #[derive(Debug, DeriveError)]
 #[non_exhaustive]
 pub enum ClientError {
-    #[error("Acquiring lock failed")]
+    #[error("acquiring lock failed")]
     LockAcquireFailed,
 
-    #[error("No read access")]
+    #[error("no read access")]
     NoReadAccess,
 
-    #[error("No write access")]
+    #[error("no write access")]
     NoWriteAccess,
 
-    #[error("No such value exist for key ({0})")]
+    #[error("no such value exist for key ({0})")]
     NoValuePresent(String),
 
-    #[error("Inner error occurred({0})")]
+    #[error("inner error occurred({0})")]
     Inner(String),
 
-    #[error("Engine error occurred({0})")]
+    #[error("engine error occurred({0})")]
     Engine(String),
 
     #[error("BoxProvider error: ({0})")]
     Provider(String),
 
-    #[error("Error loading client data. No data present")]
+    #[error("error loading client data; no data present")]
     ClientDataNotPresent,
 
-    #[error("Connection failure ({0})")]
+    #[error("connection failure ({0})")]
     ConnectionFailure(String),
 
-    #[error("Snapshot file is missing ({0})")]
+    #[error("snapshot file is missing ({0})")]
     SnapshotFileMissing(String),
 
-    #[error("Illegal key size. Should be ({0})")]
+    #[error("illegal key size, should be ({0})")]
     IllegalKeySize(usize),
 
-    #[error("Key Location for Snapshot not present")]
+    #[error("key location for snapshot not present")]
     SnapshotKeyLocationMissing,
 
-    #[error("Client with id {0:?} has already been loaded before. Can not be loaded twice.")]
+    #[error("client with id {0:?} has already been loaded before, can not be loaded twice")]
     ClientAlreadyLoaded(ClientId),
 }
 
@@ -107,7 +107,7 @@ impl From<SnapshotError> for ClientError {
             SnapshotError::CorruptedContent(inner) => ClientError::Inner(inner),
             SnapshotError::InvalidFile(inner) => ClientError::Inner(inner),
             SnapshotError::SnapshotKey(vault_id, record_id) => ClientError::Inner(format!(
-                "Missing or invalid snapshot key vaultid: {:?}, recordid: {:?}",
+                "missing or invalid snapshot key vaultid: {:?}, recordid: {:?}",
                 vault_id, record_id
             )),
             SnapshotError::Engine(inner) => ClientError::Inner(inner),
@@ -156,10 +156,10 @@ pub enum SnapshotError {
     #[error("BoxProvider error: {0}")]
     Provider(String),
 
-    #[error("Snapshot file is missing ({0})")]
+    #[error("snapshot file is missing ({0})")]
     MissingFile(String),
 
-    #[error("Inner error: ({0})")]
+    #[error("inner error: ({0})")]
     Inner(String),
 }
 
@@ -220,14 +220,14 @@ impl From<EngineReadError> for SnapshotError {
     fn from(e: EngineReadError) -> Self {
         match e {
             EngineReadError::CorruptedContent(reason) => SnapshotError::CorruptedContent(reason),
-            EngineReadError::InvalidFile => SnapshotError::InvalidFile("Not a Snapshot.".into()),
+            EngineReadError::InvalidFile => SnapshotError::InvalidFile("not a snapshot".into()),
             EngineReadError::Io(io) => SnapshotError::Io(io),
             EngineReadError::UnsupportedVersion { expected, found } => SnapshotError::InvalidFile(format!(
-                "Unsupported version: expected {:?}, found {:?}.",
+                "unsupported version: expected {:?}, found {:?}",
                 expected, found
             )),
             EngineReadError::UnsupportedAssociatedData => {
-                SnapshotError::Engine("Unsupported snapshot associated data".into())
+                SnapshotError::Engine("unsupported snapshot associated data".into())
             }
             EngineReadError::AgeFormatError(dec_error) => {
                 SnapshotError::InvalidFile(format!("failed to decode/decrypt age content {dec_error:?}"))
@@ -243,9 +243,9 @@ impl From<EngineWriteError> for SnapshotError {
             EngineWriteError::CorruptedData(e) => SnapshotError::CorruptedContent(e),
             EngineWriteError::GenerateRandom(_) => SnapshotError::Io(std::io::ErrorKind::Other.into()),
             EngineWriteError::UnsupportedAssociatedData => {
-                SnapshotError::Engine("Unsupported snapshot associated data".into())
+                SnapshotError::Engine("unsupported snapshot associated data".into())
             }
-            EngineWriteError::IncorrectWorkFactor => SnapshotError::Engine("Incorrect work factor".into()),
+            EngineWriteError::IncorrectWorkFactor => SnapshotError::Engine("incorrect work factor".into()),
         }
     }
 }

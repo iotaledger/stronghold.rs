@@ -73,7 +73,7 @@ fn test_full_stronghold_access_multithreaded() {
 
     for i in 0..NB_INPUTS {
         let key_provider = KeyProvider::try_from(key.clone())
-            .map_err(|e| format!("Error {:?}", e))
+            .map_err(|e| format!("error {:?}", e))
             .unwrap();
         let tx = tx.clone();
         let stg = stronghold.clone();
@@ -99,7 +99,7 @@ fn test_full_stronghold_access_multithreaded() {
 
     let stronghold = stronghold.reset();
     let key_provider = KeyProvider::try_from(key)
-        .map_err(|e| format!("Error {:?}", e))
+        .map_err(|e| format!("error {:?}", e))
         .unwrap();
     let client = stronghold
         .load_client_from_snapshot(client_path, &key_provider, &snapshot_path)

@@ -193,7 +193,7 @@ pub fn decrypt_file(path: &Path, key: &Key) -> Result<Zeroizing<Vec<u8>>, ReadEr
 
     decompress(&pt)
         .map(Zeroizing::new)
-        .map_err(|e| ReadError::CorruptedContent(format!("Decompression failed: {}", e)))
+        .map_err(|e| ReadError::CorruptedContent(format!("decompression failed: {}", e)))
 }
 
 fn check_min_file_len(input: &mut File) -> Result<(), ReadError> {

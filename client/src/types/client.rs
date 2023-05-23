@@ -133,7 +133,7 @@ impl Client {
             let mapped_vid = config.map_vaults.remove(&vid).unwrap_or(vid);
             let old_key = key_store
                 .get_key(vid)
-                .ok_or_else(|| ClientError::Inner(format!("Missing Key for vault {:?}", vid)))?;
+                .ok_or_else(|| ClientError::Inner(format!("missing key for vault {:?}", vid)))?;
             let new_key = key_store.get_or_insert_key(mapped_vid, Key::random())?;
             db.import_records(&old_key, &new_key, mapped_vid, records)?
         }
@@ -164,7 +164,7 @@ impl Client {
                 .keystore
                 .read()?
                 .get_key(vid)
-                .ok_or_else(|| ClientError::Inner(format!("Missing Key for vault {:?}", vid)))?;
+                .ok_or_else(|| ClientError::Inner(format!("missing key for vault {:?}", vid)))?;
 
             let mut keystore = self.keystore.write()?;
             let mut db = self.db.write()?;

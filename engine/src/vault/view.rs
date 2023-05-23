@@ -46,7 +46,7 @@ pub enum RecordError<TProvErr: Debug> {
     #[error("no record with `{0:?}`")]
     RecordNotFound(ChainId),
 
-    #[error("Lock is poisoned")]
+    #[error("lock is poisoned")]
     LockPoisoned,
 }
 

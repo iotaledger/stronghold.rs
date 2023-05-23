@@ -28,19 +28,19 @@ pub struct StrongholdWrapper {
 #[derive(Debug, DeriveError)]
 #[non_exhaustive]
 pub enum WrapperError {
-    #[error("Failed to open snapshot")]
+    #[error("failed to open snapshot")]
     OpenSnapshot,
 
-    #[error("Failed to commit to snapshot")]
+    #[error("failed to commit to snapshot")]
     CommitToSnapshot,
 
-    #[error("Failed to create client")]
+    #[error("failed to create client")]
     CreateClient,
 
-    #[error("Failed to write client")]
+    #[error("failed to write client")]
     WriteClient,
 
-    #[error("Failed to execute procedure: ({0})")]
+    #[error("failed to execute procedure: ({0})")]
     ExecuteProcedure(String),
 }
 

@@ -314,7 +314,7 @@ impl Snapshot {
             let ks = state
                 .0
                 .remove(cid)
-                .ok_or_else(|| SnapshotError::Inner(format!("Missing KeyStore for client {:?}", cid)))?
+                .ok_or_else(|| SnapshotError::Inner(format!("missing KeyStore for client {:?}", cid)))?
                 .0;
             old_keys.insert(*cid, ks);
         }
@@ -338,7 +338,7 @@ impl Snapshot {
         let vault_key = self
             .keystore
             .get_key(vid)
-            .ok_or_else(|| SnapshotError::Inner("Missing local secret key.".to_string()))?;
+            .ok_or_else(|| SnapshotError::Inner("missing local secret key".to_string()))?;
 
         let decrypted = self
             .db

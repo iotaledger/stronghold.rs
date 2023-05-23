@@ -4,7 +4,7 @@
 use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
-#[error("Base 64 Error")]
+#[error("Base64 Error")]
 pub struct Base64Error;
 
 /// a [`Base64`] encoder and decoder used in the Vault.
