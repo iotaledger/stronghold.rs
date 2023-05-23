@@ -86,8 +86,7 @@ pub enum WriteError {
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
 pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key) -> Result<(), WriteError> {
     let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
-    // TODO: work_factor is intentionally 0 just for development.
-    // Use proper value in production.
+    // `work_factor = 1` is intentionally just for development.
     // let work_factor = 1;
     encrypt_content_with_work_factor(plain, output, key, work_factor)
 }
