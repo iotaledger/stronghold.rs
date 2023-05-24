@@ -534,32 +534,6 @@ fn test_clear_stronghold_state() {
 }
 
 #[test]
-fn test_keyprovider_truncated_passphrase() {
-    use std::ops::Deref;
-
-    let passphrase = b"superlongpassphraseextrasecure";
-    let mut expected: [u8; 32] = [0u8; 32];
-
-    passphrase.as_ref().iter().enumerate().take(32).for_each(|(i, value)| {
-        expected[i] = *value;
-    });
-
-    let result = KeyProvider::with_passphrase_truncated(*passphrase);
-    assert!(result.is_ok());
-
-    let keyprovider = result.unwrap();
-
-    let buffer = keyprovider.try_unlock();
-    assert!(buffer.is_ok(), "Unlocking the keyprovider failed");
-
-    let buffer = buffer.unwrap();
-    let buffer_ref = buffer.borrow();
-    let key = buffer_ref.deref();
-
-    assert_eq!(key, expected, "Key does not match expected {:?}", key);
-}
-
-#[test]
 fn test_keyprovider_hashed_passphrase() {
     use crypto::hashes::Digest;
     use std::ops::Deref;
@@ -606,27 +580,6 @@ fn test_keyprovider_hashed_passphrase_blake2b() {
 
     assert_eq!(key, &expected.to_vec());
 }
-#[test]
-fn test_keyprovider_hashed_passphrase_argon2() {
-    let passphrase = b"passphrase".to_vec();
-    let salt = b"saltyvalue".to_vec();
-    let config = argon2::Config::default();
-    let expected = argon2::hash_raw(&passphrase, &salt, &config).expect("Failed to calculate hash");
-    let result = KeyProvider::with_passphrase_hashed_argon2(passphrase, salt);
-
-    assert!(result.is_ok(), "Failed: {:?}", result);
-
-    let keyprovider = result.unwrap();
-    let buffer = keyprovider.try_unlock();
-
-    assert!(buffer.is_ok(), "unlocking the inner buffer failed {:?}", buffer);
-
-    let buffer = buffer.unwrap();
-    let buffer_ref = buffer.borrow();
-    let key = buffer_ref.deref();
-
-    assert_eq!(key, expected);
-}
 
 #[test]
 fn test_stronghold_with_key_location_for_snapshot() {
@@ -636,9 +589,8 @@ fn test_stronghold_with_key_location_for_snapshot() {
     let payload = b"payload".to_vec().into();
     let secret_location = Location::const_generic(vault_path.clone(), record_path);
     let key = rand::fixed_bytestring(32);
-    let salt = rand::fixed_bytestring(32);
     let key_provider =
-        KeyProvider::with_passphrase_hashed_argon2(key.clone(), salt.clone()).expect("Failed to construct keyprovider");
+        KeyProvider::with_passphrase_hashed_blake2b(key.clone()).expect("Failed to construct keyprovider");
     let key_location = Location::const_generic(b"secret-key-location".to_vec(), b"secret-key-location".to_vec());
 
     let filename = base64::encode(fixed_random_bytes(32));
@@ -676,7 +628,7 @@ fn test_stronghold_with_key_location_for_snapshot() {
 
     // reset stronghold
     let stronghold = stronghold.reset();
-    let key_provider = KeyProvider::with_passphrase_hashed_argon2(key, salt).expect("Failed to construct keyprovider");
+    let key_provider = KeyProvider::with_passphrase_hashed_blake2b(key).expect("Failed to construct keyprovider");
 
     let client2 =
         stronghold.load_client_from_snapshot(client_path, &key_provider, &SnapshotPath::from_path(snapshot_path));

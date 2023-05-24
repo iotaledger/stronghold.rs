@@ -182,7 +182,7 @@ impl Command for BackupCommand {
         };
         let password = parameters[1].clone().as_bytes().to_vec();
         let snapshot_path = SnapshotPath::from_path(&parameters[0]);
-        let keyprovider = KeyProvider::with_passphrase_truncated(password)?;
+        let keyprovider = KeyProvider::with_passphrase_hashed_blake2b(password)?;
 
         stronghold.commit_with_keyprovider(&snapshot_path, &keyprovider)?;
 
@@ -213,7 +213,7 @@ impl Command for RestoreCommand {
         };
         let password = parameters[1].clone().as_bytes().to_vec();
         let snapshot_path = SnapshotPath::from_path(&parameters[0]);
-        let keyprovider = KeyProvider::with_passphrase_truncated(password)?;
+        let keyprovider = KeyProvider::with_passphrase_hashed_blake2b(password)?;
 
         stronghold.load_snapshot(&keyprovider, &snapshot_path)?;
 
