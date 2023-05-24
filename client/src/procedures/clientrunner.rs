@@ -11,6 +11,8 @@ use engine::{
     vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, VaultId},
 };
 
+use zeroize::Zeroizing;
+
 use crate::{
     derive_vault_id,
     procedures::{
@@ -52,22 +54,10 @@ impl Runner for Client {
     where
         F: FnOnce([Buffer<u8>; N]) -> Result<T, FatalProcedureError>,
     {
-        let mut ret = None;
-        let execute_procedure = |guard: [Buffer<u8>; N]| {
-            ret = Some(f(guard)?);
-            Ok(())
-        };
-
         let keystore = self.keystore.read().map_err(|_| VaultError::LockPoisoned)?;
         let db = self.db.read().map_err(|_| VaultError::LockPoisoned)?;
         let ids: [(Key<Provider>, VaultId, RecordId); N] = resolve_locations!(self, locations, keystore)?;
-
-        let res = db.get_guards(ids, execute_procedure);
-
-        match res {
-            Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(e),
-        }
+        db.get_guards(ids, f)
     }
 
     fn exec_proc<F, T, const N: usize>(
@@ -81,11 +71,9 @@ impl Runner for Client {
     {
         let (target_vid, target_rid) = target_location.resolve();
 
-        let mut ret = None;
         let execute_procedure = |guards: [Buffer<u8>; N]| {
             let Products { output: plain, secret } = f(guards)?;
-            ret = Some(plain);
-            Ok(secret)
+            Ok((secret, plain))
         };
 
         let random_hint = RecordHint::new(rand::variable_bytestring(DEFAULT_RANDOM_HINT_SIZE)).unwrap();
@@ -106,22 +94,17 @@ impl Runner for Client {
             .get_key(target_vid)
             .ok_or(VaultError::VaultNotFound(target_vid))?;
 
-        let res = db.exec_procedure(
+        db.exec_procedure(
             sources,
             &target_key,
             target_vid,
             target_rid,
             random_hint,
             execute_procedure,
-        );
-
-        match res {
-            Ok(()) => Ok(ret.unwrap()),
-            Err(e) => Err(e),
-        }
+        )
     }
 
-    fn write_to_vault(&self, location: &Location, value: Vec<u8>) -> Result<(), RecordError> {
+    fn write_to_vault(&self, location: &Location, value: Zeroizing<Vec<u8>>) -> Result<(), RecordError> {
         let (vault_id, record_id) = location.resolve();
 
         let mut keystore = self.keystore.write().map_err(|_| RecordError::LockPoisoned)?;

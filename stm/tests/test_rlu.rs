@@ -1,5 +1,6 @@
 // Copyright 2020-2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 #![allow(unused_imports)]
 
 use lazy_static::__Deref;
@@ -212,7 +213,7 @@ fn test_multiple_readers_single_writer() {
 //                 match *data {
 //                     Ok(inner) if **inner == EXPECTED => Ok(()),
 //                     Ok(inner) if **inner != EXPECTED => Err(TransactionError::Inner(format!(
-//                         "Value is not expected: actual {}, expected {}",
+//                         "value is not expected: actual {}, expected {}",
 //                         **inner, EXPECTED
 //                     ))),
 //                     Ok(_) => unreachable!("You shouldn't see this"),

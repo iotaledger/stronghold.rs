@@ -352,7 +352,7 @@ pub(crate) trait SyncSnapshots {
             }
             let old_keystore = old_keys
                 .get(&cid)
-                .ok_or_else(|| SnapshotError::Inner(format!("Missing KeyStore for client {:?}", cid)))?;
+                .ok_or_else(|| SnapshotError::Inner(format!("missing KeyStore for client {:?}", cid)))?;
             let mapped_cid = config.map_clients.get(&cid).copied().unwrap_or(cid);
             let import_records = |state: &mut ClientState, config: &SyncClientsConfig| {
                 for (vid, mut records) in records {
@@ -368,8 +368,8 @@ pub(crate) trait SyncSnapshots {
                     state.0.entry(vid).or_insert_with(Key::random);
                     let old_key = old_keystore
                         .get(&vid)
-                        .ok_or_else(|| SnapshotError::Inner(format!("Missing Key for vault {:?}", vid)))?;
-                    let new_key = state.0.get(&mapped_vid).expect("Key was inserted.");
+                        .ok_or_else(|| SnapshotError::Inner(format!("missing key for vault {:?}", vid)))?;
+                    let new_key = state.0.get(&mapped_vid).expect("key was inserted");
                     state.1.import_records(old_key, new_key, vid, records)?;
                 }
                 Ok(())
@@ -392,6 +392,7 @@ pub(crate) trait SyncSnapshots {
 #[cfg(test)]
 mod test {
     use std::convert::Infallible;
+    use zeroize::Zeroizing;
 
     use super::*;
 
@@ -403,8 +404,8 @@ mod test {
         random::random::<[u8; 24]>().into()
     }
 
-    fn test_value() -> Vec<u8> {
-        random::variable_bytestring(4096)
+    fn test_value() -> Zeroizing<Vec<u8>> {
+        random::variable_bytestring(4096).into()
     }
 
     fn test_location() -> Location {

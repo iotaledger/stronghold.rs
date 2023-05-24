@@ -107,7 +107,7 @@ fn test_unlock_and_update(lm: impl LockedMemory, data: &[u8], size: usize) {
     assert!(buf.is_ok());
     let buf = buf.unwrap();
     assert_ne!(&*buf.borrow(), data);
-    assert_eq!(&*buf.borrow(), new_data);
+    assert_eq!(&*buf.borrow(), &new_data[..]);
 }
 
 // We test cloning, first check that clone has same value, and

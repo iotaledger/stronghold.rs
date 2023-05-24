@@ -37,8 +37,10 @@ serde = { version = "1.0", features = [ "derive" ] }
   default-features = false
 
   [dependencies.iota-crypto]
-  version = "0.19.0"
+  version = "0.20.0"
   features = [
+  "age",
+  "pbkdf2",
   "random",
   "chacha",
   "hmac",

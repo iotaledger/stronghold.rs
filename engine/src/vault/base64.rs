@@ -4,7 +4,7 @@
 use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError)]
-#[error("Base 64 Error")]
+#[error("Base64 Error")]
 pub struct Base64Error;
 
 /// a [`Base64`] encoder and decoder used in the Vault.
@@ -41,7 +41,7 @@ impl Base64 {
             Err(e) => {
                 let error = e.utf8_error();
                 let valid_up_to = error.valid_up_to();
-                let error_msg = format!("Fail encoding to base64: valid_up_to({})", valid_up_to);
+                let error_msg = format!("failure encoding to base64: valid_up_to({})", valid_up_to);
                 panic!("{}", error_msg)
             }
         }

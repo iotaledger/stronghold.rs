@@ -5,21 +5,21 @@ use thiserror::Error as DeriveError;
 
 #[derive(Debug, DeriveError, PartialEq, Eq)]
 pub enum TxError {
-    #[error("Transaction failed")]
+    #[error("transaction failed")]
     Failed,
 
-    #[error("Transaction is locked")]
+    #[error("transaction is locked")]
     LockPresent,
 
-    #[error("Transactional version has overflown")]
+    #[error("transactional version has overflown")]
     VersionOverflow,
 
-    #[error("The Transaction is locked")]
+    #[error("the transaction is locked")]
     TransactionLocked,
 
-    #[error("Object is stale")]
+    #[error("object is stale")]
     StaleObject,
 
-    #[error("Transactable Variable has wrong version")]
+    #[error("transactable variable has wrong version")]
     VersionMismatch,
 }

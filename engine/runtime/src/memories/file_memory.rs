@@ -22,7 +22,7 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const FILENAME_SIZE: usize = 16;
 
@@ -32,7 +32,7 @@ pub struct FileMemory {
     // Filename are random string of 16 characters
     fname: PathBuf,
     // Noise data to xor with data in file
-    noise: Vec<u8>,
+    noise: Zeroizing<Vec<u8>>,
     // Size of the decrypted data
     size: usize,
 }
@@ -46,7 +46,8 @@ impl FileMemory {
         // We actually don't want to have plain data in file
         // therefore we noise it
         let noise = random_vec(size);
-        let data = xor(payload, &noise, size);
+        let mut data = vec![0_u8; size];
+        xor(&mut data, payload, &noise, size);
 
         // Write to file
         let fname = FileMemory::new_fname().or(Err(FileSystemError))?;
@@ -185,8 +186,9 @@ impl LockedMemory for FileMemory {
             return Err(ZeroSizedNotAllowed);
         }
 
-        let data = self.read_file().or(Err(FileSystemError))?;
-        let data = xor(&data, &self.noise, self.size);
+        let mut data = self.read_file().or(Err(FileSystemError))?;
+        debug_assert_eq!(data.len(), self.size);
+        xor_mut(&mut data, &self.noise, self.size);
         Ok(Buffer::alloc(&data, self.size))
     }
 }
@@ -326,8 +328,9 @@ mod tests {
 
         // Check that content of the file has effectively been xored
         assert!(fm.set_read_only().is_ok());
-        let content = fs::read(&fm.fname).expect("Fail to read file");
+        let mut content = fs::read(&fm.fname).expect("Fail to read file");
         assert_ne!(content, data);
-        assert_eq!(xor(&content, &fm.noise, fm.size), data);
+        xor_mut(&mut content, &fm.noise, fm.size);
+        assert_eq!(content, data);
     }
 }

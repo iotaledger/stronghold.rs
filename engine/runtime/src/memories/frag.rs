@@ -439,7 +439,7 @@ where
 
             if actual_mem.is_null() {
                 if let Err(_) = last_error() {
-                    return Err(MemoryError::Allocation(format!("Call to VirtualAlloc failed")));
+                    return Err(MemoryError::Allocation(format!("call to VirtualAlloc failed")));
                 }
             }
 
@@ -467,7 +467,7 @@ fn dealloc_map(ptr: *mut libc::c_void, size: libc::size_t) -> Result<(), MemoryE
         let res = libc::munmap(ptr, size);
         if res != 0 {
             let os_error = std::io::Error::last_os_error();
-            return Err(MemoryError::Allocation(format!("Failed to munmap: {}", os_error)));
+            return Err(MemoryError::Allocation(format!("failed to munmap: {}", os_error)));
         }
     }
     Ok(())
@@ -561,21 +561,21 @@ fn last_error() -> Result<(), MemoryError> {
         match windows::Win32::Foundation::GetLastError() {
             windows::Win32::Foundation::WIN32_ERROR(0) => Ok(()),
             windows::Win32::Foundation::ERROR_ALREADY_EXISTS => {
-                Err(MemoryError::Allocation("Mapping already exists".to_owned()))
+                Err(MemoryError::Allocation("mapping already exists".to_owned()))
             }
             windows::Win32::Foundation::ERROR_INVALID_HANDLE => {
-                Err(MemoryError::Allocation("Invalid handle for mapped memory".to_owned()))
+                Err(MemoryError::Allocation("invalid handle for mapped memory".to_owned()))
             }
             windows::Win32::Foundation::ERROR_COMMITMENT_LIMIT => Err(MemoryError::Allocation(
-                "The paging file is too small for this operation to complete".to_owned(),
+                "the paging file is too small for this operation to complete".to_owned(),
             )),
             windows::Win32::Foundation::ERROR_INVALID_PARAMETER => {
-                Err(MemoryError::Allocation("The parameter is incorrect.".to_owned()))
+                Err(MemoryError::Allocation("the parameter is incorrect.".to_owned()))
             }
             windows::Win32::Foundation::ERROR_INVALID_ADDRESS => {
-                Err(MemoryError::Allocation("Attempt to access invalid address.".to_owned()))
+                Err(MemoryError::Allocation("attempt to access invalid address.".to_owned()))
             }
-            err => Err(MemoryError::Allocation(format!("Unknown error code 0x{:08x}", err.0))),
+            err => Err(MemoryError::Allocation(format!("unknown error code 0x{:08x}", err.0))),
         }
     }
 }

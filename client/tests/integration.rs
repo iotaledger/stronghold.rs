@@ -28,7 +28,7 @@ mod stronghold_test_std {
         let location = location();
 
         let write_procedure = WriteVault {
-            data: expected.clone(),
+            data: expected.clone().into(),
             location: location.clone(),
         };
 

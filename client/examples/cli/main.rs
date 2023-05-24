@@ -1,5 +1,6 @@
 // Copyright 2020-2022 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
+
 #![allow(unused_imports)]
 
 use std::{error::Error, hash::Hash, num::NonZeroUsize, str::FromStr};
@@ -18,6 +19,7 @@ use stronghold::{
 };
 use stronghold_utils::random as rand;
 use thiserror::Error as DeriveError;
+use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub struct ChainInput {
@@ -203,10 +205,12 @@ pub enum Command {
 }
 
 /// Calculates the Blake2b from a String
-fn hash_blake2b(input: String) -> Vec<u8> {
+fn hash_blake2b(input: String) -> Zeroizing<Vec<u8>> {
     let mut hasher = Blake2b256::new();
     hasher.update(input.as_bytes());
-    hasher.finalize().to_vec()
+    let mut hash = Zeroizing::new(vec![0_u8; Blake2b256::output_size()]);
+    hasher.finalize_into((&mut hash[..]).into());
+    hash
 }
 
 async fn command_write_and_read_from_store(key: String, value: String) -> Result<(), ClientError> {

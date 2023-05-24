@@ -6,7 +6,7 @@ use thiserror::Error as DeriveError;
 
 #[derive(DeriveError, Debug)]
 pub enum BusyBreakerError {
-    #[error("Number of allowed breaker trips exceeds configuration")]
+    #[error("number of allowed breaker trips exceeds configuration")]
     BreakerTripsExceeded,
 }
 

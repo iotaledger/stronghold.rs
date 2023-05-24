@@ -11,6 +11,7 @@
 #[cfg(feature = "std")]
 pub use crate::{internal::Provider, security::*, types::*, utils::*};
 
+pub use engine;
 #[cfg(feature = "std")]
 pub use engine::runtime::MemoryError;
 

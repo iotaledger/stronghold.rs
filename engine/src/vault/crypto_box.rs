@@ -11,6 +11,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+use zeroize::{ZeroizeOnDrop, Zeroizing};
 
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
 pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
@@ -31,8 +32,8 @@ pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
     fn random_buf(buf: &mut [u8]) -> Result<(), Self::Error>;
 
     /// creates a vector with secure random bytes based off of an inputted [`usize`] length.
-    fn random_vec(len: usize) -> Result<Vec<u8>, Self::Error> {
-        let mut buf = vec![0; len];
+    fn random_vec(len: usize) -> Result<Zeroizing<Vec<u8>>, Self::Error> {
+        let mut buf = Zeroizing::new(vec![0; len]);
         Self::random_buf(&mut buf)?;
         Ok(buf)
     }
@@ -40,7 +41,7 @@ pub trait BoxProvider: 'static + Sized + Ord + PartialOrd {
 
 /// A key to the crypto box.  [`Key`] is stored on the heap which makes it easier to erase. Makes use of the
 /// [`Buffer<u8>`] type to protect the data.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ZeroizeOnDrop)]
 pub struct Key<T: BoxProvider> {
     /// the guarded raw bytes that make up the key
     pub key: Buffer<u8>,
@@ -69,7 +70,7 @@ impl<T: BoxProvider> Key<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
-    pub fn load(key: Vec<u8>) -> Option<Self> {
+    pub fn load(key: Zeroizing<Vec<u8>>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
                 key: Buffer::alloc(key.as_slice(), T::box_key_len()),
@@ -151,7 +152,7 @@ pub trait Decrypt<T: TryFrom<Vec<u8>>>: AsRef<[u8]> {
 
 /// A key to the crypto box.  [`NCKey`] is stored on the heap which makes it easier to erase. Makes use of the
 /// [`NonContiguousMemory`] type to protect the data.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ZeroizeOnDrop)]
 pub struct NCKey<T: BoxProvider> {
     /// the guarded raw bytes that make up the key
     pub key: NonContiguousMemory,
@@ -182,7 +183,7 @@ impl<T: BoxProvider> NCKey<T> {
     /// attempts to load a key from inputted data
     ///
     /// Return `None` if the key length doesn't match [`BoxProvider::box_key_len`].
-    pub fn load(key: Vec<u8>) -> Option<Self> {
+    pub fn load(key: Zeroizing<Vec<u8>>) -> Option<Self> {
         if key.len() == T::box_key_len() {
             Some(Self {
                 key: NonContiguousMemory::alloc(key.as_slice(), T::box_key_len(), NC_CONFIGURATION)
@@ -208,7 +209,7 @@ impl<T: BoxProvider> NCKey<T> {
             _box_provider: PhantomData,
         };
         let opened = T::box_open(&key, ad.as_ref(), &data).map_err(DecryptError::Provider)?;
-        Key::load(opened).ok_or(DecryptError::Invalid)
+        Key::load(opened.into()).ok_or(DecryptError::Invalid)
     }
 
     // /// get the key's bytes from the [`Buffer`]
