@@ -497,29 +497,23 @@ impl DeriveSecret<1> for Slip10Derive {
                     .try_into()
                     .map_err(|_| FatalProcedureError::from("bad slip10 extended secret key size".to_owned()))?;
                 match self.curve {
-                    Curve::Ed25519 => {
-                        slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(ext_bytes)
-                            .and_then(|parent| parent.derive(&self.chain))
-                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
-                    },
+                    Curve::Ed25519 => slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(ext_bytes)
+                        .and_then(|parent| parent.derive(&self.chain))
+                        .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code())),
                     Curve::Secp256k1 => {
                         slip10::Slip10::<secp256k1_ecdsa::SecretKey>::try_from_extended_bytes(ext_bytes)
                             .and_then(|parent| parent.derive(&self.chain))
                             .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
-                    },
+                    }
                 }
             }
-            Slip10DeriveInput::Seed(_) => {
-                match self.curve {
-                    Curve::Ed25519 => {
-                        slip10::Seed::from_bytes(&guards[0].borrow()).derive::<ed25519::SecretKey>(&self.chain)
-                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
-                    },
-                    Curve::Secp256k1 => {
-                        slip10::Seed::from_bytes(&guards[0].borrow()).derive::<secp256k1_ecdsa::SecretKey>(&self.chain)
-                            .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code()))
-                    },
-                }
+            Slip10DeriveInput::Seed(_) => match self.curve {
+                Curve::Ed25519 => slip10::Seed::from_bytes(&guards[0].borrow())
+                    .derive::<ed25519::SecretKey>(&self.chain)
+                    .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code())),
+                Curve::Secp256k1 => slip10::Seed::from_bytes(&guards[0].borrow())
+                    .derive::<secp256k1_ecdsa::SecretKey>(&self.chain)
+                    .map(|dk| (Zeroizing::new((*dk.extended_bytes()).into()), *dk.chain_code())),
             },
         }?;
         Ok(Products {

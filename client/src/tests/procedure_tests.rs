@@ -9,9 +9,9 @@ use crate::procedures::CompareSecret;
 use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
-        BIP39Recover, ConcatKdf, CopyRecord, Curve, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret, GetEvmAddress,
-        Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaSign, Sha2Hash, Slip10Derive, Slip10DeriveInput,
-        Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
+        BIP39Recover, ConcatKdf, CopyRecord, Curve, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret,
+        GetEvmAddress, Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaSign, Sha2Hash, Slip10Derive,
+        Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
