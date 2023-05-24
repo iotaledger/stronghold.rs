@@ -66,7 +66,6 @@ pub(crate) fn read<I: Read>(input: &mut I, key: &Key, associated_data: &[u8]) ->
 
 /// Encrypt the opaque plaintext bytestring using the specified [`Key`] and optional associated data
 /// and writes the ciphertext to the specifed output
-#[deprecated]
 #[allow(dead_code)]
 pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, key: &Key, associated_data: &[u8]) -> Result<(), Error> {
     // create ephemeral key pair.
