@@ -26,10 +26,6 @@ pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, password: &Key) -> R
 
 /// Atomically encrypt, add magic and version bytes as file-header, and [`write`][self::write] the specified
 /// plaintext to the specified path.
-///
-/// This is achieved by creating a temporary file in the same directory as the specified path (same
-/// filename with a salted suffix). This is currently known to be problematic if the path is a
-/// symlink and/or if the target path resides in a directory without user write permission.
 pub(crate) fn write_snapshot(plain: &[u8], path: &Path, password: &[u8]) -> Result<(), Error> {
     let compressed_plain = Zeroizing::new(compress(plain));
 
