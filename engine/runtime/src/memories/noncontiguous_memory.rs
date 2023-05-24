@@ -90,28 +90,28 @@ impl LockedMemory for NonContiguousMemory {
     /// Unlocks the memory and returns an unlocked Buffer
     /// To retrieve secret value you xor the hash contained in shard1 with value in shard2
     fn unlock(&self) -> Result<Buffer<u8>, MemoryError> {
-        let (r, mut m) = self.get_shards_data()?;
-        let h = &blake2b::Blake2b256::digest(r);
-        xor_mut(&mut m, h, NC_DATA_SIZE);
+        let (randomness, mut blinded_secret) = self.get_shards_data()?;
+        let hashed_randomness = &blake2b::Blake2b256::digest(randomness);
+        xor_mut(&mut blinded_secret, hashed_randomness, NC_DATA_SIZE);
 
         // Refresh the shards after each use
         self.refresh()?;
 
-        Ok(Buffer::alloc(&m, NC_DATA_SIZE))
+        Ok(Buffer::alloc(&blinded_secret, NC_DATA_SIZE))
     }
 }
 
 impl NonContiguousMemory {
     /// Writes the payload into a LockedMemory then locks it
-    pub fn alloc(payload: &[u8], size: usize, config: NCConfig) -> Result<Self, MemoryError> {
+    pub fn alloc(secret: &[u8], size: usize, config: NCConfig) -> Result<Self, MemoryError> {
         if size != NC_DATA_SIZE {
             return Err(NCSizeNotAllowed);
         };
-        let random = random_vec(NC_DATA_SIZE);
-        let mut digest = blake2b::Blake2b256::digest(&random);
-        xor_mut(&mut digest, payload, NC_DATA_SIZE);
+        let randomness = random_vec(NC_DATA_SIZE);
+        let mut blinded_secret = blake2b::Blake2b256::digest(&randomness);
+        xor_mut(&mut blinded_secret, secret, NC_DATA_SIZE);
 
-        let (shard1, shard2) = MemoryShard::new_shards(&random, &digest, &config)?;
+        let (shard1, shard2) = MemoryShard::new_shards(&randomness, &blinded_secret, &config)?;
 
         let mem = NonContiguousMemory {
             shard1: Mutex::new(RefCell::new(shard1)),
@@ -125,17 +125,17 @@ impl NonContiguousMemory {
     // Refresh the shards to increase security, may be called every _n_ seconds or
     // punctually
     pub fn refresh(&self) -> Result<(), MemoryError> {
-        let d = random_vec(NC_DATA_SIZE);
-        let (mut r, mut m) = self.get_shards_data()?;
+        let randomness_delta = random_vec(NC_DATA_SIZE);
+        let (mut randomness, mut blinded_secret) = self.get_shards_data()?;
 
-        let hr = &blake2b::Blake2b256::digest(&r);
-        xor_mut(&mut r, &d, NC_DATA_SIZE);
-        let hd = &blake2b::Blake2b256::digest(&r);
+        let hashed_randomness = &blake2b::Blake2b256::digest(&randomness);
+        xor_mut(&mut randomness, &randomness_delta, NC_DATA_SIZE);
+        let hashed_delta = &blake2b::Blake2b256::digest(&randomness);
 
-        xor_mut(&mut m, hd, NC_DATA_SIZE);
-        xor_mut(&mut m, hr, NC_DATA_SIZE);
+        xor_mut(&mut blinded_secret, hashed_delta, NC_DATA_SIZE);
+        xor_mut(&mut blinded_secret, hashed_randomness, NC_DATA_SIZE);
 
-        let (shard1, shard2) = MemoryShard::new_shards(&r, &m, &self.config)?;
+        let (shard1, shard2) = MemoryShard::new_shards(&randomness, &blinded_secret, &self.config)?;
 
         let m1 = self.shard1.lock().expect(POISONED_LOCK);
         let m2 = self.shard2.lock().expect(POISONED_LOCK);
