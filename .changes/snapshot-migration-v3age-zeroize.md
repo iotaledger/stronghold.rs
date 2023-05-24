@@ -3,8 +3,6 @@
 "iota-stronghold": minor
 "stronghold-engine" : minor
 "stronghold-runtime" : minor
-"vault" : minor
-"snapshot" : minor
 
 ---
 
