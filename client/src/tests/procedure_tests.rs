@@ -293,6 +293,67 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error::Error>> {
+    let stronghold: Stronghold = Stronghold::default();
+    let client: Client = stronghold.create_client(b"client_path").unwrap();
+
+    let vault_path = random::variable_bytestring(1024);
+    let seed = Location::generic(vault_path.clone(), random::variable_bytestring(1024));
+
+    let size_bytes = if fresh::coinflip() {
+        Some(fresh::usize(1024))
+    } else {
+        None
+    };
+    let slip10_generate = Slip10Generate {
+        size_bytes,
+        output: seed.clone(),
+    };
+
+    assert!(client.execute_procedure(slip10_generate).is_ok());
+
+    let (_path, chain) = fresh::hd_path();
+    let key = Location::generic(vault_path, random::variable_bytestring(1024));
+
+    let slip10_derive = Slip10Derive {
+        curve: Curve::Secp256k1,
+        chain,
+        input: Slip10DeriveInput::Seed(seed),
+        output: key.clone(),
+    };
+    let chain_code = client.execute_procedure(slip10_derive).unwrap();
+
+    let secp256k1_ecdsa_pk = PublicKey {
+        private_key: key.clone(),
+        ty: KeyType::Secp256k1Ecdsa,
+    };
+    let pk = client.execute_procedure(secp256k1_ecdsa_pk).unwrap();
+
+    let mut ext_bytes = [0_u8; 65];
+    ext_bytes[..33].copy_from_slice(&pk);
+    ext_bytes[33..].copy_from_slice(&chain_code);
+    let epk = slip10::Slip10::<secp256k1_ecdsa::PublicKey>::try_from_extended_bytes(&ext_bytes).unwrap();
+    let epk = epk.child_key(&slip10::Segment(1)).unwrap();
+
+    let slip10_derive = Slip10Derive {
+        curve: Curve::Secp256k1,
+        chain: slip10::Chain::from_u32([1]),
+        input: Slip10DeriveInput::Key(key.clone()),
+        output: key.clone(),
+    };
+    let chain_code = client.execute_procedure(slip10_derive).unwrap();
+
+    let secp256k1_ecdsa_pk = PublicKey {
+        private_key: key.clone(),
+        ty: KeyType::Secp256k1Ecdsa,
+    };
+    let pk = client.execute_procedure(secp256k1_ecdsa_pk).unwrap();
+
+    assert_eq!(&pk, &epk.public_key().to_bytes());
+    Ok(())
+}
+
+#[tokio::test]
 async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
