@@ -11,9 +11,9 @@ It is very useful for guaranteeing engineering best-practices, maintaining trans
 ![drawing](/template/.images/7P-Lifecycle.drawio.svg)
 
 ## File Naming Conventions
-Files from this template should be renamed, where `project` is replaced with the name of the product. I.e. in the Bee project, there would be:
-- `/specifications/1-SCOPE/bee-SCOPE-0000.md`
-- `/specifications/3-SPECS/bee-ENGINEERING-SPEC-0000.md`
+Files from this template should be renamed, where `project` is replaced with the name of the product. I.e. in the HORNET project, there would be:
+- `/specifications/1-SCOPE/hornet-SCOPE-0000.md`
+- `/specifications/3-SPECS/hornet-ENGINEERING-SPEC-0000.md`
 - etc.
 
 ## File Versioning Conventions
