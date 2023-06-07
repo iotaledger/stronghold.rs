@@ -106,9 +106,6 @@ pub fn try_set_encrypt_work_factor(work_factor: u8) -> Result<(), WriteError> {
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
 pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key) -> Result<(), WriteError> {
     let work_factor = get_encrypt_work_factor();
-    // let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
-    // `work_factor = 1` is intentionally just for development.
-    // let work_factor = 1;
     encrypt_content_with_work_factor(plain, output, key, work_factor)
 }
 
