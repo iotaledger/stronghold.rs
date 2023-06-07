@@ -55,7 +55,7 @@ pub fn permissions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
         Data::Struct(_) | Data::Union(_) => {
-            let ident = derive_input.ident.clone();
+            let ident = derive_input.ident;
             quote! {
                 impl VariantPermission for #ident {
                     fn permission(&self) -> PermissionValue {
