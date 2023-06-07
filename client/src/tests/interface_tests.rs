@@ -194,6 +194,7 @@ fn test_stronghold_purge_client() {
 
 #[test]
 fn purge_client() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     // This test will create a client, write secret data into the vault, commit
     // the state into a snapshot. Then purge the client, commit the purged state
     // and reload the client, with an empty state
@@ -254,6 +255,7 @@ fn purge_client() {
 
 #[test]
 fn write_client_to_snapshot() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     let stronghold = Stronghold::default();
 
     let snapshot_path = {
@@ -298,6 +300,7 @@ fn write_client_to_snapshot() {
 
 #[test]
 fn test_load_client_from_snapshot() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     let client_path = fixed_random_bytes(1024);
     let vault_path = fixed_random_bytes(1024);
     let record_path = fixed_random_bytes(1024);
@@ -346,6 +349,7 @@ fn test_load_client_from_snapshot() {
 
 #[test]
 fn test_load_multiple_clients_from_snapshot() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     let number_of_clients = 10;
     let client_path_vec: Vec<Vec<u8>> = (0..number_of_clients).map(|_| fixed_random_bytes(256)).collect();
     let mut clients = vec![];
@@ -449,6 +453,7 @@ fn test_create_snapshot_file_in_custom_directory() {
 
 #[test]
 fn test_clear_stronghold_state() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     // pre-requisites
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
@@ -581,6 +586,7 @@ fn test_keyprovider_hashed_passphrase_blake2b() {
 
 #[test]
 fn test_stronghold_with_key_location_for_snapshot() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     let client_path = "my-awesome-client-path";
     let vault_path = b"vault_path".to_vec();
     let record_path = b"record_path".to_vec();
@@ -636,6 +642,7 @@ fn test_stronghold_with_key_location_for_snapshot() {
 
 #[test]
 fn test_load_unload_client() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     let stronghold = Stronghold::default();
     let client_path = "my-awesome-client-path";
     let client = stronghold.create_client(client_path).expect("Failed to create client");

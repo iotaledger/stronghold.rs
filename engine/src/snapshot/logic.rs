@@ -6,6 +6,7 @@ use std::{
     fs::{rename, File, OpenOptions},
     io::{Read, Write},
     path::Path,
+    sync::atomic::{AtomicU8, Ordering},
 };
 
 use crypto::{keys::age, utils::rand};
@@ -71,6 +72,25 @@ pub enum WriteError {
     IncorrectWorkFactor,
 }
 
+// `ENCRYPT_WORK_FACTOR` exposes public access to the default work_factor used in snapshot encryption. Small values of
+// work_factor used together with a weak password will result in insecure snapshot protection and potential leakage of
+// all secrets, including seed and private keys. Too large values will result in significantly slow snapshot
+// encryption/decryption.
+//
+// The public access is exposed as a workaround so that encryption/decryption time can be controllably low during
+// testing. The work_factor must not be modified in production.
+static ENCRYPT_WORK_FACTOR: AtomicU8 = AtomicU8::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
+
+pub fn get_encrypt_work_factor() -> u8 {
+    ENCRYPT_WORK_FACTOR.load(Ordering::Relaxed)
+}
+
+pub fn try_set_encrypt_work_factor(work_factor: u8) -> Result<(), WriteError> {
+    let _ = age::WorkFactor::try_from(work_factor).map_err(|_| WriteError::IncorrectWorkFactor)?;
+    ENCRYPT_WORK_FACTOR.store(work_factor, Ordering::Relaxed);
+    Ok(())
+}
+
 /// Encrypt snapshot content with key using work factor recommended for password-based (weak) keys.
 ///
 /// # Security
@@ -85,7 +105,8 @@ pub enum WriteError {
 /// It is safe to use with strong keys, although computing resources may be wasted.
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
 pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key) -> Result<(), WriteError> {
-    let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
+    let work_factor = get_encrypt_work_factor();
+    // let work_factor = age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR;
     // `work_factor = 1` is intentionally just for development.
     // let work_factor = 1;
     encrypt_content_with_work_factor(plain, output, key, work_factor)

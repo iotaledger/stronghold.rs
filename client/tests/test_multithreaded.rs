@@ -59,6 +59,7 @@ fn test_stronghold_multithreaded_safety() {
 // - Check that all the secrets that were generated concurrently before are present in the saved state
 #[test]
 fn test_full_stronghold_access_multithreaded() {
+    engine::snapshot::try_set_encrypt_work_factor(0).unwrap();
     const NB_INPUTS: usize = 100;
     let pool = ThreadPool::new(NB_THREADS);
 
