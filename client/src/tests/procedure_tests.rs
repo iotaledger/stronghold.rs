@@ -344,7 +344,7 @@ async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error:
     let chain_code = client.execute_procedure(slip10_derive).unwrap();
 
     let secp256k1_ecdsa_pk = PublicKey {
-        private_key: key.clone(),
+        private_key: key,
         ty: KeyType::Secp256k1Ecdsa,
     };
     let pk = client.execute_procedure(secp256k1_ecdsa_pk).unwrap();

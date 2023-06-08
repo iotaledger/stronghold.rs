@@ -337,6 +337,7 @@ mod tests {
         assert_eq!(borrow, clone);
     }
 
+    #[allow(clippy::redundant_clone)]
     #[test]
     fn buffer_comparisons() {
         let guard = Buffer::<u8>::from(&mut [1, 2, 3][..]);
