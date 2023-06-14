@@ -4,9 +4,7 @@
 //#![allow(unused_imports)]
 use crypto::keys::slip10::ChainCode;
 use iota_stronghold::{
-    procedures::{
-        Chain, Curve, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault,
-    },
+    procedures::{Curve, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault},
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
 };
 use log::*;
@@ -181,13 +179,13 @@ impl StrongholdWrapper {
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let chain = Chain::from_u32_hardened(vec![
+        let chain = vec![
             44,   // BIP-0044
             4218, // IOTA coin type
             0,    // zero account id
             0,    // public
             address_index,
-        ]);
+        ];
 
         log::info!("[Rust] Deriving Seed procedure started");
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{FatalEngineError, Location, Provider, RecordError, VaultError};
+use crypto::keys::bip39;
 use engine::{
     runtime::memories::buffer::Buffer,
     vault::{BoxProvider, VaultId},
@@ -134,6 +135,13 @@ impl From<String> for ProcedureOutput {
     }
 }
 
+impl From<bip39::Mnemonic> for ProcedureOutput {
+    fn from(m: bip39::Mnemonic) -> Self {
+        // mnemonic secret is leaked; ProcedureOutput should be zeroized
+        m.as_ref().as_bytes().to_vec().into()
+    }
+}
+
 impl<const N: usize> From<[u8; N]> for ProcedureOutput {
     fn from(a: [u8; N]) -> Self {
         a.to_vec().into()
@@ -154,6 +162,13 @@ impl TryFrom<ProcedureOutput> for String {
     type Error = FromUtf8Error;
     fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
         String::from_utf8(value.0)
+    }
+}
+
+impl TryFrom<ProcedureOutput> for bip39::Mnemonic {
+    type Error = FromUtf8Error;
+    fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
+        String::try_from(value).map(String::into)
     }
 }
 

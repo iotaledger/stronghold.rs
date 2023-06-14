@@ -5,7 +5,12 @@ use std::{convert::TryInto, str::FromStr};
 
 use super::types::*;
 use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, UseKey};
-pub use crypto::keys::slip10::{Chain, ChainCode};
+
+pub use crypto::keys::slip10::ChainCode as Slip10ChainCode;
+pub type Slip10Chain = Vec<u32>;
+pub type Slip10HardenedChain = Vec<slip10::Hardened>;
+
+use core::fmt;
 use crypto::{
     ciphers::{
         aes_gcm::Aes256Gcm,
@@ -28,7 +33,7 @@ use crypto::{
 };
 
 use engine::runtime::memories::buffer::{Buffer, Ref};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use stronghold_utils::GuardDebug;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -347,17 +352,46 @@ impl FromStr for MnemonicLanguage {
     }
 }
 
+fn serialize_mnemonic<S: Serializer>(m: &bip39::Mnemonic, s: S) -> Result<S::Ok, S::Error> {
+    m.as_ref().serialize(s)
+}
+
+fn deserialize_mnemonic<'de, D: Deserializer<'de>>(d: D) -> Result<bip39::Mnemonic, D::Error> {
+    String::deserialize(d).map(String::into)
+}
+
+fn serialize_passphrase<S: Serializer>(p: &bip39::Passphrase, s: S) -> Result<S::Ok, S::Error> {
+    p.as_ref().serialize(s)
+}
+
+fn deserialize_passphrase<'de, D: Deserializer<'de>>(d: D) -> Result<bip39::Passphrase, D::Error> {
+    String::deserialize(d).map(String::into)
+}
+
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
 /// passphrase). Store the seed and return the mnemonic sentence as data output.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BIP39Generate {
-    pub passphrase: Option<String>,
+    #[serde(serialize_with = "serialize_passphrase")]
+    #[serde(deserialize_with = "deserialize_passphrase")]
+    pub passphrase: bip39::Passphrase,
     pub language: MnemonicLanguage,
     pub output: Location,
 }
 
+impl fmt::Debug for BIP39Generate {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BIP39Generate")
+            .field("passphrase", &"<bip39::Passphrase>")
+            .field("language", &self.language)
+            .field("output", &self.output)
+            .finish()
+    }
+}
+
 impl GenerateSecret for BIP39Generate {
-    type Output = String;
+    type Output = bip39::Mnemonic;
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut entropy = Zeroizing::new([0u8; 32]);
@@ -368,15 +402,12 @@ impl GenerateSecret for BIP39Generate {
             MnemonicLanguage::Japanese => bip39::wordlist::JAPANESE,
         };
 
-        let mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
-
-        let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
-        let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
-        bip39::mnemonic_to_seed(&mnemonic, passphrase, seed_mut);
+        let mnemonic: bip39::Mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
+        let mut seed = bip39::Seed::null();
+        bip39::mnemonic_to_seed((&mnemonic).into(), (&self.passphrase).into(), &mut seed);
 
         Ok(Products {
-            secret: seed,
+            secret: Zeroizing::new(seed.as_ref().to_vec()),
             output: mnemonic,
         })
     }
@@ -386,47 +417,45 @@ impl GenerateSecret for BIP39Generate {
     }
 }
 
-impl Drop for BIP39Generate {
-    fn drop(&mut self) {
-        self.passphrase.zeroize();
-    }
-}
-
 /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
 /// a BIP39 seed and store it in the `output` location
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct BIP39Recover {
-    pub passphrase: Option<String>,
-    pub mnemonic: String,
+    #[serde(serialize_with = "serialize_passphrase")]
+    #[serde(deserialize_with = "deserialize_passphrase")]
+    pub passphrase: bip39::Passphrase,
+    #[serde(serialize_with = "serialize_mnemonic")]
+    #[serde(deserialize_with = "deserialize_mnemonic")]
+    pub mnemonic: bip39::Mnemonic,
     pub output: Location,
+}
+
+impl fmt::Debug for BIP39Recover {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BIP39Recover")
+            .field("passphrase", &"<bip39::Passphrase>")
+            .field("mnemonic", &"<bip39::Mnemonic>")
+            .field("output", &self.output)
+            .finish()
+    }
 }
 
 impl GenerateSecret for BIP39Recover {
     type Output = ();
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut seed = Zeroizing::new(vec![0u8; 64]);
-        let passphrase: &str = self.passphrase.as_deref().unwrap_or("");
-        let seed_mut: &mut [u8; 64] = seed.as_mut_slice().try_into().unwrap();
-        bip39::mnemonic_to_seed(&self.mnemonic, passphrase, seed_mut);
+        let mut seed = bip39::Seed::null();
+        bip39::mnemonic_to_seed((&self.mnemonic).into(), (&self.passphrase).into(), &mut seed);
 
         Ok(Products {
-            secret: seed,
+            secret: Zeroizing::new(seed.as_ref().to_vec()),
             output: (),
         })
     }
 
     fn target(&self) -> &Location {
         &self.output
-    }
-}
-
-impl Drop for BIP39Recover {
-    fn drop(&mut self) {
-        self.mnemonic.zeroize();
-        if let Some(ref mut p) = &mut self.passphrase {
-            p.zeroize();
-        }
     }
 }
 
@@ -479,7 +508,7 @@ pub enum Curve {
 pub struct Slip10Derive {
     pub curve: Curve,
 
-    pub chain: Chain,
+    pub chain: Slip10Chain,
 
     pub input: Slip10DeriveInput,
 
@@ -487,14 +516,31 @@ pub struct Slip10Derive {
 }
 
 impl DeriveSecret<1> for Slip10Derive {
-    type Output = ChainCode;
+    type Output = Slip10ChainCode;
 
-    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<ChainCode>, FatalProcedureError> {
+    fn derive(self, guards: [Buffer<u8>; 1]) -> Result<Products<Slip10ChainCode>, FatalProcedureError> {
         // Slip10 extended secret key has the following format:
         // 0 || sk || cc
         // The first byte is zero, sk -- 32-byte secret key, cc.-- 32-byte chain code.
         // We do not keep the first byte in stronghold, so that the remaining
         // extended bytes `sk || cc` are convertible to a secret key directly.
+
+        fn try_get_hardened_chain(chain: Vec<u32>) -> Result<Vec<slip10::Hardened>, FatalProcedureError> {
+            chain
+                .into_iter()
+                .map(slip10::Hardened::try_from)
+                // try_collect is not stable yet
+                .try_fold(Vec::new(), |mut v, s| {
+                    s.map(|s| {
+                        v.push(s);
+                        v
+                    })
+                })
+                .map_err(|e| FatalProcedureError::from(crypto::Error::from(e)))
+        }
+        fn get_result<K: slip10::Derivable>(dk: slip10::Slip10<K>) -> (Zeroizing<Vec<u8>>, slip10::ChainCode) {
+            (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code())
+        }
 
         let (extended_bytes, chain_code) = match self.input {
             Slip10DeriveInput::Key(_) => {
@@ -507,23 +553,31 @@ impl DeriveSecret<1> for Slip10Derive {
                 let mut ext_bytes = Zeroizing::new([0_u8; 65]);
                 ext_bytes.as_mut()[1..].copy_from_slice(r);
                 match self.curve {
-                    Curve::Ed25519 => slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(&ext_bytes)
-                        .and_then(|parent| parent.derive(&self.chain))
-                        .map(|dk| (Zeroizing::new(dk.extended_bytes()[1..].into()), *dk.chain_code())),
+                    Curve::Ed25519 => {
+                        let hardened_chain = try_get_hardened_chain(self.chain)?;
+                        slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(&ext_bytes)
+                            .map(|parent| parent.derive(hardened_chain.into_iter()))
+                            .map(get_result)
+                    }
                     Curve::Secp256k1 => {
                         slip10::Slip10::<secp256k1_ecdsa::SecretKey>::try_from_extended_bytes(&ext_bytes)
-                            .and_then(|parent| parent.derive(&self.chain))
-                            .map(|dk| (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code()))
+                            .map(|parent| parent.derive(self.chain.into_iter()))
+                            .map(get_result)
                     }
                 }
             }
             Slip10DeriveInput::Seed(_) => match self.curve {
-                Curve::Ed25519 => slip10::Seed::from_bytes(&guards[0].borrow())
-                    .derive::<ed25519::SecretKey>(&self.chain)
-                    .map(|dk| (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code())),
-                Curve::Secp256k1 => slip10::Seed::from_bytes(&guards[0].borrow())
-                    .derive::<secp256k1_ecdsa::SecretKey>(&self.chain)
-                    .map(|dk| (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code())),
+                Curve::Ed25519 => {
+                    let hardened_chain = try_get_hardened_chain(self.chain)?;
+                    let dk = slip10::Seed::from_bytes(&guards[0].borrow())
+                        .derive::<ed25519::SecretKey, _>(hardened_chain.into_iter());
+                    Ok(get_result(dk))
+                }
+                Curve::Secp256k1 => {
+                    let dk = slip10::Seed::from_bytes(&guards[0].borrow())
+                        .derive::<secp256k1_ecdsa::SecretKey, _>(self.chain.into_iter());
+                    Ok(get_result(dk))
+                }
             },
         }?;
         Ok(Products {
