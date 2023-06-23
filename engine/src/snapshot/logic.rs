@@ -94,7 +94,6 @@ impl From<WriteError> for crate::Error {
 static ENCRYPT_WORK_FACTOR: AtomicU8 = AtomicU8::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
 
 pub fn get_encrypt_work_factor() -> u8 {
-    assert!(false);
     ENCRYPT_WORK_FACTOR.load(Ordering::Relaxed)
 }
 
@@ -146,7 +145,6 @@ pub fn encrypt_content_with_work_factor<O: Write>(
     work_factor: u8,
     _associated_data: &[u8],
 ) -> Result<(), WriteError> {
-    assert!(false);
     let work_factor = work_factor.try_into().map_err(|_| WriteError::IncorrectWorkFactor)?;
     let age = age::encrypt_vec(key, work_factor, plain)
         .map_err(|e| WriteError::GenerateRandom(format!("failed to generate age randomness: {e:?}")))?;

@@ -53,6 +53,8 @@ pub enum SMsg {
 /// Actor Factory for the Snapshot.
 impl ActorFactory for Snapshot {
     fn create() -> Self {
+        #[cfg(test)]
+        engine::snapshot::try_set_encrypt_work_factor(1).unwrap();
         Snapshot::new(SnapshotState::default())
     }
 }
