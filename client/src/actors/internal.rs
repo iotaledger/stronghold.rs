@@ -7,7 +7,7 @@ use riker::actors::*;
 
 use std::{
     collections::{HashMap, HashSet},
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     path::PathBuf,
 };
 
@@ -16,18 +16,15 @@ use engine::vault::{BoxProvider, ClientId, DbView, Key, RecordHint, RecordId, Va
 use stronghold_utils::GuardDebug;
 
 use crypto::{
-    keys::{
-        bip39,
-        slip10::{self, Chain, Curve, Seed},
-    },
-    signatures::ed25519,
-    utils::rand::fill,
+    keys::{bip39, slip10},
+    signatures::{ed25519, secp256k1_ecdsa},
+    utils::rand,
 };
 
 use engine::snapshot;
 
 use crate::{
-    actors::{snapshot::SMsg, ProcResult},
+    actors::{snapshot::SMsg, ProcResult, client::{SLIP10Chain, SLIP10Curve}},
     internals::Provider,
     line_error,
     state::{
@@ -38,6 +35,58 @@ use crate::{
 };
 
 use zeroize::Zeroizing;
+
+fn into_hardened_chain(chain: Vec<u32>) -> engine::Result<Vec<slip10::Hardened>> {
+    chain.into_iter()
+        .try_fold(Vec::new(), |mut hardened_chain, segment| -> Result<_, slip10::SegmentHardeningError> {
+            hardened_chain.push(segment.try_into()?);
+            Ok(hardened_chain)
+        })
+        .map_err(|e| engine::Error::CryptoError(e.into()))
+}
+
+fn derive_from_seed<K, I>(seed_bytes: &[u8], chain: I) -> (Zeroizing<Vec<u8>>, slip10::ChainCode) where
+    K: slip10::IsSecretKey + slip10::CalcData<<I as Iterator>::Item>,
+    I: Iterator,
+    <I as Iterator>::Item: slip10::Segment,
+{
+    let dk = slip10::Seed::from_bytes(seed_bytes).derive::<K, I>(chain);
+    (dk.extended_bytes()[1..].to_vec().into(), dk.chain_code().clone())
+}
+
+fn derive_from_parent<K, I>(parent_bytes: &[u8], chain: I) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> where
+    K: slip10::IsSecretKey + slip10::CalcData<<I as Iterator>::Item>,
+    I: Iterator,
+    <I as Iterator>::Item: slip10::Segment,
+{
+    if parent_bytes.len() != 64 {
+        return Err(crypto::Error::InvalidArgumentError { alg: "SLIP10 derive", expected: "SLIP10 64-byte extended parent secret key"}.into());
+    }
+
+    let mut ext_bytes = Zeroizing::new([0; 65]);
+    ext_bytes[1..].copy_from_slice(parent_bytes); //TODO: this may panic
+    slip10::Slip10::<K>::try_from_extended_bytes(&ext_bytes)
+        .map_err(|e| e.into())
+        .map(|sk| {
+            let dk = sk.derive::<I>(chain);
+            (dk.extended_bytes()[1..].to_vec().into(), dk.chain_code().clone())
+        })
+}
+
+impl SLIP10Curve {
+    fn derive_from_seed(self, seed_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+        match self {
+            Self::Ed25519 => Ok(derive_from_seed::<ed25519::SecretKey, _>(seed_bytes, into_hardened_chain(chain)?.into_iter())),
+            Self::Secp256k1 => Ok(derive_from_seed::<secp256k1_ecdsa::SecretKey, _>(seed_bytes, chain.into_iter())),
+        }
+    }
+    fn derive_from_parent(self, parent_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+        match self {
+            Self::Ed25519 => derive_from_parent::<ed25519::SecretKey, _>(parent_bytes, into_hardened_chain(chain)?.into_iter()),
+            Self::Secp256k1 => derive_from_parent::<secp256k1_ecdsa::SecretKey, _>(parent_bytes, chain.into_iter()),
+        }
+    }
+}
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
     client_id: ClientId,
@@ -82,7 +131,8 @@ pub enum InternalMsg {
         size_bytes: usize,
     },
     SLIP10DeriveFromSeed {
-        chain: Chain,
+        curve: SLIP10Curve,
+        chain: SLIP10Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
         key_vault_id: VaultId,
@@ -90,7 +140,8 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     SLIP10DeriveFromKey {
-        chain: Chain,
+        curve: SLIP10Curve,
+        chain: SLIP10Chain,
         parent_vault_id: VaultId,
         parent_record_id: RecordId,
         child_vault_id: VaultId,
@@ -98,14 +149,14 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     BIP39Generate {
-        passphrase: Zeroizing<String>,
+        passphrase: bip39::Passphrase,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
     },
     BIP39Recover {
-        mnemonic: Zeroizing<String>,
-        passphrase: Zeroizing<String>,
+        mnemonic: bip39::Mnemonic,
+        passphrase: bip39::Passphrase,
         vault_id: VaultId,
         record_id: RecordId,
         hint: RecordHint,
@@ -392,7 +443,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 self.keystore.insert_key(vault_id, key.clone());
 
                 let mut seed = Zeroizing::new(vec![0u8; size_bytes]);
-                fill(seed.as_mut()).expect(line_error!());
+                rand::fill(seed.as_mut()).expect(line_error!());
 
                 self.db
                     .write(&key, vault_id, record_id, &seed, hint)
@@ -406,6 +457,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 );
             }
             InternalMsg::SLIP10DeriveFromSeed {
+                curve,
                 chain,
                 seed_vault_id,
                 seed_record_id,
@@ -439,20 +491,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 key_record_id,
                                 hint,
                                 |gdata| {
-                                    let dk = Seed::from_bytes(&gdata.borrow())
-                                        .derive(Curve::Ed25519, &chain)
-                                        .expect(line_error!());
-
-                                    let data: Vec<u8> = dk.into();
+                                    let (ext_sk, chain_code) = curve.derive_from_seed(&gdata.borrow(), chain)?;
 
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::SLIP10Derive(ResultMessage::Ok(dk.chain_code())),
+                                            ProcResult::SLIP10Derive(ResultMessage::Ok(chain_code)),
                                         )),
                                         sender,
                                     );
 
-                                    Ok(data)
+                                    Ok(ext_sk)
                                 },
                             )
                             .expect(line_error!());
@@ -466,6 +514,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 }
             }
             InternalMsg::SLIP10DeriveFromKey {
+                curve,
                 chain,
                 parent_vault_id,
                 parent_record_id,
@@ -500,19 +549,16 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 child_record_id,
                                 hint,
                                 |parent| {
-                                    let parent = slip10::Key::try_from(&*parent.borrow()).expect(line_error!());
-                                    let dk = parent.derive(&chain).expect(line_error!());
-
-                                    let data: Vec<u8> = dk.into();
+                                    let (ext_sk, chain_code) = curve.derive_from_parent(&parent.borrow(), chain)?;
 
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::SLIP10Derive(ResultMessage::Ok(dk.chain_code())),
+                                            ProcResult::SLIP10Derive(ResultMessage::Ok(chain_code)),
                                         )),
                                         sender,
                                     );
 
-                                    Ok(data)
+                                    Ok(ext_sk)
                                 },
                             )
                             .expect(line_error!());
@@ -532,7 +578,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 hint,
             } => {
                 let mut entropy = Zeroizing::new([0u8; 32]);
-                fill(entropy.as_mut()).expect(line_error!());
+                rand::fill(entropy.as_mut()).expect(line_error!());
 
                 let mnemonic = bip39::wordlist::encode(
                     entropy.as_ref(),
@@ -540,9 +586,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 )
                 .expect(line_error!());
 
-                let mut seed = Zeroizing::new([0u8; 64]);
-                let seed_mut = seed.as_mut().try_into().unwrap();
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, seed_mut);
+                let mut seed = bip39::Seed::null();
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
                 let key = if !self.keystore.vault_exists(vault_id) {
                     let k = self.keystore.create_key(vault_id);
@@ -588,9 +633,8 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut seed = Zeroizing::new([0u8; 64]);
-                let seed_mut = seed.as_mut().try_into().unwrap();
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, seed_mut);
+                let mut seed = bip39::Seed::null();
+                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
@@ -632,7 +676,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             raw.truncate(32);
                             let mut bs = Zeroizing::new([0; 32]);
                             bs.copy_from_slice(&raw);
-                            let sk = ed25519::SecretKey::from_bytes(*bs);
+                            let sk = ed25519::SecretKey::from_bytes(&bs);
                             let pk = sk.public_key();
 
                             client.try_tell(
@@ -682,7 +726,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             raw.truncate(32);
                             let mut bs = Zeroizing::new([0; 32]);
                             bs.copy_from_slice(&raw);
-                            let sk = ed25519::SecretKey::from_bytes(*bs);
+                            let sk = ed25519::SecretKey::from_bytes(&bs);
 
                             let sig = sk.sign(&msg);
                             // sk.zeroize();

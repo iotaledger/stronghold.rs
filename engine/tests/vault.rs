@@ -119,7 +119,7 @@ fn test_vaults() {
             ret.extend(data.iter());
             ret.extend(data.iter());
 
-            Ok(ret)
+            Ok(ret.into())
         },
     )
     .unwrap();

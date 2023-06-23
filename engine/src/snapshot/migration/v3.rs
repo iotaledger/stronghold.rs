@@ -23,7 +23,7 @@ pub(crate) fn write<O: Write>(
     password: &Key,
     _associated_data: &[u8],
 ) -> Result<(), Error> {
-    let work_factor = age::WorkFactor::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
+    let work_factor = age::WorkFactor::new(super::super::get_encrypt_work_factor());
     let age = age::encrypt_vec(password, work_factor, plain).map_err(|_| Error::RngFailed)?;
     output.write_all(&age[..])?;
     Ok(())

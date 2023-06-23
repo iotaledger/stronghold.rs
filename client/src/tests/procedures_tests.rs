@@ -5,7 +5,7 @@
 
 use riker::actors::ActorSystem;
 
-use crate::{ProcResult, Procedure, ResultMessage, SLIP10DeriveInput, Stronghold};
+use crate::{ProcResult, Procedure, ResultMessage, SLIP10Curve, SLIP10DeriveInput, Stronghold};
 
 use super::fresh;
 
@@ -43,7 +43,7 @@ fn usecase_ed25519() {
         }
     } else {
         match futures::executor::block_on(sh.runtime_exec(Procedure::BIP39Generate {
-            passphrase: fresh::passphrase().map(Zeroizing::new),
+            passphrase: fresh::passphrase(),
             output: seed.clone(),
             hint: fresh::record_hint(),
         })) {
@@ -52,10 +52,11 @@ fn usecase_ed25519() {
         }
     }
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_path();
     let key = fresh::location();
 
     match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+        curve: SLIP10Curve::Ed25519,
         chain,
         input: SLIP10DeriveInput::Seed(seed),
         output: key.clone(),
@@ -105,11 +106,12 @@ fn usecase_SLIP10Derive_intermediate_keys() {
         r => panic!("unexpected result: {:?}", r),
     };
 
-    let (_path, chain0) = fresh::hd_path();
-    let (_path, chain1) = fresh::hd_path();
+    let (_path, chain0) = fresh::slip10_hd_path();
+    let (_path, chain1) = fresh::slip10_hd_path();
 
     let cc0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
-        chain: chain0.join(&chain1),
+        curve: SLIP10Curve::Ed25519,
+        chain: [chain0.clone(), chain1.clone()].concat(),
         input: SLIP10DeriveInput::Seed(seed.clone()),
         output: fresh::location(),
         hint: fresh::record_hint(),
@@ -122,6 +124,7 @@ fn usecase_SLIP10Derive_intermediate_keys() {
         let intermediate = fresh::location();
 
         match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+            curve: SLIP10Curve::Ed25519,
             chain: chain0,
             input: SLIP10DeriveInput::Seed(seed),
             output: intermediate.clone(),
@@ -132,6 +135,7 @@ fn usecase_SLIP10Derive_intermediate_keys() {
         };
 
         match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+            curve: SLIP10Curve::Ed25519,
             chain: chain1,
             input: SLIP10DeriveInput::Key(intermediate),
             output: fresh::location(),

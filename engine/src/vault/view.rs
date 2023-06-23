@@ -15,6 +15,8 @@ use std::collections::HashMap;
 
 use runtime::GuardedVec;
 
+use zeroize::Zeroizing;
+
 /// A view over the data inside of the Stronghold database.
 #[derive(Deserialize, Serialize, Clone, Default)]
 pub struct DbView<P: BoxProvider> {
@@ -121,7 +123,7 @@ impl<P: BoxProvider> DbView<P> {
         f: F,
     ) -> crate::Result<()>
     where
-        F: FnOnce(GuardedVec<u8>) -> crate::Result<Vec<u8>>,
+        F: FnOnce(GuardedVec<u8>) -> crate::Result<Zeroizing<Vec<u8>>>,
     {
         if let Some(vault) = self.vaults.get_mut(&vid0) {
             let guard = vault.get_guard(key0, rid0.0)?;
