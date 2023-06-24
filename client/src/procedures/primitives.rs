@@ -67,6 +67,8 @@ pub enum StrongholdProcedure {
 
     #[cfg(feature = "insecure")]
     CompareSecret(CompareSecret),
+    #[cfg(feature = "insecure")]
+    GetSecret(GetSecret),
 }
 
 impl Procedure for StrongholdProcedure {
@@ -101,6 +103,8 @@ impl Procedure for StrongholdProcedure {
 
             #[cfg(feature = "insecure")]
             CompareSecret(proc) => proc.exec(runner).map(|o| o.into()),
+            #[cfg(feature = "insecure")]
+            GetSecret(proc) => proc.exec(runner).map(|o| o.into()),
         }
     }
 }
@@ -205,7 +209,8 @@ macro_rules! generic_procedures {
 
 #[cfg(feature = "insecure")]
 generic_procedures! {
-    UseSecret<1> => { CompareSecret }
+    UseSecret<1> => { CompareSecret },
+    UseSecret<1> => { GetSecret }
 }
 
 generic_procedures! {
@@ -1225,6 +1230,33 @@ impl UseSecret<1> for CompareSecret {
         let result = self.expected.eq(&inner.to_vec());
 
         Ok(vec![result.into()])
+    }
+
+    fn source(&self) -> [Location; 1] {
+        [self.location.clone()]
+    }
+}
+
+/// This procedure is to be used to get values from the vault.
+/// By its very nature, this procedure is not secure to use and is by default
+/// inactive. it MUST NOT be used in production setups.
+/// Returns the secret bytes as Vec<u8>.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "insecure")]
+pub struct GetSecret {
+    /// The location to look for the specified value
+    pub location: Location,
+}
+
+#[cfg(feature = "insecure")]
+impl UseSecret<1> for GetSecret {
+    type Output = Vec<u8>;
+
+    fn use_secret(self, guard: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
+        let inner = guard[0].borrow();
+        let inner: &[u8] = inner.as_ref();
+
+        Ok(inner.to_vec())
     }
 
     fn source(&self) -> [Location; 1] {
