@@ -19,6 +19,8 @@ version = "0.4"
 
 [dependencies.iota-crypto]
 version = "0.21.0"
+git = "https://github.com/iotaledger/crypto.rs"
+branch = "dev"
 features = [ "random", "chacha" ]
 default-features= false
 

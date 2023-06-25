@@ -370,7 +370,7 @@ fn deserialize_passphrase<'de, D: Deserializer<'de>>(d: D) -> Result<bip39::Pass
 
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
 /// passphrase). Store the seed and return the mnemonic sentence as data output.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BIP39Generate {
     #[serde(serialize_with = "serialize_passphrase")]
     #[serde(deserialize_with = "deserialize_passphrase")]
@@ -379,16 +379,16 @@ pub struct BIP39Generate {
     pub output: Location,
 }
 
-impl fmt::Debug for BIP39Generate {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BIP39Generate")
-            .field("passphrase", &"<bip39::Passphrase>")
-            .field("language", &self.language)
-            .field("output", &self.output)
-            .finish()
-    }
-}
+// impl fmt::Debug for BIP39Generate {
+//     #[inline]
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.debug_struct("BIP39Generate")
+//             .field("passphrase", &"<bip39::Passphrase>")
+//             .field("language", &self.language)
+//             .field("output", &self.output)
+//             .finish()
+//     }
+// }
 
 impl GenerateSecret for BIP39Generate {
     type Output = bip39::Mnemonic;
@@ -404,7 +404,7 @@ impl GenerateSecret for BIP39Generate {
 
         let mnemonic: bip39::Mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
         let mut seed = bip39::Seed::null();
-        bip39::mnemonic_to_seed((&mnemonic).into(), (&self.passphrase).into(), &mut seed);
+        bip39::mnemonic_to_seed(&mnemonic, &self.passphrase, &mut seed);
 
         Ok(Products {
             secret: Zeroizing::new(seed.as_ref().to_vec()),
@@ -419,7 +419,7 @@ impl GenerateSecret for BIP39Generate {
 
 /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
 /// a BIP39 seed and store it in the `output` location
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BIP39Recover {
     #[serde(serialize_with = "serialize_passphrase")]
     #[serde(deserialize_with = "deserialize_passphrase")]
@@ -430,23 +430,23 @@ pub struct BIP39Recover {
     pub output: Location,
 }
 
-impl fmt::Debug for BIP39Recover {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BIP39Recover")
-            .field("passphrase", &"<bip39::Passphrase>")
-            .field("mnemonic", &"<bip39::Mnemonic>")
-            .field("output", &self.output)
-            .finish()
-    }
-}
+// impl fmt::Debug for BIP39Recover {
+//     #[inline]
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.debug_struct("BIP39Recover")
+//             .field("passphrase", &"<bip39::Passphrase>")
+//             .field("mnemonic", &"<bip39::Mnemonic>")
+//             .field("output", &self.output)
+//             .finish()
+//     }
+// }
 
 impl GenerateSecret for BIP39Recover {
     type Output = ();
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
         let mut seed = bip39::Seed::null();
-        bip39::mnemonic_to_seed((&self.mnemonic).into(), (&self.passphrase).into(), &mut seed);
+        bip39::mnemonic_to_seed(&self.mnemonic, &self.passphrase, &mut seed);
 
         Ok(Products {
             secret: Zeroizing::new(seed.as_ref().to_vec()),
@@ -526,16 +526,9 @@ impl DeriveSecret<1> for Slip10Derive {
         // extended bytes `sk || cc` are convertible to a secret key directly.
 
         fn try_get_hardened_chain(chain: Vec<u32>) -> Result<Vec<slip10::Hardened>, FatalProcedureError> {
-            chain
-                .into_iter()
-                .map(slip10::Hardened::try_from)
-                // try_collect is not stable yet
-                .try_fold(Vec::new(), |mut v, s| {
-                    s.map(|s| {
-                        v.push(s);
-                        v
-                    })
-                })
+            chain.into_iter()
+                .map(|s| s.try_into())
+                .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| FatalProcedureError::from(crypto::Error::from(e)))
         }
         fn get_result<K: slip10::Derivable>(dk: slip10::Slip10<K>) -> (Zeroizing<Vec<u8>>, slip10::ChainCode) {
