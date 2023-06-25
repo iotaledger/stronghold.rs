@@ -10,7 +10,6 @@ pub use crypto::keys::slip10::ChainCode as Slip10ChainCode;
 pub type Slip10Chain = Vec<u32>;
 pub type Slip10HardenedChain = Vec<slip10::Hardened>;
 
-use core::fmt;
 use crypto::{
     ciphers::{
         aes_gcm::Aes256Gcm,
@@ -379,17 +378,6 @@ pub struct BIP39Generate {
     pub output: Location,
 }
 
-// impl fmt::Debug for BIP39Generate {
-//     #[inline]
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.debug_struct("BIP39Generate")
-//             .field("passphrase", &"<bip39::Passphrase>")
-//             .field("language", &self.language)
-//             .field("output", &self.output)
-//             .finish()
-//     }
-// }
-
 impl GenerateSecret for BIP39Generate {
     type Output = bip39::Mnemonic;
 
@@ -429,17 +417,6 @@ pub struct BIP39Recover {
     pub mnemonic: bip39::Mnemonic,
     pub output: Location,
 }
-
-// impl fmt::Debug for BIP39Recover {
-//     #[inline]
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.debug_struct("BIP39Recover")
-//             .field("passphrase", &"<bip39::Passphrase>")
-//             .field("mnemonic", &"<bip39::Mnemonic>")
-//             .field("output", &self.output)
-//             .finish()
-//     }
-// }
 
 impl GenerateSecret for BIP39Recover {
     type Output = ();
