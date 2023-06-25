@@ -138,6 +138,17 @@ pub enum Procedure {
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
     Ed25519Sign { private_key: Location, msg: Vec<u8> },
+    /// Derive an Secp256k1 ECDSA public key from the corresponding private key stored at the specified
+    /// location
+    Secp256k1EcdsaPublicKey { private_key: Location },
+    /// Derive an Secp256k1 EVM Address from the corresponding private key stored at the specified
+    /// location
+    Secp256k1EcdsaEvmAddress { private_key: Location },
+    /// Use the specified Secp256k1 ECDSA compatible key to sign the given message
+    ///
+    /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
+    /// in particular SLIP10 keys are compatible.
+    Secp256k1EcdsaSign { private_key: Location, msg: Vec<u8> },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
@@ -161,6 +172,12 @@ pub enum ProcResult {
     Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PublicKey::LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::Signature::LENGTH]>),
+    /// Return value for `Secp256k1EcdsaPublicKey`. Returns an Secp256k1 ECDSA public key.
+    Secp256k1EcdsaPublicKey(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::PublicKey::LENGTH]>),
+    /// Return value for `Secp256k1EcdsaEvmAddress`. Returns an Secp256k1 ECDSA EVM Address.
+    Secp256k1EcdsaEvmAddress(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::EvmAddress::LENGTH]>),
+    /// Return value for `Secp256k1EcdsaSign`. Returns an Secp256k1 ECDSA signature.
+    Secp256k1EcdsaSign(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::Signature::LENGTH]>),
     /// Generic Error return message.
     Error(String),
 }
@@ -176,18 +193,24 @@ impl TryFrom<SerdeProcResult> for ProcResult {
             SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
             SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
             SerdeProcResult::Ed25519PublicKey(msg) => {
-                let msg: ResultMessage<[u8; crypto::signatures::ed25519::PublicKey::LENGTH]> = match msg {
-                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
-                    ResultMessage::Error(e) => ResultMessage::Error(e),
-                };
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
                 Ok(ProcResult::Ed25519PublicKey(msg))
             }
             SerdeProcResult::Ed25519Sign(msg) => {
-                let msg: ResultMessage<[u8; crypto::signatures::ed25519::Signature::LENGTH]> = match msg {
-                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
-                    ResultMessage::Error(e) => ResultMessage::Error(e),
-                };
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
                 Ok(ProcResult::Ed25519Sign(msg))
+            }
+            SerdeProcResult::Secp256k1EcdsaPublicKey(msg) => {
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
+                Ok(ProcResult::Secp256k1EcdsaPublicKey(msg))
+            }
+            SerdeProcResult::Secp256k1EcdsaEvmAddress(msg) => {
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
+                Ok(ProcResult::Secp256k1EcdsaEvmAddress(msg))
+            }
+            SerdeProcResult::Secp256k1EcdsaSign(msg) => {
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
+                Ok(ProcResult::Secp256k1EcdsaSign(msg))
             }
             SerdeProcResult::Error(err) => Ok(ProcResult::Error(err)),
         }
@@ -204,6 +227,9 @@ enum SerdeProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     Ed25519PublicKey(ResultMessage<Vec<u8>>),
     Ed25519Sign(ResultMessage<Vec<u8>>),
+    Secp256k1EcdsaPublicKey(ResultMessage<Vec<u8>>),
+    Secp256k1EcdsaEvmAddress(ResultMessage<Vec<u8>>),
+    Secp256k1EcdsaSign(ResultMessage<Vec<u8>>),
     Error(String),
 }
 
@@ -216,18 +242,24 @@ impl From<ProcResult> for SerdeProcResult {
             ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
             ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
             ProcResult::Ed25519PublicKey(msg) => {
-                let msg = match msg {
-                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
-                    ResultMessage::Error(error) => ResultMessage::Error(error),
-                };
+                let msg = msg.map(|slice| slice.to_vec());
                 SerdeProcResult::Ed25519PublicKey(msg)
             }
             ProcResult::Ed25519Sign(msg) => {
-                let msg = match msg {
-                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
-                    ResultMessage::Error(error) => ResultMessage::Error(error),
-                };
+                let msg = msg.map(|slice| slice.to_vec());
                 SerdeProcResult::Ed25519Sign(msg)
+            }
+            ProcResult::Secp256k1EcdsaPublicKey(msg) => {
+                let msg = msg.map(|slice| slice.to_vec());
+                SerdeProcResult::Secp256k1EcdsaPublicKey(msg)
+            }
+            ProcResult::Secp256k1EcdsaEvmAddress(msg) => {
+                let msg = msg.map(|slice| slice.to_vec());
+                SerdeProcResult::Secp256k1EcdsaEvmAddress(msg)
+            }
+            ProcResult::Secp256k1EcdsaSign(msg) => {
+                let msg = msg.map(|slice| slice.to_vec());
+                SerdeProcResult::Secp256k1EcdsaSign(msg)
             }
             ProcResult::Error(err) => SerdeProcResult::Error(err),
         }
@@ -716,6 +748,25 @@ impl Receive<SHRequest> for Client {
                         let (vault_id, record_id) = self.resolve_location(private_key);
                         internal.try_tell(
                             InternalMsg::Ed25519Sign {
+                                vault_id,
+                                record_id,
+                                msg,
+                            },
+                            sender,
+                        )
+                    }
+                    Procedure::Secp256k1EcdsaPublicKey { private_key } => {
+                        let (vault_id, record_id) = self.resolve_location(private_key);
+                        internal.try_tell(InternalMsg::Secp256k1EcdsaPublicKey { vault_id, record_id }, sender)
+                    }
+                    Procedure::Secp256k1EcdsaEvmAddress { private_key } => {
+                        let (vault_id, record_id) = self.resolve_location(private_key);
+                        internal.try_tell(InternalMsg::Secp256k1EcdsaEvmAddress { vault_id, record_id }, sender)
+                    }
+                    Procedure::Secp256k1EcdsaSign { private_key, msg } => {
+                        let (vault_id, record_id) = self.resolve_location(private_key);
+                        internal.try_tell(
+                            InternalMsg::Secp256k1EcdsaSign {
                                 vault_id,
                                 record_id,
                                 msg,

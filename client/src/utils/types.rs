@@ -13,6 +13,21 @@ pub enum ResultMessage<T> {
     Error(String),
 }
 
+impl<T> ResultMessage<T> {
+    pub fn map<R, F: FnOnce(T) -> R>(self, f: F) -> ResultMessage<R> {
+        match self {
+            ResultMessage::Ok(t) => ResultMessage::Ok(f(t)),
+            ResultMessage::Error(s) => ResultMessage::Error(s),
+        }
+    }
+    pub fn try_map<R, E, F: FnOnce(T) -> Result<R, E>>(self, f: F) -> Result<ResultMessage<R>, E> {
+        match self {
+            ResultMessage::Ok(t) => f(t).map(|r| ResultMessage::Ok(r)),
+            ResultMessage::Error(s) => Ok(ResultMessage::Error(s)),
+        }
+    }
+}
+
 impl ResultMessage<()> {
     pub const OK: Self = ResultMessage::Ok(());
 }

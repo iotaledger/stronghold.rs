@@ -92,6 +92,85 @@ fn usecase_ed25519() {
 }
 
 #[test]
+fn usecase_secp256k1_ecdsa() {
+    let (_cp, sh) = setup_stronghold();
+
+    let seed = fresh::location();
+
+    if fresh::coinflip() {
+        let size_bytes = if fresh::coinflip() {
+            Some(fresh::usize(1024))
+        } else {
+            None
+        };
+
+        match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Generate {
+            size_bytes,
+            output: seed.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::SLIP10Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+    } else {
+        match futures::executor::block_on(sh.runtime_exec(Procedure::BIP39Generate {
+            passphrase: fresh::passphrase(),
+            output: seed.clone(),
+            hint: fresh::record_hint(),
+        })) {
+            ProcResult::BIP39Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+    }
+
+    let (_path, chain) = fresh::slip10_hd_path();
+    let key = fresh::location();
+
+    match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
+        curve: SLIP10Curve::Secp256k1,
+        chain,
+        input: SLIP10DeriveInput::Seed(seed),
+        output: key.clone(),
+        hint: fresh::record_hint(),
+    })) {
+        ProcResult::SLIP10Derive(ResultMessage::Ok(_)) => (),
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let pk = match futures::executor::block_on(sh.runtime_exec(Procedure::Secp256k1EcdsaPublicKey {
+        private_key: key.clone(),
+    })) {
+        ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Ok(pk)) => pk,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let evm_address = match futures::executor::block_on(sh.runtime_exec(Procedure::Secp256k1EcdsaEvmAddress {
+        private_key: key.clone(),
+    })) {
+        ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Ok(evm_address)) => evm_address,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    let msg = fresh::bytestring();
+
+    let sig = match futures::executor::block_on(sh.runtime_exec(Procedure::Secp256k1EcdsaSign {
+        private_key: key,
+        msg: msg.clone(),
+    })) {
+        ProcResult::Secp256k1EcdsaSign(ResultMessage::Ok(sig)) => sig,
+        r => panic!("unexpected result: {:?}", r),
+    };
+
+    {
+        use crypto::signatures::secp256k1_ecdsa::{PublicKey, Signature};
+        let pk = PublicKey::try_from_bytes(&pk).unwrap();
+        let sig = Signature::try_from_bytes(&sig).unwrap();
+        assert!(pk.verify(&sig, &msg));
+        assert_eq!(pk.to_evm_address(), evm_address.into());
+    }
+}
+
+#[test]
 fn usecase_SLIP10Derive_intermediate_keys() {
     let (_cp, sh) = setup_stronghold();
 

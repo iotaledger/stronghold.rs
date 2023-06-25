@@ -170,6 +170,19 @@ pub enum InternalMsg {
         record_id: RecordId,
         msg: Vec<u8>,
     },
+    Secp256k1EcdsaPublicKey {
+        vault_id: VaultId,
+        record_id: RecordId,
+    },
+    Secp256k1EcdsaEvmAddress {
+        vault_id: VaultId,
+        record_id: RecordId,
+    },
+    Secp256k1EcdsaSign {
+        vault_id: VaultId,
+        record_id: RecordId,
+        msg: Vec<u8>,
+    },
 }
 
 /// Messages used internally by the client.
@@ -746,6 +759,175 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
                             ResultMessage::Error("Failed to access vault".into()),
                         ))),
+                        sender,
+                    )
+                }
+            }
+            InternalMsg::Secp256k1EcdsaPublicKey { vault_id, record_id } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                if let Some(key) = self.keystore.get_key(vault_id) {
+                    self.keystore.insert_key(vault_id, key.clone());
+
+                    self.db
+                        .get_guard(&key, vault_id, record_id, |data| {
+                            let raw = data.borrow();
+                            let raw_slice: &[u8] = &raw;
+
+                            if raw_slice.len() < 32 {
+                                client.try_tell(
+                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                        ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error(
+                                            "Secp256k1 ECDSA secret key bytes too short".into(),
+                                        )),
+                                    )),
+                                    sender,
+                                );
+                            } else {
+                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
+                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
+                                    let pk = sk.public_key();
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Ok(pk.to_bytes())),
+                                        )),
+                                        sender,
+                                    );
+                                } else {
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error(
+                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
+                                            )),
+                                        )),
+                                        sender,
+                                    );
+                                }
+                            }
+ 
+                            Ok(())
+                        })
+                        .expect(line_error!());
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error("Failed to access vault".into())),
+                        )),
+                        sender,
+                    )
+                }
+            }
+            InternalMsg::Secp256k1EcdsaEvmAddress { vault_id, record_id } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                if let Some(key) = self.keystore.get_key(vault_id) {
+                    self.keystore.insert_key(vault_id, key.clone());
+
+                    self.db
+                        .get_guard(&key, vault_id, record_id, |data| {
+                            let raw = data.borrow();
+                            let raw_slice: &[u8] = &raw;
+
+                            if raw_slice.len() < 32 {
+                                client.try_tell(
+                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                        ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error(
+                                            "Secp256k1 ECDSA secret key bytes too short".into(),
+                                        )),
+                                    )),
+                                    sender.clone(),
+                                );
+                            } else {
+                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
+                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
+                                    let addr = sk.public_key().to_evm_address();
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Ok(addr.into())),
+                                        )),
+                                        sender,
+                                    );
+                                } else {
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error(
+                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
+                                            )),
+                                        )),
+                                        sender.clone(),
+                                    );
+                                }
+                            }
+ 
+                            Ok(())
+                        })
+                        .expect(line_error!());
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error("Failed to access vault".into())),
+                        )),
+                        sender,
+                    )
+                }
+            }
+            InternalMsg::Secp256k1EcdsaSign {
+                vault_id,
+                record_id,
+                msg,
+            } => {
+                let cstr: String = self.client_id.into();
+                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
+
+                if let Some(key) = self.keystore.get_key(vault_id) {
+                    self.keystore.insert_key(vault_id, key.clone());
+
+                    self.db
+                        .get_guard(&key, vault_id, record_id, |data| {
+                            let raw = data.borrow();
+                            let raw_slice: &[u8] = &raw;
+
+                            if raw_slice.len() < 32 {
+                                client.try_tell(
+                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                        ProcResult::Secp256k1EcdsaSign(ResultMessage::Error(
+                                            "Secp256k1 ECDSA secret key bytes too short".into(),
+                                        )),
+                                    )),
+                                    sender.clone(),
+                                );
+                            } else {
+                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
+                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
+                                    let sig = sk.sign(&msg);
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Ok(sig.to_bytes())),
+                                        )),
+                                        sender,
+                                    );
+                                } else {
+                                    client.try_tell(
+                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Error(
+                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
+                                            )),
+                                        )),
+                                        sender.clone(),
+                                    );
+                                }
+                            }
+ 
+                            Ok(())
+                        })
+                        .expect(line_error!());
+                } else {
+                    client.try_tell(
+                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
+                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Error("Failed to access vault".into())),
+                        )),
                         sender,
                     )
                 }

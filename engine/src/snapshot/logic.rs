@@ -91,7 +91,10 @@ impl From<WriteError> for crate::Error {
 //
 // The public access is exposed as a workaround so that encryption/decryption time can be controllably low during
 // testing. The work_factor must not be modified in production.
+#[cfg(not(test))]
 static ENCRYPT_WORK_FACTOR: AtomicU8 = AtomicU8::new(age::RECOMMENDED_MINIMUM_ENCRYPT_WORK_FACTOR);
+#[cfg(test)]
+static ENCRYPT_WORK_FACTOR: AtomicU8 = AtomicU8::new(1);
 
 pub fn get_encrypt_work_factor() -> u8 {
     ENCRYPT_WORK_FACTOR.load(Ordering::Relaxed)
