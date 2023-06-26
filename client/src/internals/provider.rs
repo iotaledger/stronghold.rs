@@ -10,8 +10,6 @@ use engine::vault::{BoxProvider, Key};
 
 use serde::{Deserialize, Serialize};
 
-use std::ops::Deref;
-
 /// An implementation of the Vault's `BoxProvider type.  Used to encrypt and decrypt the data in this Stronghold.
 #[derive(Ord, PartialEq, Eq, PartialOrd, Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Provider;
@@ -39,7 +37,7 @@ impl BoxProvider for Provider {
 
         let key = key.key.borrow();
 
-        XChaCha20Poly1305::try_encrypt(key.deref(), &nonce, ad, data, &mut cipher, &mut tag)
+        XChaCha20Poly1305::try_encrypt(&key, &nonce, ad, data, &mut cipher, &mut tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to seal data")))?;
 
         let r#box = [tag.to_vec(), nonce.to_vec(), cipher].concat();
@@ -55,7 +53,7 @@ impl BoxProvider for Provider {
 
         let key = key.key.borrow();
 
-        XChaCha20Poly1305::try_decrypt(key.deref(), &nonce, &ad, &mut plain, &cipher, &tag)
+        XChaCha20Poly1305::try_decrypt(&key, &nonce, &ad, &mut plain, &cipher, &tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to unlock data")))?;
 
         Ok(plain)

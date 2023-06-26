@@ -104,7 +104,7 @@ impl Receive<SMsg> for Snapshot {
                         sender,
                     );
                 } else {
-                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), &*key) {
+                    match Snapshot::read_from_snapshot(filename.as_deref(), path.as_deref(), &key) {
                         Ok(mut snapshot) => {
                             let data = snapshot.get_state(cid);
 
@@ -136,7 +136,7 @@ impl Receive<SMsg> for Snapshot {
                 };
             }
             SMsg::WriteSnapshot { key, filename, path } => {
-                self.write_to_snapshot(filename.as_deref(), path.as_deref(), &*key)
+                self.write_to_snapshot(filename.as_deref(), path.as_deref(), &key)
                     .expect(line_error!());
 
                 self.state = SnapshotState::default();

@@ -108,7 +108,7 @@ pub enum BehaviourError {
 }
 
 /// Configuration for initiating the [`P2PNetworkBehaviour`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct BehaviourConfig {
     /// Timeout for outgoing requests until a [`P2POutboundFailure::Timeout`] is emitted.
     /// If none is specified, it defaults to 10s.
@@ -134,17 +134,6 @@ impl BehaviourConfig {
             keep_alive,
             mdns_ttl,
             mdns_query_interval,
-        }
-    }
-}
-
-impl Default for BehaviourConfig {
-    fn default() -> Self {
-        BehaviourConfig {
-            timeout: None,
-            keep_alive: None,
-            mdns_ttl: None,
-            mdns_query_interval: None,
         }
     }
 }

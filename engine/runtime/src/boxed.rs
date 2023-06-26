@@ -358,6 +358,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn test_eq() {
         let boxed_a = Boxed::<u8>::random(1);
         let boxed_b = boxed_a.clone();
