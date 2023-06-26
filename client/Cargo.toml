@@ -28,8 +28,7 @@ riker = "0.4"
   version = "0.4"
 
   [dependencies.iota-crypto]
-  git = "https://github.com/iotaledger/crypto.rs"
-  branch = "dev"
+  version = "0.21.1"
   features = [
   "random",
   "ed25519",
