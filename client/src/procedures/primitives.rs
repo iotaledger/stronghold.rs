@@ -350,28 +350,49 @@ impl FromStr for MnemonicLanguage {
     }
 }
 
-fn serialize_mnemonic<S: Serializer>(m: &bip39::Mnemonic, s: S) -> Result<S::Ok, S::Error> {
-    m.as_ref().serialize(s)
+pub mod serde_bip39_mnemonic {
+    use super::bip39;
+
+    pub fn serialize<S>(m: &bip39::Mnemonic, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        s.serialize_str(m.as_ref())
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<bip39::Mnemonic, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::Deserialize;
+        String::deserialize(d).map(bip39::Mnemonic::from)
+    }
 }
 
-fn deserialize_mnemonic<'de, D: Deserializer<'de>>(d: D) -> Result<bip39::Mnemonic, D::Error> {
-    String::deserialize(d).map(String::into)
-}
+pub mod serde_bip39_passphrase {
+    use super::bip39;
 
-fn serialize_passphrase<S: Serializer>(p: &bip39::Passphrase, s: S) -> Result<S::Ok, S::Error> {
-    p.as_ref().serialize(s)
-}
+    pub fn serialize<S>(p: &bip39::Passphrase, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        s.serialize_str(p.as_ref())
+    }
 
-fn deserialize_passphrase<'de, D: Deserializer<'de>>(d: D) -> Result<bip39::Passphrase, D::Error> {
-    String::deserialize(d).map(String::into)
+    pub fn deserialize<'de, D>(d: D) -> Result<bip39::Passphrase, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::Deserialize;
+        String::deserialize(d).map(bip39::Passphrase::from)
+    }
 }
 
 /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
 /// passphrase). Store the seed and return the mnemonic sentence as data output.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BIP39Generate {
-    #[serde(serialize_with = "serialize_passphrase")]
-    #[serde(deserialize_with = "deserialize_passphrase")]
+    #[serde(with = "serde_bip39_passphrase")]
     pub passphrase: bip39::Passphrase,
     pub language: MnemonicLanguage,
     pub output: Location,
@@ -408,11 +429,9 @@ impl GenerateSecret for BIP39Generate {
 /// a BIP39 seed and store it in the `output` location
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BIP39Recover {
-    #[serde(serialize_with = "serialize_passphrase")]
-    #[serde(deserialize_with = "deserialize_passphrase")]
+    #[serde(with = "serde_bip39_passphrase")]
     pub passphrase: bip39::Passphrase,
-    #[serde(serialize_with = "serialize_mnemonic")]
-    #[serde(deserialize_with = "deserialize_mnemonic")]
+    #[serde(with = "serde_bip39_mnemonic")]
     pub mnemonic: bip39::Mnemonic,
     pub output: Location,
 }
