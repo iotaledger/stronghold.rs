@@ -503,7 +503,8 @@ impl DeriveSecret<1> for Slip10Derive {
         // extended bytes `sk || cc` are convertible to a secret key directly.
 
         fn try_get_hardened_chain(chain: Vec<u32>) -> Result<Vec<slip10::Hardened>, FatalProcedureError> {
-            chain.into_iter()
+            chain
+                .into_iter()
                 .map(|s| s.try_into())
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| FatalProcedureError::from(crypto::Error::from(e)))
