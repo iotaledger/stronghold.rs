@@ -27,7 +27,7 @@ pub fn passphrase() -> bip39::Passphrase {
     }
 }
 
-pub fn slip10_hd_path() -> (String, SLIP10Chain) {
+pub fn slip10_hd_chain() -> (String, SLIP10Chain) {
     let mut s = "m".to_string();
     let mut is = vec![];
     while coinflip() {

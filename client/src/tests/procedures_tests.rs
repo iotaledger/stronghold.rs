@@ -50,7 +50,7 @@ fn usecase_ed25519() {
         }
     }
 
-    let (_path, chain) = fresh::slip10_hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = fresh::location();
 
     match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
@@ -121,7 +121,7 @@ fn usecase_secp256k1_ecdsa() {
         }
     }
 
-    let (_path, chain) = fresh::slip10_hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = fresh::location();
 
     match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
@@ -183,8 +183,8 @@ fn usecase_SLIP10Derive_intermediate_keys() {
         r => panic!("unexpected result: {:?}", r),
     };
 
-    let (_path, chain0) = fresh::slip10_hd_path();
-    let (_path, chain1) = fresh::slip10_hd_path();
+    let (_path, chain0) = fresh::slip10_hd_chain();
+    let (_path, chain1) = fresh::slip10_hd_chain();
 
     let cc0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
         curve: SLIP10Curve::Ed25519,
