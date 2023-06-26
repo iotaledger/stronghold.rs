@@ -5,6 +5,7 @@ use std::{
     convert::TryInto,
     fs::{rename, File, OpenOptions},
     io::{Read, Write},
+    os::unix::prelude::OpenOptionsExt,
     path::Path,
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -188,7 +189,13 @@ pub fn encrypt_file(plain: &[u8], path: &Path, key: &Key) -> Result<(), WriteErr
     s.push(hex::encode(salt));
     let tmp = Path::new(&s);
 
-    let mut f = OpenOptions::new().write(true).create_new(true).open(tmp)?;
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut f = options.write(true).create_new(true).open(tmp)?;
     // write magic and version bytes
     f.write_all(&MAGIC)?;
     f.write_all(&VERSION)?;
