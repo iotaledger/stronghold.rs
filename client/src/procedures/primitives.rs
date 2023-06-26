@@ -520,7 +520,7 @@ impl DeriveSecret<1> for Slip10Derive {
         // We do not keep the first byte in stronghold, so that the remaining
         // extended bytes `sk || cc` are convertible to a secret key directly.
 
-        fn try_get_hardened_chain(chain: Vec<u32>) -> Result<Vec<slip10::Hardened>, FatalProcedureError> {
+        fn try_into_hardened_chain(chain: Vec<u32>) -> Result<Vec<slip10::Hardened>, FatalProcedureError> {
             chain
                 .into_iter()
                 .map(|s| s.try_into())
@@ -543,7 +543,7 @@ impl DeriveSecret<1> for Slip10Derive {
                 ext_bytes.as_mut()[1..].copy_from_slice(r);
                 match self.curve {
                     Curve::Ed25519 => {
-                        let hardened_chain = try_get_hardened_chain(self.chain)?;
+                        let hardened_chain = try_into_hardened_chain(self.chain)?;
                         slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(&ext_bytes)
                             .map(|parent| parent.derive(hardened_chain.into_iter()))
                             .map(get_result)
@@ -557,7 +557,7 @@ impl DeriveSecret<1> for Slip10Derive {
             }
             Slip10DeriveInput::Seed(_) => match self.curve {
                 Curve::Ed25519 => {
-                    let hardened_chain = try_get_hardened_chain(self.chain)?;
+                    let hardened_chain = try_into_hardened_chain(self.chain)?;
                     let dk = slip10::Seed::from_bytes(&guards[0].borrow())
                         .derive::<ed25519::SecretKey, _>(hardened_chain.into_iter());
                     Ok(get_result(dk))
