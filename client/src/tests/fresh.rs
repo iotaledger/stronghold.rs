@@ -13,8 +13,8 @@ pub fn location() -> Location {
     Location::generic(variable_bytestring(4096), variable_bytestring(4096))
 }
 
-/// Creates a random hd_path.
-pub fn hd_path() -> (String, Slip10Chain) {
+/// Creates a random SLIP10 hardened chain.
+pub fn slip10_hd_chain() -> (String, Slip10Chain) {
     use slip10::Segment;
     let mut s = "m".to_string();
     let mut is = vec![];

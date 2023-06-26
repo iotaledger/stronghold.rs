@@ -260,7 +260,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
         assert!(client.execute_procedure(bip32_gen).is_ok());
     }
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
@@ -313,7 +313,7 @@ async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error:
 
     assert!(client.execute_procedure(slip10_generate).is_ok());
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
@@ -437,8 +437,8 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
     };
     assert!(client.execute_procedure(slip10_generate).is_ok());
 
-    let (_path, chain0) = fresh::hd_path();
-    let (_path, chain1) = fresh::hd_path();
+    let (_path, chain0) = fresh::slip10_hd_chain();
+    let (_path, chain1) = fresh::slip10_hd_chain();
 
     let cc0: slip10::ChainCode = {
         let slip10_derive = Slip10Derive {
@@ -492,7 +492,7 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
         curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate.target().clone()),
         output: fresh::location(),
-        chain: fresh::hd_path().1.into_iter().map(u32::from).collect(),
+        chain: fresh::slip10_hd_chain().1.into_iter().map(u32::from).collect(),
     };
     let get_pk = PublicKey {
         ty: KeyType::Ed25519,
@@ -535,7 +535,7 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
         assert!(fill(&mut seed).is_ok(), "Failed to fill seed with random data");
 
         let dk = slip10::Seed::from_bytes(&seed).derive::<ed25519::SecretKey, _>(
-            fresh::hd_path()
+            fresh::slip10_hd_chain()
                 .1
                 .into_iter()
                 .map(|s| slip10::Hardened::try_from(s).unwrap()),
@@ -801,7 +801,7 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
     let passphrase = random::string(4096);
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let message = random::variable_bytestring(4095);
 
     let generate_bip39 = BIP39Generate {
