@@ -8,7 +8,6 @@ use crate::{derive_record_id, derive_vault_id, Client, ClientError, Location, Us
 
 pub use crypto::keys::slip10::ChainCode as Slip10ChainCode;
 pub type Slip10Chain = Vec<u32>;
-pub type Slip10HardenedChain = Vec<slip10::Hardened>;
 
 use crypto::{
     ciphers::{
