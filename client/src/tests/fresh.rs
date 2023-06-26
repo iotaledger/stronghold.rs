@@ -1,7 +1,10 @@
 // Copyright 2021 IOTA Stiftung
 // SPDX-License-Identifier: Apache-2.0
 
-use crypto::{keys::{bip39, slip10}, utils::rand};
+use crypto::{
+    keys::{bip39, slip10},
+    utils::rand,
+};
 pub use stronghold_utils::test_utils::{self, fresh::*};
 
 use crate::{Location, RecordHint, SLIP10Chain};

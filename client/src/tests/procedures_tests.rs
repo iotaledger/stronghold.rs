@@ -9,8 +9,6 @@ use crate::{ProcResult, Procedure, ResultMessage, SLIP10Curve, SLIP10DeriveInput
 
 use super::fresh;
 
-use zeroize::Zeroizing;
-
 fn setup_stronghold() -> (Vec<u8>, Stronghold) {
     let sys = ActorSystem::new().unwrap();
 

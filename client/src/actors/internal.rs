@@ -24,7 +24,11 @@ use crypto::{
 use engine::snapshot;
 
 use crate::{
-    actors::{snapshot::SMsg, ProcResult, client::{SLIP10Chain, SLIP10Curve}},
+    actors::{
+        client::{SLIP10Chain, SLIP10Curve},
+        snapshot::SMsg,
+        ProcResult,
+    },
     internals::Provider,
     line_error,
     state::{
@@ -37,15 +41,20 @@ use crate::{
 use zeroize::Zeroizing;
 
 fn into_hardened_chain(chain: Vec<u32>) -> engine::Result<Vec<slip10::Hardened>> {
-    chain.into_iter()
-        .try_fold(Vec::new(), |mut hardened_chain, segment| -> Result<_, slip10::SegmentHardeningError> {
-            hardened_chain.push(segment.try_into()?);
-            Ok(hardened_chain)
-        })
+    chain
+        .into_iter()
+        .try_fold(
+            Vec::new(),
+            |mut hardened_chain, segment| -> Result<_, slip10::SegmentHardeningError> {
+                hardened_chain.push(segment.try_into()?);
+                Ok(hardened_chain)
+            },
+        )
         .map_err(|e| engine::Error::CryptoError(e.into()))
 }
 
-fn derive_from_seed<K, I>(seed_bytes: &[u8], chain: I) -> (Zeroizing<Vec<u8>>, slip10::ChainCode) where
+fn derive_from_seed<K, I>(seed_bytes: &[u8], chain: I) -> (Zeroizing<Vec<u8>>, slip10::ChainCode)
+where
     K: slip10::IsSecretKey + slip10::CalcData<<I as Iterator>::Item>,
     I: Iterator,
     <I as Iterator>::Item: slip10::Segment,
@@ -54,17 +63,22 @@ fn derive_from_seed<K, I>(seed_bytes: &[u8], chain: I) -> (Zeroizing<Vec<u8>>, s
     (dk.extended_bytes()[1..].to_vec().into(), dk.chain_code().clone())
 }
 
-fn derive_from_parent<K, I>(parent_bytes: &[u8], chain: I) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> where
+fn derive_from_parent<K, I>(parent_bytes: &[u8], chain: I) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)>
+where
     K: slip10::IsSecretKey + slip10::CalcData<<I as Iterator>::Item>,
     I: Iterator,
     <I as Iterator>::Item: slip10::Segment,
 {
     if parent_bytes.len() != 64 {
-        return Err(crypto::Error::InvalidArgumentError { alg: "SLIP10 derive", expected: "SLIP10 64-byte extended parent secret key"}.into());
+        return Err(crypto::Error::InvalidArgumentError {
+            alg: "SLIP10 derive",
+            expected: "SLIP10 64-byte extended parent secret key",
+        }
+        .into());
     }
 
     let mut ext_bytes = Zeroizing::new([0; 65]);
-    ext_bytes[1..].copy_from_slice(parent_bytes); //TODO: this may panic
+    ext_bytes[1..].copy_from_slice(parent_bytes); // TODO: this may panic
     slip10::Slip10::<K>::try_from_extended_bytes(&ext_bytes)
         .map_err(|e| e.into())
         .map(|sk| {
@@ -74,15 +88,31 @@ fn derive_from_parent<K, I>(parent_bytes: &[u8], chain: I) -> engine::Result<(Ze
 }
 
 impl SLIP10Curve {
-    fn derive_from_seed(self, seed_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+    fn derive_from_seed(
+        self,
+        seed_bytes: &[u8],
+        chain: Vec<u32>,
+    ) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
         match self {
-            Self::Ed25519 => Ok(derive_from_seed::<ed25519::SecretKey, _>(seed_bytes, into_hardened_chain(chain)?.into_iter())),
-            Self::Secp256k1 => Ok(derive_from_seed::<secp256k1_ecdsa::SecretKey, _>(seed_bytes, chain.into_iter())),
+            Self::Ed25519 => Ok(derive_from_seed::<ed25519::SecretKey, _>(
+                seed_bytes,
+                into_hardened_chain(chain)?.into_iter(),
+            )),
+            Self::Secp256k1 => Ok(derive_from_seed::<secp256k1_ecdsa::SecretKey, _>(
+                seed_bytes,
+                chain.into_iter(),
+            )),
         }
     }
-    fn derive_from_parent(self, parent_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+    fn derive_from_parent(
+        self,
+        parent_bytes: &[u8],
+        chain: Vec<u32>,
+    ) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
         match self {
-            Self::Ed25519 => derive_from_parent::<ed25519::SecretKey, _>(parent_bytes, into_hardened_chain(chain)?.into_iter()),
+            Self::Ed25519 => {
+                derive_from_parent::<ed25519::SecretKey, _>(parent_bytes, into_hardened_chain(chain)?.into_iter())
+            }
             Self::Secp256k1 => derive_from_parent::<secp256k1_ecdsa::SecretKey, _>(parent_bytes, chain.into_iter()),
         }
     }
@@ -805,7 +835,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                     );
                                 }
                             }
- 
+
                             Ok(())
                         })
                         .expect(line_error!());
@@ -860,7 +890,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                     );
                                 }
                             }
- 
+
                             Ok(())
                         })
                         .expect(line_error!());
@@ -919,7 +949,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                     );
                                 }
                             }
- 
+
                             Ok(())
                         })
                         .expect(line_error!());
