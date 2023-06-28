@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //#![allow(unused_imports)]
-use crypto::keys::slip10::ChainCode;
+use crypto::keys::slip10::{self, Segment};
 use iota_stronghold::{
     procedures::{Curve, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault},
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
@@ -166,7 +166,11 @@ impl StrongholdWrapper {
         Ok(signature)
     }
 
-    pub fn derive_seed(&self, key_as_hash: Zeroizing<Vec<u8>>, address_index: u32) -> Result<ChainCode, WrapperError> {
+    pub fn derive_seed(
+        &self,
+        key_as_hash: Zeroizing<Vec<u8>>,
+        address_index: u32,
+    ) -> Result<slip10::ChainCode, WrapperError> {
         let seed_derived_path = format!("{RECORD_PATH_SEED}.{address_index}");
 
         let seed_location = Location::Generic {
@@ -179,13 +183,16 @@ impl StrongholdWrapper {
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let chain = vec![
+        let chain = [
             44,   // BIP-0044
             4218, // IOTA coin type
             0,    // zero account id
             0,    // public
             address_index,
-        ];
+        ]
+        .into_iter()
+        .map(|s| s.harden().into())
+        .collect();
 
         log::info!("[Rust] Deriving Seed procedure started");
 
