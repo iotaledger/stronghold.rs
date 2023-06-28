@@ -137,7 +137,7 @@ impl From<String> for ProcedureOutput {
 
 impl From<bip39::Mnemonic> for ProcedureOutput {
     fn from(m: bip39::Mnemonic) -> Self {
-        // mnemonic secret is leaked; ProcedureOutput should be zeroized
+        // mnemonic secret should not be leaked here; ProcedureOutput is ZeroizeOnDrop
         m.as_ref().as_bytes().to_vec().into()
     }
 }
