@@ -10,7 +10,7 @@ use engine::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, string::FromUtf8Error};
 use thiserror::Error as DeriveError;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// Bridge to the engine that is required for using / writing / revoking secrets in the vault.
 pub trait Runner {
@@ -114,7 +114,7 @@ pub trait UseSecret<const N: usize>: Sized {
 }
 
 /// Output of a [`StrongholdProcedure`][super::StrongholdProcedure].
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct ProcedureOutput(Vec<u8>);
 
 impl From<()> for ProcedureOutput {
@@ -154,14 +154,14 @@ impl From<ProcedureOutput> for () {
 
 impl From<ProcedureOutput> for Vec<u8> {
     fn from(value: ProcedureOutput) -> Self {
-        value.0
+        value.0.clone()
     }
 }
 
 impl TryFrom<ProcedureOutput> for String {
     type Error = FromUtf8Error;
     fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
-        String::from_utf8(value.0)
+        String::from_utf8(value.0.clone())
     }
 }
 
@@ -176,7 +176,7 @@ impl<const N: usize> TryFrom<ProcedureOutput> for [u8; N] {
     type Error = <[u8; N] as TryFrom<Vec<u8>>>::Error;
 
     fn try_from(value: ProcedureOutput) -> Result<Self, Self::Error> {
-        value.0.try_into()
+        value.0.clone().try_into()
     }
 }
 
