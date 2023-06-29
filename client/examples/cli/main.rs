@@ -291,7 +291,7 @@ async fn command_generate_bip39(passphrase: Option<String>, language: MnemonicLa
         stronghold::Location::generic(vault_path.as_bytes().to_vec(), record_path.as_bytes().to_vec());
 
     let bip39_procedure = BIP39Generate {
-        passphrase: passphrase.unwrap_or("".to_owned()).into(),
+        passphrase: passphrase.unwrap_or_default().into(),
         language,
         output: output_location,
     };

@@ -12,6 +12,7 @@ use iota_stronghold::{
     procedures::{BIP39Generate, BIP39Recover, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
+use crypto::keys::slip10::Segment;
 
 /// This command display a help message
 #[derive(Default)]
@@ -286,7 +287,7 @@ impl Command for Slip10DeriveCommand {
 
         client.execute_procedure(Slip10Derive {
             curve: Curve::Ed25519,
-            chain: [chain_code.parse().unwrap()].to_vec(),
+            chain: vec![chain_code.parse().map(|s: u32| s.harden().into()).unwrap()],
             input: Slip10DeriveInput::Seed(Location::const_generic(
                 vault_path_old.clone().into_bytes(),
                 record_path_old.clone().into_bytes(),
