@@ -7,6 +7,7 @@ use std::{error::Error, hash::Hash, num::NonZeroUsize, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use crypto::hashes::{blake2b::Blake2b256, Digest};
+use crypto::keys::slip10::Segment;
 use engine::vault::RecordHint;
 use iota_stronghold as stronghold;
 use log::*;
@@ -37,6 +38,7 @@ impl FromStr for ChainInput {
             .captures_iter(input)
             .map(|cap| cap["chain_id"].to_string())
             .map(|s: String| s.parse().unwrap())
+            .map(|s: u32| s.harden().into())
             .collect();
 
         Ok(Self { chain })
