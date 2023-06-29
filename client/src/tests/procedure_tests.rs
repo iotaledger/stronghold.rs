@@ -253,7 +253,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
         assert!(client.execute_procedure(slip10_generate).is_ok());
     } else {
         let bip32_gen = BIP39Generate {
-            passphrase: random::passphrase().unwrap_or("".to_owned()).into(),
+            passphrase: random::passphrase().unwrap_or_default().into(),
             output: seed.clone(),
             language: MnemonicLanguage::English,
         };

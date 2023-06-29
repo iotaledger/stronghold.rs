@@ -434,7 +434,7 @@ async fn command_bip39_recover(
 
     // get the public key
     let procedure_bip39_recover = stronghold::procedures::BIP39Recover {
-        passphrase: passphrase.unwrap_or("".to_owned()).into(),
+        passphrase: passphrase.unwrap_or_default().into(),
         mnemonic: mnemonic.into(),
         output: output.to_location(),
     };
