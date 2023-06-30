@@ -394,8 +394,7 @@ impl GenerateSecret for BIP39Generate {
         };
 
         let mnemonic: bip39::Mnemonic = bip39::wordlist::encode(entropy.as_ref(), &wordlist).unwrap();
-        let mut seed = bip39::Seed::null();
-        bip39::mnemonic_to_seed(&mnemonic, &self.passphrase, &mut seed);
+        let seed = bip39::mnemonic_to_seed(&mnemonic, &self.passphrase);
 
         Ok(Products {
             secret: Zeroizing::new(seed.as_ref().to_vec()),
@@ -423,8 +422,7 @@ impl GenerateSecret for BIP39Recover {
     type Output = ();
 
     fn generate(self) -> Result<Products<Self::Output>, FatalProcedureError> {
-        let mut seed = bip39::Seed::null();
-        bip39::mnemonic_to_seed(&self.mnemonic, &self.passphrase, &mut seed);
+        let seed = bip39::mnemonic_to_seed(&self.mnemonic, &self.passphrase);
 
         Ok(Products {
             secret: Zeroizing::new(seed.as_ref().to_vec()),
