@@ -28,7 +28,7 @@ riker = "0.4"
   version = "0.4"
 
   [dependencies.iota-crypto]
-  version = "0.21.1"
+  version = "0.21.2"
   features = [
   "random",
   "ed25519",
