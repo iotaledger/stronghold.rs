@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - dev
+      - 2.0
 
 jobs:
   version-or-publish:
