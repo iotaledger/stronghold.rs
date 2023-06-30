@@ -1,8 +1,6 @@
 ---
 "iota-stronghold": patch
 "stronghold-engine" : patch
-"vault" : patch
-"snapshot" : patch
 
 ---
 
