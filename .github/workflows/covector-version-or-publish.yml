@@ -42,7 +42,7 @@ jobs:
           createRelease: true
       - name: Create Pull Request With Versions Bumped
         if: steps.covector.outputs.commandRan == 'version'
-        uses: iotaledger/create-pull-request@v3.4.1
+        uses: tauri-apps/create-pull-request@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: release/version-updates
