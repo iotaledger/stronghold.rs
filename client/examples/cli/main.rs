@@ -6,8 +6,10 @@
 use std::{error::Error, hash::Hash, num::NonZeroUsize, str::FromStr};
 
 use clap::{Parser, Subcommand};
-use crypto::hashes::{blake2b::Blake2b256, Digest};
-use crypto::keys::slip10::Segment;
+use crypto::{
+    hashes::{blake2b::Blake2b256, Digest},
+    keys::slip10::Segment,
+};
 use engine::vault::RecordHint;
 use iota_stronghold as stronghold;
 use log::*;

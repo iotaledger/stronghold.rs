@@ -8,11 +8,11 @@ use crate::{
     util::{parse_keytype, parse_lang},
     Command, State, TermAction, HELP_MESSAGE,
 };
+use crypto::keys::slip10::Segment;
 use iota_stronghold::{
     procedures::{BIP39Generate, BIP39Recover, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
-use crypto::keys::slip10::Segment;
 
 /// This command display a help message
 #[derive(Default)]
