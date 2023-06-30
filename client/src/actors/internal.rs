@@ -611,8 +611,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 )
                 .expect(line_error!());
 
-                let mut seed = bip39::Seed::null();
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                let seed = bip39::mnemonic_to_seed(&mnemonic, &passphrase);
 
                 let key = if !self.keystore.vault_exists(vault_id) {
                     let k = self.keystore.create_key(vault_id);
@@ -658,8 +657,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
 
                 self.keystore.insert_key(vault_id, key.clone());
 
-                let mut seed = bip39::Seed::null();
-                bip39::mnemonic_to_seed(&mnemonic, &passphrase, &mut seed);
+                let seed = bip39::mnemonic_to_seed(&mnemonic, &passphrase);
 
                 // TODO: also store the mnemonic to be able to export it in the
                 // BIP39MnemonicSentence message
