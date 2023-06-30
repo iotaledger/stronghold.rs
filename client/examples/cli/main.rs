@@ -6,14 +6,17 @@
 use std::{error::Error, hash::Hash, num::NonZeroUsize, str::FromStr};
 
 use clap::{Parser, Subcommand};
-use crypto::hashes::{blake2b::Blake2b256, Digest};
+use crypto::{
+    hashes::{blake2b::Blake2b256, Digest},
+    keys::slip10::Segment,
+};
 use engine::vault::RecordHint;
 use iota_stronghold as stronghold;
 use log::*;
 use stronghold::{
     procedures::{
-        BIP39Generate, Chain, Curve, GenerateKey, KeyType, MnemonicLanguage, Slip10Derive, Slip10DeriveInput,
-        Slip10Generate, StrongholdProcedure,
+        BIP39Generate, Curve, GenerateKey, KeyType, MnemonicLanguage, Slip10Derive, Slip10DeriveInput, Slip10Generate,
+        StrongholdProcedure,
     },
     Client, ClientError, ClientVault, KeyProvider, Location, SnapshotPath, Store, Stronghold,
 };
@@ -23,7 +26,7 @@ use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub struct ChainInput {
-    pub chain: Chain,
+    pub chain: Vec<u32>,
 }
 
 impl FromStr for ChainInput {
@@ -37,11 +40,10 @@ impl FromStr for ChainInput {
             .captures_iter(input)
             .map(|cap| cap["chain_id"].to_string())
             .map(|s: String| s.parse().unwrap())
+            .map(|s: u32| s.harden().into())
             .collect();
 
-        Ok(Self {
-            chain: Chain::from_u32_hardened(chain),
-        })
+        Ok(Self { chain })
     }
 }
 
@@ -291,14 +293,14 @@ async fn command_generate_bip39(passphrase: Option<String>, language: MnemonicLa
         stronghold::Location::generic(vault_path.as_bytes().to_vec(), record_path.as_bytes().to_vec());
 
     let bip39_procedure = BIP39Generate {
-        passphrase,
+        passphrase: passphrase.unwrap_or_default().into(),
         language,
         output: output_location,
     };
 
     let result = client.execute_procedure(bip39_procedure).unwrap();
 
-    info!("BIP39 Mnemonic: {}", result);
+    info!("BIP39 Mnemonic: {}", result.as_ref());
 }
 
 async fn command_slip10_generate(size: Option<NonZeroUsize>, location: VaultLocation) {
@@ -434,8 +436,8 @@ async fn command_bip39_recover(
 
     // get the public key
     let procedure_bip39_recover = stronghold::procedures::BIP39Recover {
-        passphrase,
-        mnemonic,
+        passphrase: passphrase.unwrap_or_default().into(),
+        mnemonic: mnemonic.into(),
         output: output.to_location(),
     };
 

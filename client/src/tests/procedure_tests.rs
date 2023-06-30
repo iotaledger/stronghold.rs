@@ -253,14 +253,14 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
         assert!(client.execute_procedure(slip10_generate).is_ok());
     } else {
         let bip32_gen = BIP39Generate {
-            passphrase: random::passphrase(),
+            passphrase: random::passphrase().unwrap_or_default().into(),
             output: seed.clone(),
             language: MnemonicLanguage::English,
         };
         assert!(client.execute_procedure(bip32_gen).is_ok());
     }
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
@@ -294,6 +294,7 @@ async fn usecase_ed25519() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error::Error>> {
+    use slip10::Segment;
     let stronghold: Stronghold = Stronghold::default();
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
@@ -312,7 +313,7 @@ async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error:
 
     assert!(client.execute_procedure(slip10_generate).is_ok());
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = Location::generic(vault_path, random::variable_bytestring(1024));
 
     let slip10_derive = Slip10Derive {
@@ -333,11 +334,11 @@ async fn usecase_secp256k1_slip10_derive_key() -> Result<(), Box<dyn std::error:
     ext_bytes[..33].copy_from_slice(&pk);
     ext_bytes[33..].copy_from_slice(&chain_code);
     let epk = slip10::Slip10::<secp256k1_ecdsa::PublicKey>::try_from_extended_bytes(&ext_bytes).unwrap();
-    let epk = epk.child_key(&slip10::Segment(1)).unwrap();
+    let epk = epk.child_key(1_u32.unharden());
 
     let slip10_derive = Slip10Derive {
         curve: Curve::Secp256k1,
-        chain: slip10::Chain::from_u32([1]),
+        chain: vec![1],
         input: Slip10DeriveInput::Key(key.clone()),
         output: key.clone(),
     };
@@ -369,7 +370,7 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
     };
     assert!(client.execute_procedure(slip10_generate).is_ok());
 
-    let chain = slip10::Chain::from_u32([0x80000000_u32, 1, 2, 0x80000003_u32]);
+    let chain = vec![0x80000000_u32, 1, 2, 0x80000003_u32];
     let slip10_derive = Slip10Derive {
         curve: Curve::Secp256k1,
         chain,
@@ -436,14 +437,14 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
     };
     assert!(client.execute_procedure(slip10_generate).is_ok());
 
-    let (_path, chain0) = fresh::hd_path();
-    let (_path, chain1) = fresh::hd_path();
+    let (_path, chain0) = fresh::slip10_hd_chain();
+    let (_path, chain1) = fresh::slip10_hd_chain();
 
     let cc0: slip10::ChainCode = {
         let slip10_derive = Slip10Derive {
             curve: Curve::Ed25519,
             input: Slip10DeriveInput::Seed(seed.clone()),
-            chain: chain0.join(&chain1),
+            chain: [chain0.clone(), chain1.clone()].concat(),
             output: fresh::location(),
         };
 
@@ -465,7 +466,7 @@ async fn usecase_slip10derive_intermediate_keys() -> Result<(), Box<dyn std::err
         let slip10_derive_child = Slip10Derive {
             curve: Curve::Ed25519,
             input: Slip10DeriveInput::Key(intermediate),
-            chain: chain1,
+            chain: chain1.into_iter().map(u32::from).collect(),
             output: fresh::location(),
         };
 
@@ -491,7 +492,7 @@ async fn usecase_ed25519_as_complex() -> Result<(), Box<dyn std::error::Error>> 
         curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate.target().clone()),
         output: fresh::location(),
-        chain: fresh::hd_path().1,
+        chain: fresh::slip10_hd_chain().1.into_iter().map(u32::from).collect(),
     };
     let get_pk = PublicKey {
         ty: KeyType::Ed25519,
@@ -533,9 +534,12 @@ async fn usecase_collection_of_data() -> Result<(), Box<dyn std::error::Error>> 
 
         assert!(fill(&mut seed).is_ok(), "Failed to fill seed with random data");
 
-        let dk = slip10::Seed::from_bytes(&seed)
-            .derive::<ed25519::SecretKey>(&fresh::hd_path().1)
-            .unwrap();
+        let dk = slip10::Seed::from_bytes(&seed).derive::<ed25519::SecretKey, _>(
+            fresh::slip10_hd_chain()
+                .1
+                .into_iter()
+                .map(|s| slip10::Hardened::try_from(s).unwrap()),
+        );
         Zeroizing::new((*dk.extended_bytes()).into())
     };
 
@@ -797,18 +801,18 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
     let client: Client = stronghold.create_client(b"client_path").unwrap();
 
     let passphrase = random::string(4096);
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let message = random::variable_bytestring(4095);
 
     let generate_bip39 = BIP39Generate {
         language: MnemonicLanguage::English,
-        passphrase: Some(passphrase.clone()),
+        passphrase: passphrase.clone().into(),
         output: fresh::location(),
     };
     let derive_from_original = Slip10Derive {
         curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(generate_bip39.target().clone()),
-        chain: chain.clone(),
+        chain: chain.clone().into_iter().map(u32::from).collect(),
         output: fresh::location(),
     };
     let sign_from_original = Ed25519Sign {
@@ -828,14 +832,14 @@ async fn usecase_recover_bip39() -> Result<(), Box<dyn std::error::Error>> {
 
     let recover_bip39 = BIP39Recover {
         mnemonic,
-        passphrase: Some(passphrase),
+        passphrase: passphrase.into(),
         output: fresh::location(),
     };
 
     let derive_from_recovered = Slip10Derive {
         curve: Curve::Ed25519,
         input: Slip10DeriveInput::Seed(recover_bip39.target().clone()),
-        chain,
+        chain: chain.into_iter().map(u32::from).collect(),
         output: fresh::location(),
     };
     let sign_from_recovered = Ed25519Sign {
@@ -928,13 +932,13 @@ async fn test_bip39_recover_zeroize() -> Result<(), Box<dyn std::error::Error>> 
     let bip39_generate = BIP39Generate {
         language: MnemonicLanguage::English,
         output: location_a,
-        passphrase: Some(passphrase.clone()),
+        passphrase: passphrase.clone().into(),
     };
 
     let mnemonic = client.execute_procedure(bip39_generate)?;
 
     let bip39_recover = BIP39Recover {
-        passphrase: Some(passphrase),
+        passphrase: passphrase.into(),
         mnemonic,
         output: location_b,
     };

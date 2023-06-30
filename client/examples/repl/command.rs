@@ -8,10 +8,9 @@ use crate::{
     util::{parse_keytype, parse_lang},
     Command, State, TermAction, HELP_MESSAGE,
 };
+use crypto::keys::slip10::Segment;
 use iota_stronghold::{
-    procedures::{
-        BIP39Generate, BIP39Recover, Chain, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate,
-    },
+    procedures::{BIP39Generate, BIP39Recover, Curve, GenerateKey, Slip10Derive, Slip10DeriveInput, Slip10Generate},
     KeyProvider, Location, SnapshotPath, Stronghold,
 };
 
@@ -288,7 +287,11 @@ impl Command for Slip10DeriveCommand {
 
         client.execute_procedure(Slip10Derive {
             curve: Curve::Ed25519,
-            chain: Chain::from_u32_hardened(chain_code.parse()),
+            chain: vec![chain_code
+                .parse::<u32>()
+                .map_err(|_| ReplError::Invalid("Invalid slip10 chain code.".to_owned()))?
+                .harden()
+                .into()],
             input: Slip10DeriveInput::Seed(Location::const_generic(
                 vault_path_old.clone().into_bytes(),
                 record_path_old.clone().into_bytes(),
@@ -340,12 +343,15 @@ impl Command for Bip39GenerateCommand {
         let record_path = &parameters[3];
 
         let result = client.execute_procedure(BIP39Generate {
-            passphrase: Some(password.clone()),
+            passphrase: password.clone().into(),
             language: parse_lang(language)?,
             output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
-        Ok(TermAction::OkMessage(format!("Generated Mnemonic : {}", result)))
+        Ok(TermAction::OkMessage(format!(
+            "Generated Mnemonic : {:?}",
+            result.as_ref()
+        )))
     }
 
     fn name(&self) -> String {
@@ -377,8 +383,8 @@ impl Command for Bip39RestoreCommand {
         let record_path = &parameters[3];
 
         client.execute_procedure(BIP39Recover {
-            passphrase: Some(password.clone()),
-            mnemonic: mnemonic.clone(),
+            passphrase: password.clone().into(),
+            mnemonic: mnemonic.clone().into(),
             output: Location::const_generic(vault_path.clone().into_bytes(), record_path.clone().into_bytes()),
         })?;
 
