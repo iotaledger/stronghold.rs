@@ -287,7 +287,7 @@ impl Command for Slip10DeriveCommand {
 
         client.execute_procedure(Slip10Derive {
             curve: Curve::Ed25519,
-            chain: vec![chain_code.parse().map(|s: u32| s.harden().into()).unwrap()],
+            chain: vec![chain_code.parse::<u32>().unwrap().harden().into()],
             input: Slip10DeriveInput::Seed(Location::const_generic(
                 vault_path_old.clone().into_bytes(),
                 record_path_old.clone().into_bytes(),
