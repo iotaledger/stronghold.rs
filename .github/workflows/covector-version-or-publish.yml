@@ -11,6 +11,7 @@ on:
     branches:
       - dev
       - 2.0
+  workflow_dispatch:
 
 jobs:
   version-or-publish:
