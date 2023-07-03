@@ -1,5 +1,14 @@
 # Changelog
 
+## \[2.0.0-rc.0]
+
+- [`12ce12fe`](https://www.github.com/iotaledger/stronghold.rs/commit/12ce12fe3d28456eabacce6e608e81c3b4e0ec20) Secp256k1 ECDSA + SLIP-10 support added.
+  Bump `iota-crypto` version to 0.21.2.
+- [`1e72f00f`](https://www.github.com/iotaledger/stronghold.rs/commit/1e72f00fe8e188082e55b39c46986d928817e2dd)([#474](https://www.github.com/iotaledger/stronghold.rs/pull/474)) Upgraded snapshot format to age-encryption.org/v1 with password-based recipient stanza. This resolves the issue with the previous snapshot format encryption being insecure if used with weak passwords. Snapshot encryption doesn't use associated data.
+  Added sensitive data zeroization which would otherwise leak in stack and heap memory in plaintext after use.
+  `KeyProvider` unsafe constructors `with_passphrase_truncated`, `with_passphrase_hashed_argon2` were removed, `with_passphrase_hashed` constructor should be used instead.
+- [`988a9d1f`](https://www.github.com/iotaledger/stronghold.rs/commit/988a9d1fda6f8f652e014712b4cfff3737e0fb54)([#477](https://www.github.com/iotaledger/stronghold.rs/pull/477)) Added snapshot encryption work factor public access. It should only be used in tests to decrease snapshot encryption/decryption times. It must not be used in production as low values of work factor might lead to secrets/seeds leakage.
+
 ## \[1.1.0]
 
 - Bump `iota-crypto` version to 0.18.0. `Pbkdf2Hmac::count` changed to a `NonZeroU32`.
