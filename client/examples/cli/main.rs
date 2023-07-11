@@ -39,9 +39,8 @@ impl FromStr for ChainInput {
         let chain: Vec<u32> = re
             .captures_iter(input)
             .map(|cap| cap["chain_id"].to_string())
-            .map(|s: String| s.parse().unwrap())
-            .map(|s: u32| s.harden().into())
-            .collect();
+            .map(|s: String| s.parse().map(|s: u32| s.harden().into()))
+            .collect::<Result<_, _>>()?;
 
         Ok(Self { chain })
     }

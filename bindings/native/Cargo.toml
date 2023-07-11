@@ -32,6 +32,7 @@ iota-crypto = { version = "0.22", default-features = false, features = [
   "hmac",
   "bip39-en",
   "bip39-jp",
+  "bip44",
   "slip10",
   "chacha",
   "x25519"
