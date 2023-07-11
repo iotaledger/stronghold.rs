@@ -6,7 +6,9 @@ mod internal;
 mod snapshot;
 
 pub use self::{
-    client::{ProcResult, Procedure, SHRequest, SHResults, SLIP10Chain, SLIP10Curve, SLIP10DeriveInput},
+    client::{
+        ProcResult, Procedure, SHRequest, SHResults, SLIP10Chain, SLIP10Curve, SLIP10DeriveInput, Secp256k1EcdsaFlavor,
+    },
     internal::{InternalActor, InternalMsg, InternalResults},
     snapshot::SMsg,
 };

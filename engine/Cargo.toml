@@ -37,7 +37,7 @@ zeroize = { version = "1.6.0" }
   default-features = false
 
   [dependencies.iota-crypto]
-  version = "0.21.2"
+  version = "0.22.1"
   features = [ "age", "std", "random", "chacha", "hmac", "sha", "x25519", "blake2b" ]
 
 [dev-dependencies]

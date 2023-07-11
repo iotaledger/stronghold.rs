@@ -40,6 +40,12 @@ pub enum SLIP10Curve {
     Secp256k1,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum Secp256k1EcdsaFlavor {
+    Keccak256,
+    Sha256,
+}
+
 pub mod serde_bip39_mnemonic {
     use super::bip39;
 
@@ -148,7 +154,11 @@ pub enum Procedure {
     ///
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
-    Secp256k1EcdsaSign { private_key: Location, msg: Vec<u8> },
+    Secp256k1EcdsaSign {
+        private_key: Location,
+        flavor: Secp256k1EcdsaFlavor,
+        msg: Vec<u8>,
+    },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
@@ -177,7 +187,7 @@ pub enum ProcResult {
     /// Return value for `Secp256k1EcdsaEvmAddress`. Returns an Secp256k1 ECDSA EVM Address.
     Secp256k1EcdsaEvmAddress(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::EvmAddress::LENGTH]>),
     /// Return value for `Secp256k1EcdsaSign`. Returns an Secp256k1 ECDSA signature.
-    Secp256k1EcdsaSign(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::Signature::LENGTH]>),
+    Secp256k1EcdsaSign(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::RecoverableSignature::LENGTH]>),
     /// Generic Error return message.
     Error(String),
 }
@@ -763,12 +773,17 @@ impl Receive<SHRequest> for Client {
                         let (vault_id, record_id) = self.resolve_location(private_key);
                         internal.try_tell(InternalMsg::Secp256k1EcdsaEvmAddress { vault_id, record_id }, sender)
                     }
-                    Procedure::Secp256k1EcdsaSign { private_key, msg } => {
+                    Procedure::Secp256k1EcdsaSign {
+                        private_key,
+                        flavor,
+                        msg,
+                    } => {
                         let (vault_id, record_id) = self.resolve_location(private_key);
                         internal.try_tell(
                             InternalMsg::Secp256k1EcdsaSign {
                                 vault_id,
                                 record_id,
+                                flavor,
                                 msg,
                             },
                             sender,

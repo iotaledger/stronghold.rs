@@ -5,7 +5,7 @@
 
 use riker::actors::ActorSystem;
 
-use crate::{ProcResult, Procedure, ResultMessage, SLIP10Curve, SLIP10DeriveInput, Stronghold};
+use crate::{ProcResult, Procedure, ResultMessage, SLIP10Curve, SLIP10DeriveInput, Secp256k1EcdsaFlavor, Stronghold};
 
 use super::fresh;
 
@@ -153,6 +153,7 @@ fn usecase_secp256k1_ecdsa() {
 
     let sig = match futures::executor::block_on(sh.runtime_exec(Procedure::Secp256k1EcdsaSign {
         private_key: key,
+        flavor: Secp256k1EcdsaFlavor::Keccak256,
         msg: msg.clone(),
     })) {
         ProcResult::Secp256k1EcdsaSign(ResultMessage::Ok(sig)) => sig,
@@ -160,11 +161,12 @@ fn usecase_secp256k1_ecdsa() {
     };
 
     {
-        use crypto::signatures::secp256k1_ecdsa::{PublicKey, Signature};
+        use crypto::signatures::secp256k1_ecdsa::{PublicKey, RecoverableSignature};
         let pk = PublicKey::try_from_bytes(&pk).unwrap();
-        let sig = Signature::try_from_bytes(&sig).unwrap();
-        assert!(pk.verify(&sig, &msg));
-        assert_eq!(pk.to_evm_address(), evm_address.into());
+        let sig = RecoverableSignature::try_from_bytes(&sig).unwrap();
+        assert!(pk.verify_keccak256(sig.as_ref(), &msg));
+        assert_eq!(pk, sig.recover_keccak256(&msg).unwrap());
+        assert_eq!(pk.evm_address(), evm_address.into());
     }
 }
 

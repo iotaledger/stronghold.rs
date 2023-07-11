@@ -27,7 +27,7 @@ use crate::{
     actors::{
         client::{SLIP10Chain, SLIP10Curve},
         snapshot::SMsg,
-        ProcResult,
+        ProcResult, Secp256k1EcdsaFlavor,
     },
     internals::Provider,
     line_error,
@@ -193,6 +193,7 @@ pub enum InternalMsg {
     Secp256k1EcdsaSign {
         vault_id: VaultId,
         record_id: RecordId,
+        flavor: Secp256k1EcdsaFlavor,
         msg: Vec<u8>,
     },
 }
@@ -852,7 +853,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             } else {
                                 let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
                                 if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
-                                    let addr = sk.public_key().to_evm_address();
+                                    let addr = sk.public_key().evm_address();
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
                                             ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Ok(addr.into())),
@@ -886,6 +887,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
             InternalMsg::Secp256k1EcdsaSign {
                 vault_id,
                 record_id,
+                flavor,
                 msg,
             } => {
                 let cstr: String = self.client_id.into();
@@ -911,7 +913,10 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             } else {
                                 let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
                                 if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
-                                    let sig = sk.sign(&msg);
+                                    let sig = match flavor {
+                                        Secp256k1EcdsaFlavor::Keccak256 => sk.try_sign_keccak256(&msg)?,
+                                        Secp256k1EcdsaFlavor::Sha256 => sk.try_sign_sha256(&msg)?,
+                                    };
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
                                             ProcResult::Secp256k1EcdsaSign(ResultMessage::Ok(sig.to_bytes())),
