@@ -403,7 +403,7 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
         let msg = fresh::variable_bytestring(4096);
 
         let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
-            flavor: Secp256k1EcdsaFlavor::Secp256k1EcdsaKeccak256,
+            flavor: Secp256k1EcdsaFlavor::Keccak256,
             private_key: sk,
             msg: msg.clone(),
         };

@@ -713,8 +713,8 @@ impl UseSecret<1> for Ed25519Sign {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Secp256k1EcdsaFlavor {
-    Secp256k1EcdsaKeccak256,
-    Secp256k1EcdsaSha256,
+    Keccak256,
+    Sha256,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -730,11 +730,10 @@ impl UseSecret<1> for Secp256k1EcdsaSign {
     type Output = [u8; secp256k1_ecdsa::RecoverableSignature::LENGTH];
 
     fn use_secret(self, guards: [Buffer<u8>; 1]) -> Result<Self::Output, FatalProcedureError> {
-        use Secp256k1EcdsaFlavor::*;
         let sk = secp256k1_ecdsa_secret_key(guards[0].borrow())?;
         let sig = match self.flavor {
-            Secp256k1EcdsaKeccak256 => sk.try_sign_keccak256(&self.msg)?,
-            Secp256k1EcdsaSha256 => sk.try_sign_sha256(&self.msg)?,
+            Secp256k1EcdsaFlavor::Keccak256 => sk.try_sign_keccak256(&self.msg)?,
+            Secp256k1EcdsaFlavor::Sha256 => sk.try_sign_sha256(&self.msg)?,
         };
         Ok(sig.to_bytes())
     }
