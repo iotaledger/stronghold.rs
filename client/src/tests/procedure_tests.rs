@@ -411,12 +411,12 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
             client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
 
         let sig = secp256k1_ecdsa::RecoverableSignature::try_from_bytes(&sig_bytes).unwrap();
-        // assert!(pk.verify(&sig, &msg));
+        assert!(pk.verify_keccak256(sig.as_ref(), &msg));
         assert_eq!(pk, sig.recover_keccak256(&msg).unwrap());
 
         sig_bytes[0] ^= 1;
         let sig_bad = secp256k1_ecdsa::RecoverableSignature::try_from_bytes(&sig_bytes).unwrap();
-        // assert!(!pk.verify(&sig_bad, &msg));
+        assert!(!pk.verify_keccak256(sig_bad.as_ref(), &msg));
         assert!(!sig_bad.recover_keccak256(&msg).map(|rk| pk == rk).unwrap_or(false));
     };
 
