@@ -1,6 +1,7 @@
 {
   "tag": "rc",
   "changes": [
+    ".changes/bump-crypto-0.22.1.md",
     ".changes/secp256k1.md",
     ".changes/snapshot-migration-v3age-zeroize.md",
     ".changes/snapshot_encrypt_work_factor.md"
