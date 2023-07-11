@@ -20,7 +20,7 @@ insecure = [ ]
 thiserror = { version = "1.0.30" }
 zeroize = { version = "1.5.7", default-features = false, features = [ "zeroize_derive", "serde" ] }
 serde = { version = "1.0", features = [ "derive" ] }
-iota-crypto = { version = "0.21.2", default-features = false, features = [
+iota-crypto = { version = "0.22", default-features = false, features = [
   "aes-gcm",
   "blake2b",
   "aes-kw",
@@ -28,6 +28,7 @@ iota-crypto = { version = "0.21.2", default-features = false, features = [
   "rand",
   "ed25519",
   "secp256k1",
+  "keccak",
   "sha",
   "hmac",
   "bip39-en",

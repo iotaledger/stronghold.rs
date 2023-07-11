@@ -23,7 +23,7 @@ iota_stronghold         = { package = "iota_stronghold",   path = "../../client/
 engine                  = { package = "stronghold_engine",  path = "../../engine", version = "2.0.0-rc.0" }
 tokio                   = { version = "1.15.0", features = ["full"] }
 base64                  = { version = "0.13.0" }
-iota-crypto = { version = "0.21.2", default-features = false, features = [
+iota-crypto = { version = "0.22", default-features = false, features = [
   "aes-gcm",
   "aes-kw",
   "random",
