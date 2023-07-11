@@ -4,5 +4,5 @@
 "stronghold-runtime": major
 ---
 
-Secp256k1 ECDSA + SLIP-10 support added.
-Bump `iota-crypto` version to 0.21.2.
+Secp256k1 ECDSA with SHA256/Keccak256 + SLIP-10 support added.
+Bump `iota-crypto` version to 0.22.1.

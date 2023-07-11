@@ -10,8 +10,8 @@ use crate::{
     procedures::{
         AeadCipher, AeadDecrypt, AeadEncrypt, AesKeyWrapCipher, AesKeyWrapDecrypt, AesKeyWrapEncrypt, BIP39Generate,
         BIP39Recover, ConcatKdf, CopyRecord, Curve, DeriveSecret, Ed25519Sign, GenerateKey, GenerateSecret,
-        GetEvmAddress, Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaSign, Sha2Hash, Slip10Derive,
-        Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
+        GetEvmAddress, Hkdf, KeyType, MnemonicLanguage, PublicKey, Secp256k1EcdsaFlavor, Secp256k1EcdsaSign, Sha2Hash,
+        Slip10Derive, Slip10DeriveInput, Slip10Generate, StrongholdProcedure, WriteVault, X25519DiffieHellman,
     },
     tests::fresh,
     Client, Location, Stronghold,
@@ -398,24 +398,26 @@ async fn usecase_secp256k1() -> Result<(), Box<dyn std::error::Error>> {
         };
         let evm_addr = client.execute_procedure(evm_address).unwrap();
 
-        assert_eq!(&evm_addr, pk.to_evm_address().as_ref());
+        assert_eq!(&evm_addr, pk.evm_address().as_ref());
 
         let msg = fresh::variable_bytestring(4096);
 
         let secp256k1_ecdsa_sign = Secp256k1EcdsaSign {
+            flavor: Secp256k1EcdsaFlavor::Keccak256,
             private_key: sk,
             msg: msg.clone(),
         };
-        let mut sig_bytes: [u8; secp256k1_ecdsa::Signature::LENGTH] =
+        let mut sig_bytes: [u8; secp256k1_ecdsa::RecoverableSignature::LENGTH] =
             client.execute_procedure(secp256k1_ecdsa_sign).unwrap();
 
-        let sig = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
-        assert!(pk.verify(&sig, &msg));
-        assert_eq!(pk, sig.verify_recover(&msg).unwrap());
+        let sig = secp256k1_ecdsa::RecoverableSignature::try_from_bytes(&sig_bytes).unwrap();
+        assert!(pk.verify_keccak256(sig.as_ref(), &msg));
+        assert_eq!(pk, sig.recover_keccak256(&msg).unwrap());
 
         sig_bytes[0] ^= 1;
-        let sig_bad = secp256k1_ecdsa::Signature::try_from_bytes(&sig_bytes).unwrap();
-        assert!(!pk.verify(&sig_bad, &msg));
+        let sig_bad = secp256k1_ecdsa::RecoverableSignature::try_from_bytes(&sig_bytes).unwrap();
+        assert!(!pk.verify_keccak256(sig_bad.as_ref(), &msg));
+        assert!(!sig_bad.recover_keccak256(&msg).map(|rk| pk == rk).unwrap_or(false));
     };
 
     run(sk);

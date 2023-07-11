@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //#![allow(unused_imports)]
-use crypto::keys::slip10::{self, Segment};
+use crypto::{
+    keys::{bip44, slip10},
+    signatures::ed25519,
+};
 use iota_stronghold::{
     procedures::{Curve, Ed25519Sign, GenerateKey, KeyType, PublicKey, Slip10Derive, Slip10Generate, WriteVault},
     Client, KeyProvider, Location, SnapshotPath, Stronghold,
@@ -183,15 +186,16 @@ impl StrongholdWrapper {
             vault_path: VAULT_PATH.as_bytes().to_vec(),
         };
 
-        let chain = [
-            44,   // BIP-0044
+        let chain = bip44::Bip44::from([
             4218, // IOTA coin type
             0,    // zero account id
             0,    // public
             address_index,
-        ]
-        .into_iter()
-        .map(|s| s.harden().into())
+        ])
+        .to_chain::<ed25519::SecretKey>()
+        .iter()
+        .cloned()
+        .map(Into::into)
         .collect();
 
         log::info!("[Rust] Deriving Seed procedure started");
