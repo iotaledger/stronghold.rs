@@ -28,7 +28,7 @@ zeroize = { version = "1.5.7", features = [ "zeroize_derive" ] }
 serde = { version = "1.0", features = [ "derive" ] }
 stronghold-runtime = { version = "2.0.0-rc.0", path = "runtime" }
 digest = { version = "0.10.1", optional = true, default-features = false }
-iota-crypto = { version = "0.22", features = [ "age", "pbkdf2", "random", "chacha", "hmac", "sha", "x25519", "blake2b", "std" ], default-features = false }
+iota-crypto = { version = "0.22.1", features = [ "age", "pbkdf2", "random", "chacha", "hmac", "sha", "x25519", "blake2b", "std" ], default-features = false }
 
 [dev-dependencies]
 tempfile = "3.1.0"
