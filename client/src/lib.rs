@@ -57,9 +57,7 @@ pub use engine::snapshot::{
     Key,
 };
 
-pub use engine::vault::RecordHint;
-
-pub use engine;
+pub use engine::{self, vault::RecordHint};
 
 /// TODO: Should be replaced with proper errors.
 #[macro_export]

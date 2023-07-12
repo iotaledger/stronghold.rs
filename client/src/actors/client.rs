@@ -46,41 +46,24 @@ pub enum Secp256k1EcdsaFlavor {
     Sha256,
 }
 
-pub mod serde_bip39_mnemonic {
+pub mod serde_bip39 {
     use super::bip39;
 
-    pub fn serialize<S>(m: &bip39::Mnemonic, s: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<T, S>(t: &T, s: S) -> Result<S::Ok, S::Error>
     where
+        T: AsRef<str>,
         S: serde::Serializer,
     {
-        s.serialize_str(m.as_ref())
+        s.serialize_str(t.as_ref())
     }
 
-    pub fn deserialize<'de, D>(d: D) -> Result<bip39::Mnemonic, D::Error>
+    pub fn deserialize<'de, T, D>(d: D) -> Result<T, D::Error>
     where
+        T: From<String>,
         D: serde::Deserializer<'de>,
     {
         use serde::Deserialize;
-        String::deserialize(d).map(bip39::Mnemonic::from)
-    }
-}
-
-pub mod serde_bip39_passphrase {
-    use super::bip39;
-
-    pub fn serialize<S>(p: &bip39::Passphrase, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        s.serialize_str(p.as_ref())
-    }
-
-    pub fn deserialize<'de, D>(d: D) -> Result<bip39::Passphrase, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::Deserialize;
-        String::deserialize(d).map(bip39::Passphrase::from)
+        String::deserialize(d).map(From::from)
     }
 }
 
@@ -118,9 +101,9 @@ pub enum Procedure {
     /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
     /// a BIP39 seed and store it in the `output` location
     BIP39Recover {
-        #[serde(with = "serde_bip39_mnemonic")]
+        #[serde(with = "serde_bip39")]
         mnemonic: bip39::Mnemonic,
-        #[serde(with = "serde_bip39_passphrase")]
+        #[serde(with = "serde_bip39")]
         passphrase: bip39::Passphrase,
         output: Location,
         hint: RecordHint,
@@ -128,7 +111,7 @@ pub enum Procedure {
     /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in the `output` location
     BIP39Generate {
-        #[serde(with = "serde_bip39_passphrase")]
+        #[serde(with = "serde_bip39")]
         passphrase: bip39::Passphrase,
         output: Location,
         hint: RecordHint,
