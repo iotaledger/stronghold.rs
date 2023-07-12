@@ -47,8 +47,10 @@
 //!
 //! let local_keys = Keypair::generate_ed25519();
 //! let config = BehaviourConfig::default();
-//! let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))
-//!     .expect("Init swarm failed.");
+//! let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(
+//!     local_keys, config,
+//! ))
+//! .expect("Init swarm failed.");
 //! ```
 //!
 //! ## CommunicationActor

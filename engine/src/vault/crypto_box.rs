@@ -11,6 +11,8 @@ use runtime::GuardedVec;
 
 use serde::{Deserialize, Serialize};
 
+use zeroize::Zeroizing;
+
 /// A provider interface between the vault and a crypto box. See libsodium's [secretbox](https://libsodium.gitbook.io/doc/secret-key_cryptography/secretbox) for an example.
 pub trait BoxProvider: Sized + Ord + PartialOrd {
     /// function for the key length of the crypto box
@@ -28,10 +30,10 @@ pub trait BoxProvider: Sized + Ord + PartialOrd {
     fn random_buf(buf: &mut [u8]) -> crate::Result<()>;
 
     /// creates a vector with secure random bytes based off of an inputted length `len`.
-    fn random_vec(len: usize) -> crate::Result<Vec<u8>> {
+    fn random_vec(len: usize) -> crate::Result<Zeroizing<Vec<u8>>> {
         let mut buf = vec![0; len];
         Self::random_buf(&mut buf)?;
-        Ok(buf)
+        Ok(buf.into())
     }
 }
 
@@ -62,7 +64,7 @@ impl<T: BoxProvider> Key<T> {
     }
 
     /// attempts to load a key from inputted data
-    pub fn load(key: Vec<u8>) -> crate::Result<Self> {
+    pub fn load(key: Zeroizing<Vec<u8>>) -> crate::Result<Self> {
         match key {
             key if key.len() != T::box_key_len() => Err(crate::Error::InterfaceError),
             key => Ok(Self {
@@ -73,9 +75,9 @@ impl<T: BoxProvider> Key<T> {
     }
 
     /// get the key's bytes
-    pub fn bytes(&self) -> Vec<u8> {
+    pub fn bytes(&self) -> Zeroizing<Vec<u8>> {
         // hacks the guarded type.  Probably not the best solution.
-        (*self.key.borrow()).to_vec()
+        (*self.key.borrow()).to_vec().into()
     }
 }
 

@@ -50,7 +50,7 @@ fn usecase_ed25519() {
         }
     }
 
-    let (_path, chain) = fresh::hd_path();
+    let (_path, chain) = fresh::slip10_hd_chain();
     let key = fresh::location();
 
     match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
@@ -82,7 +82,7 @@ fn usecase_ed25519() {
 
     {
         use crypto::signatures::ed25519::{PublicKey, Signature};
-        let pk = PublicKey::from_compressed_bytes(pk).unwrap();
+        let pk = PublicKey::try_from_bytes(pk).unwrap();
         let sig = Signature::from_bytes(sig);
         assert!(pk.verify(&sig, &msg));
     }
@@ -103,11 +103,11 @@ fn usecase_SLIP10Derive_intermediate_keys() {
         r => panic!("unexpected result: {:?}", r),
     };
 
-    let (_path, chain0) = fresh::hd_path();
-    let (_path, chain1) = fresh::hd_path();
+    let (_path, chain0) = fresh::slip10_hd_chain();
+    let (_path, chain1) = fresh::slip10_hd_chain();
 
     let cc0 = match futures::executor::block_on(sh.runtime_exec(Procedure::SLIP10Derive {
-        chain: chain0.join(&chain1),
+        chain: [chain0.clone(), chain1.clone()].concat(),
         input: SLIP10DeriveInput::Seed(seed.clone()),
         output: fresh::location(),
         hint: fresh::record_hint(),

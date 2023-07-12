@@ -11,7 +11,7 @@ use crate::{
 
 use stronghold_utils::GuardDebug;
 
-use crypto::keys::slip10::{Chain, ChainCode};
+use crypto::keys::{bip39, slip10};
 
 use engine::{
     snapshot,
@@ -27,8 +27,31 @@ use core::{
 };
 use std::{path::PathBuf, time::Duration};
 
+use zeroize::Zeroizing;
+
 #[cfg(feature = "communication")]
 use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVariants, VariantPermission};
+
+pub type SLIP10Chain = Vec<u32>;
+
+pub mod serde_bip39 {
+    pub fn serialize<T, S>(t: &T, s: S) -> Result<S::Ok, S::Error>
+    where
+        T: AsRef<str>,
+        S: serde::Serializer,
+    {
+        s.serialize_str(t.as_ref())
+    }
+
+    pub fn deserialize<'de, T, D>(d: D) -> Result<T, D::Error>
+    where
+        T: From<String>,
+        D: serde::Deserializer<'de>,
+    {
+        use serde::Deserialize;
+        String::deserialize(d).map(From::from)
+    }
+}
 
 /// `SLIP10DeriveInput` type used to specify a Seed location or a Key location for the `SLIP10Derive` procedure.
 #[derive(GuardDebug, Clone, Serialize, Deserialize)]
@@ -55,7 +78,7 @@ pub enum Procedure {
     /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
     /// return the corresponding chain code
     SLIP10Derive {
-        chain: Chain,
+        chain: SLIP10Chain,
         input: SLIP10DeriveInput,
         output: Location,
         hint: RecordHint,
@@ -63,15 +86,18 @@ pub enum Procedure {
     /// Use a BIP39 mnemonic sentence (optionally protected by a passphrase) to create or recover
     /// a BIP39 seed and store it in the `output` location
     BIP39Recover {
-        mnemonic: String,
-        passphrase: Option<String>,
+        #[serde(with = "serde_bip39")]
+        mnemonic: bip39::Mnemonic,
+        #[serde(with = "serde_bip39")]
+        passphrase: bip39::Passphrase,
         output: Location,
         hint: RecordHint,
     },
     /// Generate a BIP39 seed and its corresponding mnemonic sentence (optionally protected by a
     /// passphrase) and store them in the `output` location
     BIP39Generate {
-        passphrase: Option<String>,
+        #[serde(with = "serde_bip39")]
+        passphrase: bip39::Passphrase,
         output: Location,
         hint: RecordHint,
     },
@@ -98,7 +124,7 @@ pub enum ProcResult {
     /// Return from generating a `SLIP10` seed.
     SLIP10Generate(StatusMessage),
     /// Returns the public key derived from the `SLIP10Derive` call.
-    SLIP10Derive(ResultMessage<ChainCode>),
+    SLIP10Derive(ResultMessage<slip10::ChainCode>),
     /// `BIP39Recover` return value.
     BIP39Recover(StatusMessage),
     /// `BIP39Generate` return value.
@@ -106,9 +132,9 @@ pub enum ProcResult {
     /// `BIP39MnemonicSentence` return value. Returns the mnemonic sentence for the corresponding seed.
     BIP39MnemonicSentence(ResultMessage<String>),
     /// Return value for `Ed25519PublicKey`. Returns an Ed25519 public key.
-    Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]>),
+    Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PublicKey::LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
-    Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]>),
+    Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::Signature::LENGTH]>),
     /// Generic Error return message.
     Error(String),
 }
@@ -124,17 +150,11 @@ impl TryFrom<SerdeProcResult> for ProcResult {
             SerdeProcResult::BIP39Generate(msg) => Ok(ProcResult::BIP39Generate(msg)),
             SerdeProcResult::BIP39MnemonicSentence(msg) => Ok(ProcResult::BIP39MnemonicSentence(msg)),
             SerdeProcResult::Ed25519PublicKey(msg) => {
-                let msg: ResultMessage<[u8; crypto::signatures::ed25519::COMPRESSED_PUBLIC_KEY_LENGTH]> = match msg {
-                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
-                    ResultMessage::Error(e) => ResultMessage::Error(e),
-                };
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
                 Ok(ProcResult::Ed25519PublicKey(msg))
             }
             SerdeProcResult::Ed25519Sign(msg) => {
-                let msg: ResultMessage<[u8; crypto::signatures::ed25519::SIGNATURE_LENGTH]> = match msg {
-                    ResultMessage::Ok(v) => ResultMessage::Ok(v.as_slice().try_into()?),
-                    ResultMessage::Error(e) => ResultMessage::Error(e),
-                };
+                let msg = msg.try_map(|v| v.as_slice().try_into())?;
                 Ok(ProcResult::Ed25519Sign(msg))
             }
             SerdeProcResult::Error(err) => Ok(ProcResult::Error(err)),
@@ -146,7 +166,7 @@ impl TryFrom<SerdeProcResult> for ProcResult {
 #[derive(Clone, Serialize, Deserialize)]
 enum SerdeProcResult {
     SLIP10Generate(StatusMessage),
-    SLIP10Derive(ResultMessage<ChainCode>),
+    SLIP10Derive(ResultMessage<slip10::ChainCode>),
     BIP39Recover(StatusMessage),
     BIP39Generate(StatusMessage),
     BIP39MnemonicSentence(ResultMessage<String>),
@@ -164,17 +184,11 @@ impl From<ProcResult> for SerdeProcResult {
             ProcResult::BIP39Generate(msg) => SerdeProcResult::BIP39Generate(msg),
             ProcResult::BIP39MnemonicSentence(msg) => SerdeProcResult::BIP39MnemonicSentence(msg),
             ProcResult::Ed25519PublicKey(msg) => {
-                let msg = match msg {
-                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
-                    ResultMessage::Error(error) => ResultMessage::Error(error),
-                };
+                let msg = msg.map(|slice| slice.to_vec());
                 SerdeProcResult::Ed25519PublicKey(msg)
             }
             ProcResult::Ed25519Sign(msg) => {
-                let msg = match msg {
-                    ResultMessage::Ok(slice) => ResultMessage::Ok(slice.to_vec()),
-                    ResultMessage::Error(error) => ResultMessage::Error(error),
-                };
+                let msg = msg.map(|slice| slice.to_vec());
                 SerdeProcResult::Ed25519Sign(msg)
             }
             ProcResult::Error(err) => SerdeProcResult::Error(err),
@@ -235,7 +249,7 @@ pub enum SHRequest {
     // Reads from the snapshot file.  Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     ReadSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
         cid: ClientId,
@@ -244,7 +258,7 @@ pub enum SHRequest {
     // Writes to the snapshot file. Accepts the snapshot key, an optional filename and an optional filepath.
     // Defaults to `$HOME/.engine/snapshots/backup.snapshot`.
     WriteSnapshot {
-        key: snapshot::Key,
+        key: Zeroizing<snapshot::Key>,
         filename: Option<String>,
         path: Option<PathBuf>,
     },
@@ -619,7 +633,7 @@ impl Receive<SHRequest> for Client {
 
                         internal.try_tell(
                             InternalMsg::BIP39Generate {
-                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                passphrase,
                                 vault_id,
                                 record_id,
                                 hint,
@@ -642,7 +656,7 @@ impl Receive<SHRequest> for Client {
                         internal.try_tell(
                             InternalMsg::BIP39Recover {
                                 mnemonic,
-                                passphrase: passphrase.unwrap_or_else(|| "".into()),
+                                passphrase,
                                 vault_id,
                                 record_id,
                                 hint,

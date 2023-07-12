@@ -37,7 +37,7 @@ mod utils;
 mod tests;
 
 pub use crate::{
-    actors::{ProcResult, Procedure, SLIP10DeriveInput},
+    actors::{ProcResult, Procedure, SLIP10Chain, SLIP10DeriveInput},
     interface::Stronghold,
     internals::Provider,
     utils::{Location, ResultMessage, StatusMessage, StrongholdFlags, VaultFlags},
@@ -57,7 +57,7 @@ pub use engine::snapshot::{
     Key,
 };
 
-pub use engine::vault::RecordHint;
+pub use engine::{self, vault::RecordHint};
 
 /// TODO: Should be replaced with proper errors.
 #[macro_export]

@@ -35,7 +35,7 @@ impl BoxProvider for Provider {
 
         Self::random_buf(&mut nonce)?;
 
-        let key = key.bytes();
+        let key = key.key.borrow();
 
         XChaCha20Poly1305::try_encrypt(&key, &nonce, ad, data, &mut cipher, &mut tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to seal data")))?;
@@ -51,7 +51,7 @@ impl BoxProvider for Provider {
 
         let mut plain = vec![0; cipher.len()];
 
-        let key = key.bytes();
+        let key = key.key.borrow();
 
         XChaCha20Poly1305::try_decrypt(&key, &nonce, &ad, &mut plain, &cipher, &tag)
             .map_err(|_| engine::Error::ProviderError(String::from("Unable to unlock data")))?;

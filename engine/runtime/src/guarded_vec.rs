@@ -363,6 +363,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn test_comparisons() {
         let guard = GuardedVec::<u8>::from(&mut [1, 2, 3][..]);
 

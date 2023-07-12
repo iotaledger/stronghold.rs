@@ -14,7 +14,9 @@
 //!
 //! ```no_run
 //! use async_std::task;
-//! use communication::behaviour::{BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent};
+//! use communication::behaviour::{
+//!     BehaviourConfig, P2PEvent, P2PNetworkBehaviour, P2PReqResEvent,
+//! };
 //! use core::ops::Deref;
 //! use libp2p::identity::Keypair;
 //! use serde::{Deserialize, Serialize};
@@ -43,7 +45,9 @@
 //!                 request: Request::Ping,
 //!             } = boxed_event.deref().clone()
 //!             {
-//!                 let res = swarm.behaviour_mut().send_response(&request_id, Response::Pong);
+//!                 let res = swarm
+//!                     .behaviour_mut()
+//!                     .send_response(&request_id, Response::Pong);
 //!                 if res.is_err() {
 //!                     break;
 //!                 }
@@ -104,7 +108,7 @@ pub enum BehaviourError {
 }
 
 /// Configuration for initiating the [`P2PNetworkBehaviour`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct BehaviourConfig {
     /// Timeout for outgoing requests until a [`P2POutboundFailure::Timeout`] is emitted.
     /// If none is specified, it defaults to 10s.
@@ -130,17 +134,6 @@ impl BehaviourConfig {
             keep_alive,
             mdns_ttl,
             mdns_query_interval,
-        }
-    }
-}
-
-impl Default for BehaviourConfig {
-    fn default() -> Self {
-        BehaviourConfig {
-            timeout: None,
-            keep_alive: None,
-            mdns_ttl: None,
-            mdns_query_interval: None,
         }
     }
 }
@@ -199,8 +192,10 @@ impl<Req: MessageEvent, Res: MessageEvent> P2PNetworkBehaviour<Req, Res> {
     ///
     /// let local_keys = Keypair::generate_ed25519();
     /// let config = BehaviourConfig::default();
-    /// let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(local_keys, config))
-    ///     .expect("Init swarm failed.");
+    /// let mut swarm = task::block_on(P2PNetworkBehaviour::<Request, Response>::init_swarm(
+    ///     local_keys, config,
+    /// ))
+    /// .expect("Init swarm failed.");
     /// ```
     pub async fn init_swarm(
         local_keys: Keypair,

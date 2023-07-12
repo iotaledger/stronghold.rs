@@ -18,8 +18,8 @@
 //! ```no_run
 //! use communication::{
 //!     actor::{
-//!         CommunicationActor, CommunicationActorConfig, FirewallPermission, PermissionValue, ToPermissionVariants,
-//!         VariantPermission,
+//!         CommunicationActor, CommunicationActorConfig, FirewallPermission, PermissionValue,
+//!         ToPermissionVariants, VariantPermission,
 //!     },
 //!     behaviour::BehaviourConfig,
 //! };

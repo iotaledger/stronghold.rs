@@ -282,6 +282,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)]
     fn test_comparisons() {
         let guard = Guarded::<u8>::random();
 

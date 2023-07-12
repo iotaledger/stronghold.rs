@@ -15,10 +15,10 @@ rand = "0.8.3"
 
 [dependencies.stronghold_engine]
 path = "../"
-version = "0.3"
+version = "0.4"
 
 [dependencies.iota-crypto]
-version = "0.5.0"
+version = "0.22.1"
 features = [ "random", "chacha" ]
 
 [profile.release]
