@@ -17,7 +17,7 @@ use stronghold_utils::GuardDebug;
 
 use crypto::{
     keys::{bip39, slip10},
-    signatures::{ed25519, secp256k1_ecdsa},
+    signatures::ed25519,
     utils::rand,
 };
 
@@ -25,9 +25,9 @@ use engine::snapshot;
 
 use crate::{
     actors::{
-        client::{SLIP10Chain, SLIP10Curve},
+        client::SLIP10Chain,
         snapshot::SMsg,
-        ProcResult, Secp256k1EcdsaFlavor,
+        ProcResult,
     },
     internals::Provider,
     line_error,
@@ -51,53 +51,33 @@ fn get_result<K: slip10::Derivable>(dk: slip10::Slip10<K>) -> (Zeroizing<Vec<u8>
     (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code())
 }
 
-impl SLIP10Curve {
-    fn derive_from_seed(
-        self,
-        seed_bytes: &[u8],
-        chain: Vec<u32>,
-    ) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
-        match self {
-            Self::Ed25519 => {
-                let chain = try_into_hardened_chain(chain)?;
-                let dk = slip10::Seed::from_bytes(seed_bytes).derive::<ed25519::SecretKey, _>(chain.into_iter());
-                Ok(get_result(dk))
-            }
-            Self::Secp256k1 => {
-                let dk =
-                    slip10::Seed::from_bytes(seed_bytes).derive::<secp256k1_ecdsa::SecretKey, _>(chain.into_iter());
-                Ok(get_result(dk))
-            }
+fn derive_from_seed(
+    seed_bytes: &[u8],
+    chain: Vec<u32>,
+) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+    let chain = try_into_hardened_chain(chain)?;
+    let dk = slip10::Seed::from_bytes(seed_bytes).derive::<ed25519::SecretKey, _>(chain.into_iter());
+    Ok(get_result(dk))
+}
+fn derive_from_parent(
+    parent_bytes: &[u8],
+    chain: Vec<u32>,
+) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+    if parent_bytes.len() != 64 {
+        return Err(crypto::Error::InvalidArgumentError {
+            alg: "SLIP10 derive",
+            expected: "SLIP10 64-byte extended parent secret key",
         }
+        .into());
     }
-    fn derive_from_parent(
-        self,
-        parent_bytes: &[u8],
-        chain: Vec<u32>,
-    ) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
-        if parent_bytes.len() != 64 {
-            return Err(crypto::Error::InvalidArgumentError {
-                alg: "SLIP10 derive",
-                expected: "SLIP10 64-byte extended parent secret key",
-            }
-            .into());
-        }
 
-        let mut ext_bytes = Zeroizing::new([0; 65]);
-        ext_bytes[1..].copy_from_slice(parent_bytes);
+    let mut ext_bytes = Zeroizing::new([0; 65]);
+    ext_bytes[1..].copy_from_slice(parent_bytes);
 
-        match self {
-            Self::Ed25519 => {
-                let chain = try_into_hardened_chain(chain)?;
-                slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(&ext_bytes)
-                    .map_err(|e| e.into())
-                    .map(|sk| get_result(sk.derive(chain.into_iter())))
-            }
-            Self::Secp256k1 => slip10::Slip10::<secp256k1_ecdsa::SecretKey>::try_from_extended_bytes(&ext_bytes)
-                .map_err(|e| e.into())
-                .map(|sk| get_result(sk.derive(chain.into_iter()))),
-        }
-    }
+    let chain = try_into_hardened_chain(chain)?;
+    slip10::Slip10::<ed25519::SecretKey>::try_from_extended_bytes(&ext_bytes)
+        .map_err(|e| e.into())
+        .map(|sk| get_result(sk.derive(chain.into_iter())))
 }
 
 pub struct InternalActor<P: BoxProvider + Send + Sync + Clone + 'static> {
@@ -143,7 +123,6 @@ pub enum InternalMsg {
         size_bytes: usize,
     },
     SLIP10DeriveFromSeed {
-        curve: SLIP10Curve,
         chain: SLIP10Chain,
         seed_vault_id: VaultId,
         seed_record_id: RecordId,
@@ -152,7 +131,6 @@ pub enum InternalMsg {
         hint: RecordHint,
     },
     SLIP10DeriveFromKey {
-        curve: SLIP10Curve,
         chain: SLIP10Chain,
         parent_vault_id: VaultId,
         parent_record_id: RecordId,
@@ -180,20 +158,6 @@ pub enum InternalMsg {
     Ed25519Sign {
         vault_id: VaultId,
         record_id: RecordId,
-        msg: Vec<u8>,
-    },
-    Secp256k1EcdsaPublicKey {
-        vault_id: VaultId,
-        record_id: RecordId,
-    },
-    Secp256k1EcdsaEvmAddress {
-        vault_id: VaultId,
-        record_id: RecordId,
-    },
-    Secp256k1EcdsaSign {
-        vault_id: VaultId,
-        record_id: RecordId,
-        flavor: Secp256k1EcdsaFlavor,
         msg: Vec<u8>,
     },
 }
@@ -483,7 +447,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 );
             }
             InternalMsg::SLIP10DeriveFromSeed {
-                curve,
                 chain,
                 seed_vault_id,
                 seed_record_id,
@@ -517,7 +480,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 key_record_id,
                                 hint,
                                 |gdata| {
-                                    let (ext_sk, chain_code) = curve.derive_from_seed(&gdata.borrow(), chain)?;
+                                    let (ext_sk, chain_code) = derive_from_seed(&gdata.borrow(), chain)?;
 
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -540,7 +503,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                 }
             }
             InternalMsg::SLIP10DeriveFromKey {
-                curve,
                 chain,
                 parent_vault_id,
                 parent_record_id,
@@ -575,7 +537,7 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                                 child_record_id,
                                 hint,
                                 |parent| {
-                                    let (ext_sk, chain_code) = curve.derive_from_parent(&parent.borrow(), chain)?;
+                                    let (ext_sk, chain_code) = derive_from_parent(&parent.borrow(), chain)?;
 
                                     client.try_tell(
                                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
@@ -770,179 +732,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                         ClientMsg::InternalResults(InternalResults::ReturnControlRequest(ProcResult::Ed25519Sign(
                             ResultMessage::Error("Failed to access vault".into()),
                         ))),
-                        sender,
-                    )
-                }
-            }
-            InternalMsg::Secp256k1EcdsaPublicKey { vault_id, record_id } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
-                if let Some(key) = self.keystore.get_key(vault_id) {
-                    self.keystore.insert_key(vault_id, key.clone());
-
-                    self.db
-                        .get_guard(&key, vault_id, record_id, |data| {
-                            let raw = data.borrow();
-                            let raw_slice: &[u8] = &raw;
-
-                            if raw_slice.len() < 32 {
-                                client.try_tell(
-                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                        ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error(
-                                            "Secp256k1 ECDSA secret key bytes too short".into(),
-                                        )),
-                                    )),
-                                    sender,
-                                );
-                            } else {
-                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
-                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
-                                    let pk = sk.public_key();
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Ok(pk.to_bytes())),
-                                        )),
-                                        sender,
-                                    );
-                                } else {
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error(
-                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
-                                            )),
-                                        )),
-                                        sender,
-                                    );
-                                }
-                            }
-
-                            Ok(())
-                        })
-                        .expect(line_error!());
-                } else {
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                            ProcResult::Secp256k1EcdsaPublicKey(ResultMessage::Error("Failed to access vault".into())),
-                        )),
-                        sender,
-                    )
-                }
-            }
-            InternalMsg::Secp256k1EcdsaEvmAddress { vault_id, record_id } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
-                if let Some(key) = self.keystore.get_key(vault_id) {
-                    self.keystore.insert_key(vault_id, key.clone());
-
-                    self.db
-                        .get_guard(&key, vault_id, record_id, |data| {
-                            let raw = data.borrow();
-                            let raw_slice: &[u8] = &raw;
-
-                            if raw_slice.len() < 32 {
-                                client.try_tell(
-                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                        ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error(
-                                            "Secp256k1 ECDSA secret key bytes too short".into(),
-                                        )),
-                                    )),
-                                    sender.clone(),
-                                );
-                            } else {
-                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
-                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
-                                    let addr = sk.public_key().evm_address();
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Ok(addr.into())),
-                                        )),
-                                        sender,
-                                    );
-                                } else {
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error(
-                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
-                                            )),
-                                        )),
-                                        sender.clone(),
-                                    );
-                                }
-                            }
-
-                            Ok(())
-                        })
-                        .expect(line_error!());
-                } else {
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                            ProcResult::Secp256k1EcdsaEvmAddress(ResultMessage::Error("Failed to access vault".into())),
-                        )),
-                        sender,
-                    )
-                }
-            }
-            InternalMsg::Secp256k1EcdsaSign {
-                vault_id,
-                record_id,
-                flavor,
-                msg,
-            } => {
-                let cstr: String = self.client_id.into();
-                let client = ctx.select(&format!("/user/{}/", cstr)).expect(line_error!());
-
-                if let Some(key) = self.keystore.get_key(vault_id) {
-                    self.keystore.insert_key(vault_id, key.clone());
-
-                    self.db
-                        .get_guard(&key, vault_id, record_id, |data| {
-                            let raw = data.borrow();
-                            let raw_slice: &[u8] = &raw;
-
-                            if raw_slice.len() < 32 {
-                                client.try_tell(
-                                    ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                        ProcResult::Secp256k1EcdsaSign(ResultMessage::Error(
-                                            "Secp256k1 ECDSA secret key bytes too short".into(),
-                                        )),
-                                    )),
-                                    sender.clone(),
-                                );
-                            } else {
-                                let raw_sk: &[u8; 32] = raw_slice[..32].try_into().unwrap();
-                                if let Ok(sk) = secp256k1_ecdsa::SecretKey::try_from_bytes(&raw_sk) {
-                                    let sig = match flavor {
-                                        Secp256k1EcdsaFlavor::Keccak256 => sk.try_sign_keccak256(&msg)?,
-                                        Secp256k1EcdsaFlavor::Sha256 => sk.try_sign_sha256(&msg)?,
-                                    };
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Ok(sig.to_bytes())),
-                                        )),
-                                        sender,
-                                    );
-                                } else {
-                                    client.try_tell(
-                                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Error(
-                                                "Invalid Secp256k1 ECDSA secret key bytes".into(),
-                                            )),
-                                        )),
-                                        sender.clone(),
-                                    );
-                                }
-                            }
-
-                            Ok(())
-                        })
-                        .expect(line_error!());
-                } else {
-                    client.try_tell(
-                        ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
-                            ProcResult::Secp256k1EcdsaSign(ResultMessage::Error("Failed to access vault".into())),
-                        )),
                         sender,
                     )
                 }

@@ -34,18 +34,6 @@ use communication::actor::{PermissionValue, RequestPermissions, ToPermissionVari
 
 pub type SLIP10Chain = Vec<u32>;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum SLIP10Curve {
-    Ed25519,
-    Secp256k1,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum Secp256k1EcdsaFlavor {
-    Keccak256,
-    Sha256,
-}
-
 pub mod serde_bip39 {
     pub fn serialize<T, S>(t: &T, s: S) -> Result<S::Ok, S::Error>
     where
@@ -90,7 +78,6 @@ pub enum Procedure {
     /// Derive a SLIP10 child key from a seed or a parent key, store it in output location and
     /// return the corresponding chain code
     SLIP10Derive {
-        curve: SLIP10Curve,
         chain: SLIP10Chain,
         input: SLIP10DeriveInput,
         output: Location,
@@ -125,21 +112,6 @@ pub enum Procedure {
     /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
     /// in particular SLIP10 keys are compatible.
     Ed25519Sign { private_key: Location, msg: Vec<u8> },
-    /// Derive an Secp256k1 ECDSA public key from the corresponding private key stored at the specified
-    /// location
-    Secp256k1EcdsaPublicKey { private_key: Location },
-    /// Derive an Secp256k1 EVM Address from the corresponding private key stored at the specified
-    /// location
-    Secp256k1EcdsaEvmAddress { private_key: Location },
-    /// Use the specified Secp256k1 ECDSA compatible key to sign the given message
-    ///
-    /// Compatible keys are any record that contain the desired key material in the first 32 bytes,
-    /// in particular SLIP10 keys are compatible.
-    Secp256k1EcdsaSign {
-        private_key: Location,
-        flavor: Secp256k1EcdsaFlavor,
-        msg: Vec<u8>,
-    },
 }
 
 /// A Procedure return result type.  Contains the different return values for the `Procedure` type calls used with
@@ -163,12 +135,6 @@ pub enum ProcResult {
     Ed25519PublicKey(ResultMessage<[u8; crypto::signatures::ed25519::PublicKey::LENGTH]>),
     /// Return value for `Ed25519Sign`. Returns an Ed25519 signature.
     Ed25519Sign(ResultMessage<[u8; crypto::signatures::ed25519::Signature::LENGTH]>),
-    /// Return value for `Secp256k1EcdsaPublicKey`. Returns an Secp256k1 ECDSA public key.
-    Secp256k1EcdsaPublicKey(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::PublicKey::LENGTH]>),
-    /// Return value for `Secp256k1EcdsaEvmAddress`. Returns an Secp256k1 ECDSA EVM Address.
-    Secp256k1EcdsaEvmAddress(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::EvmAddress::LENGTH]>),
-    /// Return value for `Secp256k1EcdsaSign`. Returns an Secp256k1 ECDSA signature.
-    Secp256k1EcdsaSign(ResultMessage<[u8; crypto::signatures::secp256k1_ecdsa::RecoverableSignature::LENGTH]>),
     /// Generic Error return message.
     Error(String),
 }
@@ -191,18 +157,6 @@ impl TryFrom<SerdeProcResult> for ProcResult {
                 let msg = msg.try_map(|v| v.as_slice().try_into())?;
                 Ok(ProcResult::Ed25519Sign(msg))
             }
-            SerdeProcResult::Secp256k1EcdsaPublicKey(msg) => {
-                let msg = msg.try_map(|v| v.as_slice().try_into())?;
-                Ok(ProcResult::Secp256k1EcdsaPublicKey(msg))
-            }
-            SerdeProcResult::Secp256k1EcdsaEvmAddress(msg) => {
-                let msg = msg.try_map(|v| v.as_slice().try_into())?;
-                Ok(ProcResult::Secp256k1EcdsaEvmAddress(msg))
-            }
-            SerdeProcResult::Secp256k1EcdsaSign(msg) => {
-                let msg = msg.try_map(|v| v.as_slice().try_into())?;
-                Ok(ProcResult::Secp256k1EcdsaSign(msg))
-            }
             SerdeProcResult::Error(err) => Ok(ProcResult::Error(err)),
         }
     }
@@ -218,9 +172,6 @@ enum SerdeProcResult {
     BIP39MnemonicSentence(ResultMessage<String>),
     Ed25519PublicKey(ResultMessage<Vec<u8>>),
     Ed25519Sign(ResultMessage<Vec<u8>>),
-    Secp256k1EcdsaPublicKey(ResultMessage<Vec<u8>>),
-    Secp256k1EcdsaEvmAddress(ResultMessage<Vec<u8>>),
-    Secp256k1EcdsaSign(ResultMessage<Vec<u8>>),
     Error(String),
 }
 
@@ -239,18 +190,6 @@ impl From<ProcResult> for SerdeProcResult {
             ProcResult::Ed25519Sign(msg) => {
                 let msg = msg.map(|slice| slice.to_vec());
                 SerdeProcResult::Ed25519Sign(msg)
-            }
-            ProcResult::Secp256k1EcdsaPublicKey(msg) => {
-                let msg = msg.map(|slice| slice.to_vec());
-                SerdeProcResult::Secp256k1EcdsaPublicKey(msg)
-            }
-            ProcResult::Secp256k1EcdsaEvmAddress(msg) => {
-                let msg = msg.map(|slice| slice.to_vec());
-                SerdeProcResult::Secp256k1EcdsaEvmAddress(msg)
-            }
-            ProcResult::Secp256k1EcdsaSign(msg) => {
-                let msg = msg.map(|slice| slice.to_vec());
-                SerdeProcResult::Secp256k1EcdsaSign(msg)
             }
             ProcResult::Error(err) => SerdeProcResult::Error(err),
         }
@@ -628,7 +567,6 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::SLIP10Derive {
-                        curve,
                         chain,
                         input: SLIP10DeriveInput::Seed(seed),
                         output,
@@ -645,7 +583,6 @@ impl Receive<SHRequest> for Client {
 
                         internal.try_tell(
                             InternalMsg::SLIP10DeriveFromSeed {
-                                curve,
                                 chain,
                                 seed_vault_id,
                                 seed_record_id,
@@ -657,7 +594,6 @@ impl Receive<SHRequest> for Client {
                         )
                     }
                     Procedure::SLIP10Derive {
-                        curve,
                         chain,
                         input: SLIP10DeriveInput::Key(parent),
                         output,
@@ -674,7 +610,6 @@ impl Receive<SHRequest> for Client {
 
                         internal.try_tell(
                             InternalMsg::SLIP10DeriveFromKey {
-                                curve,
                                 chain,
                                 parent_vault_id,
                                 parent_record_id,
@@ -741,30 +676,6 @@ impl Receive<SHRequest> for Client {
                             InternalMsg::Ed25519Sign {
                                 vault_id,
                                 record_id,
-                                msg,
-                            },
-                            sender,
-                        )
-                    }
-                    Procedure::Secp256k1EcdsaPublicKey { private_key } => {
-                        let (vault_id, record_id) = self.resolve_location(private_key);
-                        internal.try_tell(InternalMsg::Secp256k1EcdsaPublicKey { vault_id, record_id }, sender)
-                    }
-                    Procedure::Secp256k1EcdsaEvmAddress { private_key } => {
-                        let (vault_id, record_id) = self.resolve_location(private_key);
-                        internal.try_tell(InternalMsg::Secp256k1EcdsaEvmAddress { vault_id, record_id }, sender)
-                    }
-                    Procedure::Secp256k1EcdsaSign {
-                        private_key,
-                        flavor,
-                        msg,
-                    } => {
-                        let (vault_id, record_id) = self.resolve_location(private_key);
-                        internal.try_tell(
-                            InternalMsg::Secp256k1EcdsaSign {
-                                vault_id,
-                                record_id,
-                                flavor,
                                 msg,
                             },
                             sender,
