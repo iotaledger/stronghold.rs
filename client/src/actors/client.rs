@@ -47,8 +47,6 @@ pub enum Secp256k1EcdsaFlavor {
 }
 
 pub mod serde_bip39 {
-    use super::bip39;
-
     pub fn serialize<T, S>(t: &T, s: S) -> Result<S::Ok, S::Error>
     where
         T: AsRef<str>,

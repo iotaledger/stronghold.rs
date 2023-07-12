@@ -65,7 +65,7 @@ fn migrate_from_v2_to_v3(
     v3_pwd: &[u8],
 ) -> Result<(), Error> {
     let v = v2::read_snapshot(v2_path, v2_key, v2_aad)?;
-    v3::write_snapshot(&v[..], v3_path, v3_pwd, &[])
+    v3::write_snapshot(&v[..], v3_path, v3_pwd)
 }
 
 pub fn migrate(prev: Version, next: Version) -> Result<(), Error> {

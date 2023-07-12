@@ -44,8 +44,8 @@ impl Snapshot {
     /// TODO: Add associated data.
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: &snapshot::Key) -> crate::Result<Self> {
         let state = match path {
-            Some(p) => snapshot::decrypt_file(p, key, &[]).map_err(|e| engine::Error::from(e))?,
-            None => snapshot::decrypt_file(&snapshot::files::get_path(name)?, key, &[])
+            Some(p) => snapshot::decrypt_file(p, key).map_err(|e| engine::Error::from(e))?,
+            None => snapshot::decrypt_file(&snapshot::files::get_path(name)?, key)
                 .map_err(|e| engine::Error::from(e))?,
         };
 
@@ -62,8 +62,8 @@ impl Snapshot {
         // TODO: This is a hack and probably should be removed when we add proper error handling.
         let f = move || {
             match path {
-                Some(p) => snapshot::encrypt_file(&data, p, key, &[]).map_err(|e| engine::Error::from(e))?,
-                None => snapshot::encrypt_file(&data, &snapshot::files::get_path(name)?, key, &[])
+                Some(p) => snapshot::encrypt_file(&data, p, key).map_err(|e| engine::Error::from(e))?,
+                None => snapshot::encrypt_file(&data, &snapshot::files::get_path(name)?, key)
                     .map_err(|e| engine::Error::from(e))?,
             }
             Ok(())
