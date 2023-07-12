@@ -119,11 +119,7 @@ pub fn try_set_encrypt_work_factor(work_factor: u8) -> Result<(), WriteError> {
 /// It uses recommended work factor (approx. 20) to derive encryption key.
 /// It is safe to use with strong keys, although computing resources may be wasted.
 /// In this case it is recommended to use `encrypt_content_with_work_factor` with small/zero work factor.
-pub fn encrypt_content<O: Write>(
-    plain: &[u8],
-    output: &mut O,
-    key: &Key,
-) -> Result<(), WriteError> {
+pub fn encrypt_content<O: Write>(plain: &[u8], output: &mut O, key: &Key) -> Result<(), WriteError> {
     let work_factor = get_encrypt_work_factor();
     encrypt_content_with_work_factor(plain, output, key, work_factor)
 }
@@ -157,10 +153,7 @@ pub fn encrypt_content_with_work_factor<O: Write>(
 ///
 /// Decryption may fail if the required amount of computation (work factor) exceeds the recommended value.
 /// In this case `decrypt_content_with_work_factor` with a larger work factor.
-pub fn decrypt_content<I: Read>(
-    input: &mut I,
-    key: &Key,
-) -> Result<Zeroizing<Vec<u8>>, ReadError> {
+pub fn decrypt_content<I: Read>(input: &mut I, key: &Key) -> Result<Zeroizing<Vec<u8>>, ReadError> {
     let max_work_factor = age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR;
     decrypt_content_with_work_factor(input, key, max_work_factor)
 }

@@ -17,11 +17,7 @@ pub(crate) fn read<I: Read>(input: &mut I, password: &Key) -> Result<Vec<u8>, Er
     age::decrypt_vec(password, age::RECOMMENDED_MAXIMUM_DECRYPT_WORK_FACTOR, &age[..]).map_err(From::from)
 }
 
-pub(crate) fn write<O: Write>(
-    plain: &[u8],
-    output: &mut O,
-    password: &Key,
-) -> Result<(), Error> {
+pub(crate) fn write<O: Write>(plain: &[u8], output: &mut O, password: &Key) -> Result<(), Error> {
     let work_factor = age::WorkFactor::new(super::super::get_encrypt_work_factor());
     let age = age::encrypt_vec(password, work_factor, plain).map_err(|_| Error::RngFailed)?;
     output.write_all(&age[..])?;

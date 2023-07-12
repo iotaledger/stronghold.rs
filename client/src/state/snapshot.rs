@@ -45,8 +45,9 @@ impl Snapshot {
     pub fn read_from_snapshot(name: Option<&str>, path: Option<&Path>, key: &snapshot::Key) -> crate::Result<Self> {
         let state = match path {
             Some(p) => snapshot::decrypt_file(p, key).map_err(|e| engine::Error::from(e))?,
-            None => snapshot::decrypt_file(&snapshot::files::get_path(name)?, key)
-                .map_err(|e| engine::Error::from(e))?,
+            None => {
+                snapshot::decrypt_file(&snapshot::files::get_path(name)?, key).map_err(|e| engine::Error::from(e))?
+            }
         };
 
         let data = SnapshotState::deserialize(state.as_ref());

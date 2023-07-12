@@ -24,11 +24,7 @@ use crypto::{
 use engine::snapshot;
 
 use crate::{
-    actors::{
-        client::SLIP10Chain,
-        snapshot::SMsg,
-        ProcResult,
-    },
+    actors::{client::SLIP10Chain, snapshot::SMsg, ProcResult},
     internals::Provider,
     line_error,
     state::{
@@ -51,18 +47,12 @@ fn get_result<K: slip10::Derivable>(dk: slip10::Slip10<K>) -> (Zeroizing<Vec<u8>
     (Zeroizing::new((dk.extended_bytes()[1..]).into()), *dk.chain_code())
 }
 
-fn derive_from_seed(
-    seed_bytes: &[u8],
-    chain: Vec<u32>,
-) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+fn derive_from_seed(seed_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
     let chain = try_into_hardened_chain(chain)?;
     let dk = slip10::Seed::from_bytes(seed_bytes).derive::<ed25519::SecretKey, _>(chain.into_iter());
     Ok(get_result(dk))
 }
-fn derive_from_parent(
-    parent_bytes: &[u8],
-    chain: Vec<u32>,
-) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
+fn derive_from_parent(parent_bytes: &[u8], chain: Vec<u32>) -> engine::Result<(Zeroizing<Vec<u8>>, slip10::ChainCode)> {
     if parent_bytes.len() != 64 {
         return Err(crypto::Error::InvalidArgumentError {
             alg: "SLIP10 derive",
