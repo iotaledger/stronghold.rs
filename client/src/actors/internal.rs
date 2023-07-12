@@ -705,7 +705,6 @@ impl Receive<InternalMsg> for InternalActor<Provider> {
                             let sk = ed25519::SecretKey::from_bytes(&bs);
 
                             let sig = sk.sign(&msg);
-                            // sk.zeroize();
 
                             client.try_tell(
                                 ClientMsg::InternalResults(InternalResults::ReturnControlRequest(
