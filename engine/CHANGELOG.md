@@ -1,5 +1,13 @@
 # Changelog
 
+## \[2.0.0-rc.2]
+
+- [`1b46f415`](https://www.github.com/iotaledger/stronghold.rs/commit/1b46f4153ef30f9ca3ea9704c8edefe08ed217b7)([#491](https://www.github.com/iotaledger/stronghold.rs/pull/491)) Bump `iota-crypto` version to 0.23.
+
+### Dependencies
+
+- Upgraded to `stronghold-runtime@2.0.0-rc.2`
+
 ## \[2.0.0-rc.1]
 
 - [`f9619747`](https://www.github.com/iotaledger/stronghold.rs/commit/f96197471cb894e1a5a08caa4e9393703e5b8d1b)([#489](https://www.github.com/iotaledger/stronghold.rs/pull/489)) Added support for Secp256k1 ECDSA with SHA256/Keccak256 variants.
