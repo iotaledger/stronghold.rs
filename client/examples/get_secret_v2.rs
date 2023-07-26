@@ -1,5 +1,5 @@
 /// Reads the seed from a v2 snapshot by migrating it first to a v3 snapshot and prints it to stdout
-/// Run with `cargo run --example get_secret --release --features=insecure`
+/// Run with `cargo run --example get_secret_v2 --release --features=insecure`
 use iota_stronghold::{procedures::GetSecret, KeyProvider, Location, SnapshotPath, Stronghold};
 
 const STRONGHOLD_PASSWORD: &str = "STRONGHOLD_PASSWORD";
