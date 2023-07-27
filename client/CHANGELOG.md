@@ -1,5 +1,14 @@
 # Changelog
 
+## \[2.0.0]
+
+- [`b9ce406a`](https://www.github.com/iotaledger/stronghold.rs/commit/b9ce406a1a3396a7c8cc7cca42f2bb5c0768dde9)([#495](https://www.github.com/iotaledger/stronghold.rs/pull/495)) Stable release of 2.0.
+
+### Dependencies
+
+- Upgraded to `stronghold-engine@2.0.0`
+- Upgraded to `stronghold-runtime@2.0.0`
+
 ## \[2.0.0-rc.2]
 
 - [`1b46f415`](https://www.github.com/iotaledger/stronghold.rs/commit/1b46f4153ef30f9ca3ea9704c8edefe08ed217b7)([#491](https://www.github.com/iotaledger/stronghold.rs/pull/491)) Bump `iota-crypto` version to 0.23.
