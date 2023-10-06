@@ -218,8 +218,9 @@ where
 
         let default_page_size = 0x1000i64;
 
+        #[allow(clippy::useless_conversion)]
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(default_page_size))
+            .unwrap_or(Some(default_page_size.try_into().unwrap()))
             .unwrap() as usize;
 
         info!("Using page size {}", pagesize);
@@ -257,7 +258,7 @@ where
                 return Err(MemoryError::Allocation("Memory mapping failed".to_string()));
             }
 
-            #[cfg(any(target_os = "macos"))]
+            #[cfg(target_os = "macos")]
             {
                 // on linux this isn't required to commit memory
                 let error = libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
@@ -374,8 +375,9 @@ where
         // pick a default, if system api call is not successful
         let default_page_size = 0x1000i64;
 
+        #[allow(clippy::useless_conversion)]
         let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(default_page_size))
+            .unwrap_or(Some(default_page_size.try_into().unwrap()))
             .unwrap() as usize;
 
         // We allocate a sufficiently "large" chunk of memory. A random
@@ -420,7 +422,7 @@ where
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
-        dealloc_direct(frag.info.0 as *mut libc::c_void)
+        dealloc_direct(frag.info.0)
     }
 
     #[cfg(target_os = "windows")]
