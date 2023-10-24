@@ -1,4 +1,6 @@
 ---
+"iota-stronghold": patch
+"stronghold-engine": patch
 "stronghold-runtime": patch
 ---
 
