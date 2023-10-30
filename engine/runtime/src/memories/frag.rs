@@ -220,6 +220,7 @@ where
 
         #[allow(clippy::useless_conversion)]
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+            // Safe to unwrap, because the value of default_page_size fits into i32 and i64.
             .unwrap_or(Some(default_page_size.try_into().unwrap()))
             .unwrap() as usize;
 
@@ -377,6 +378,7 @@ where
 
         #[allow(clippy::useless_conversion)]
         let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+            // Safe to unwrap, because the value of default_page_size fits into i32 and i64.
             .unwrap_or(Some(default_page_size.try_into().unwrap()))
             .unwrap() as usize;
 
