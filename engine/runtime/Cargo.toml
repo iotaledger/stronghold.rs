@@ -19,7 +19,7 @@ name = "runtime"
 libc = { version = "0.2" }
 log = { version = "0.4.17" }
 zeroize = { version = "1.5.7", default-features = false, features = [ "zeroize_derive" ] }
-libsodium-sys = { version = "0.2" }
+libsodium-sys-stable = { version = "1.19.25" }
 serde = { version = "1.0", features = [ "derive" ] }
 random = { version = "0.8.4", package = "rand" }
 dirs = { version = "4.0.0" }
