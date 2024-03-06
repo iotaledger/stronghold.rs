@@ -211,11 +211,12 @@ where
         let hr = "-".repeat(20);
         info!("{0}Mapping Allocator{0}", hr);
 
-        const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
         let size = std::mem::size_of::<T>();
 
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
+
+        const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
 
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
             .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
