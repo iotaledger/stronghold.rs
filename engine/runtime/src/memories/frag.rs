@@ -216,10 +216,10 @@ where
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
-        let default_page_size = 0x1000i64;
+        const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
 
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(default_page_size))
+            .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
             .unwrap() as usize;
 
         info!("Using page size {}", pagesize);
@@ -257,7 +257,7 @@ where
                 return Err(MemoryError::Allocation("Memory mapping failed".to_string()));
             }
 
-            #[cfg(any(target_os = "macos"))]
+            #[cfg(target_os = "macos")]
             {
                 // on linux this isn't required to commit memory
                 let error = libc::madvise(&mut addr as *mut usize as *mut libc::c_void, size, libc::MADV_WILLNEED);
@@ -371,13 +371,6 @@ where
         let min = 0xFFFF;
         let max = 0xFFFF_FFFF;
 
-        // pick a default, if system api call is not successful
-        let default_page_size = 0x1000i64;
-
-        let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(default_page_size))
-            .unwrap() as usize;
-
         // We allocate a sufficiently "large" chunk of memory. A random
         // offset will be added to the returned pointer and the object will be written.
         unsafe {
@@ -420,7 +413,7 @@ where
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn dealloc(frag: &mut Frag<T>) -> Result<(), Self::Error> {
-        dealloc_direct(frag.info.0 as *mut libc::c_void)
+        dealloc_direct(frag.info.0)
     }
 
     #[cfg(target_os = "windows")]
