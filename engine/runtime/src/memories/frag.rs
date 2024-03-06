@@ -25,7 +25,6 @@ use zeroize::Zeroize;
 // This is the page size for most linux systems
 pub static FRAG_MIN_DISTANCE: usize = 0x1000;
 const MAX_RETRY_ATTEMPTS: usize = 10;
-const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -212,12 +211,12 @@ where
         let hr = "-".repeat(20);
         info!("{0}Mapping Allocator{0}", hr);
 
+        const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
         let size = std::mem::size_of::<T>();
 
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
-        #[allow(clippy::useless_conversion)]
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
             .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
             .unwrap() as usize;
@@ -370,11 +369,6 @@ where
 
         let min = 0xFFFF;
         let max = 0xFFFF_FFFF;
-
-        #[allow(clippy::useless_conversion)]
-        let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
-            .unwrap() as usize;
 
         // We allocate a sufficiently "large" chunk of memory. A random
         // offset will be added to the returned pointer and the object will be written.
