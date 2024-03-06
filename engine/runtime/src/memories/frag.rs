@@ -25,6 +25,7 @@ use zeroize::Zeroize;
 // This is the page size for most linux systems
 pub static FRAG_MIN_DISTANCE: usize = 0x1000;
 const MAX_RETRY_ATTEMPTS: usize = 10;
+const DEFAULT_MEMORY_PAGE_SIZE: nix::libc::c_long = 0x1000;
 
 /// Fragmenting strategy to allocate memory at random addresses.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -216,12 +217,9 @@ where
         use random::{thread_rng, Rng};
         let mut rng = thread_rng();
 
-        let default_page_size = 0x1000i64;
-
         #[allow(clippy::useless_conversion)]
         let pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            // Safe to unwrap, because the value of default_page_size fits into i32 and i64.
-            .unwrap_or(Some(default_page_size.try_into().unwrap()))
+            .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
             .unwrap() as usize;
 
         info!("Using page size {}", pagesize);
@@ -373,13 +371,9 @@ where
         let min = 0xFFFF;
         let max = 0xFFFF_FFFF;
 
-        // pick a default, if system api call is not successful
-        let default_page_size = 0x1000i64;
-
         #[allow(clippy::useless_conversion)]
         let _pagesize = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
-            // Safe to unwrap, because the value of default_page_size fits into i32 and i64.
-            .unwrap_or(Some(default_page_size.try_into().unwrap()))
+            .unwrap_or(Some(DEFAULT_MEMORY_PAGE_SIZE))
             .unwrap() as usize;
 
         // We allocate a sufficiently "large" chunk of memory. A random
