@@ -18,6 +18,6 @@ pub use primitives::{
     WriteVault, X25519DiffieHellman,
 };
 pub use types::{
-    DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureOutput, UseSecret,
+    DeriveSecret, FatalProcedureError, GenerateSecret, Procedure, ProcedureError, ProcedureOutput, Products, Runner,
+    UseSecret,
 };
-pub(crate) use types::{Products, Runner};
